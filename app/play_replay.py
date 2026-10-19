@@ -196,6 +196,16 @@ class ReplaySynchronizer:
         consecutive_failures = 0
         last_waiting_log = 0.0
 
+        # Initial grace wait for League engine initialization before polling API
+        self.log(t("logs.replay_init_wait"))
+        self.update_status(
+            "WATCHING", f"{os.path.basename(audio_path)} (initializing League replay...)"
+        )
+        for _ in range(30):  # 3.0s in 0.1s slices (responsive to stop_event)
+            if self.stop_event.is_set():
+                break
+            time.sleep(0.1)
+
         session = requests.Session()
         session.verify = False
 
@@ -299,7 +309,7 @@ class ReplaySynchronizer:
                         last_waiting_log = now
 
                     # Check if the League replay process was closed before finished loading
-                    if consecutive_failures % 8 == 0 and not proc_alive:
+                    if not proc_alive:
                         self.log(t("logs.replay_closed"))
                         break
                 else:
@@ -312,13 +322,13 @@ class ReplaySynchronizer:
                         self.log(t("logs.replay_closed"))
                         break
 
-            # Sleep in small slices to respond promptly to stop_event
-            sleep_time = 0.25 if not has_connected else 0.05
-            slice_count = max(1, int(sleep_time / 0.025))
+            # Sleep in small slices: 1.5s while loading to avoid spamming the port, 0.05s once live
+            sleep_time = 1.5 if not has_connected else 0.05
+            slice_count = max(1, int(sleep_time / 0.05))
             for _ in range(slice_count):
                 if self.stop_event.is_set():
                     break
-                time.sleep(0.025)
+                time.sleep(0.05)
 
         try:
             player.stop()

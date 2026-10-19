@@ -154,6 +154,7 @@
         "replay_closed": "⏹️ Replay closed in League. Stopping playback...",
         "replay_watcher_stopped": "🛑 Replay Auto-Sync stopped.",
         "vlc_end_reload": "ℹ️ Audio reached end, reloaded for seeking.",
-        "replay_api_waiting": "ℹ️ Replay API not responding yet ({error}), waiting..."
+        "replay_api_waiting": "ℹ️ Replay API not responding yet ({error}), waiting...",
+        "replay_init_wait": "⏳ Waiting for League replay engine to initialize..."
     }
 }

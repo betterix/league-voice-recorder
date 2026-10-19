@@ -154,6 +154,7 @@
         "replay_closed": "⏹️ A replay bezárult (API tartósan nem válaszol). VLC leállítása...",
         "replay_watcher_stopped": "🛑 Replay Auto-Sync leállítva.",
         "vlc_end_reload": "ℹ️ A lejátszó a fájl végén volt, újratöltve a visszatekeréshez.",
-        "replay_api_waiting": "ℹ️ API még nem válaszol ({error}), várakozás..."
+        "replay_api_waiting": "ℹ️ API még nem válaszol ({error}), várakozás...",
+        "replay_init_wait": "⏳ Várakozás a League motor elindulására..."
     }
 }
