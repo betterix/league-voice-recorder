@@ -5,7 +5,7 @@ on:
     types: [published]
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
 
 permissions:
@@ -24,13 +24,13 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          python-version: "3.16"
+          python-version: "3.15"
 
       - name: Set up Python
-        run: uv python install 3.16
+        run: uv python install 3.15
 
       - name: Install dependencies
-        run: uv sync --dev --python 3.16
+        run: uv sync --dev --python 3.15
 
       - name: Install VLC Media Player
         shell: pwsh
@@ -55,13 +55,27 @@ jobs:
               Copy-Item -Path $bin.FullName -Destination "ffmpeg.exe" -Force
           }
 
-      - name: Compile Windows executable with PyInstaller
+      - name: Compile Windows executable with Nuitka
         shell: pwsh
         run: |
-          uv run pyinstaller --noconfirm --onedir --windowed `
-            --name "LeagueVoiceRecorder" `
-            --collect-data customtkinter `
-            --add-data "locales;locales" `
+          $base = uv run --python 3.15 python -c "import sys; print(sys.base_prefix)"
+          $tcl_dir = Join-Path $base "tcl"
+          $tk_dir = Join-Path $base "tcl\tk9.0"
+          if (-not (Test-Path $tk_dir)) { $tk_dir = $tcl_dir }
+          uv run --python 3.15 --with nuitka python -m nuitka `
+            --standalone `
+            --windows-console-mode=disable `
+            --assume-yes-for-downloads `
+            --windows-icon-from-ico=icon.ico `
+            --enable-plugin=tk-inter `
+            --tcl-library-dir="$tcl_dir" `
+            --tk-library-dir="$tk_dir" `
+            --include-package-data=customtkinter `
+            --include-data-dir=locales=locales `
+            --include-data-file=icon.ico=icon.ico `
+            --output-dir=dist `
+            --output-folder-name=LeagueVoiceRecorder `
+            --output-filename=LeagueVoiceRecorder.exe `
             main.py
 
       - name: Assemble distribution package

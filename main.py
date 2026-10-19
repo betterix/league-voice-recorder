@@ -2,6 +2,7 @@ import datetime
 import os
 import queue
 import subprocess
+import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
@@ -22,6 +23,14 @@ from app.i18n import (
 from app.play_replay import ReplaySynchronizer
 from app.record import LeagueRecorder
 
+if sys.platform.startswith("win"):
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("leaguevoicerecorder.app.v0.1.4")
+    except Exception:
+        pass
+
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
@@ -40,6 +49,10 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.title(f"{t('app.window_title')} v{__version__}")
         self.geometry("900x740")
         self.minsize(820, 640)
+
+        # Set Window & Taskbar Icon
+        self._apply_window_icon()
+        self.after(300, self._apply_window_icon)
 
         # Threading & Workers
         self.msg_queue = queue.Queue()
@@ -64,6 +77,66 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
         # Handle window close
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _apply_window_icon(self):
+        """Set window title bar and taskbar icon with multi-resolution support."""
+        app_dir = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+        ico_path = None
+        for candidate in [
+            os.path.join(app_dir, "icon.ico"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico"),
+        ]:
+            if os.path.exists(candidate):
+                ico_path = candidate
+                break
+
+        if ico_path:
+            try:
+                self.iconbitmap(ico_path)
+            except Exception:
+                pass
+        elif getattr(sys, "frozen", False):
+            try:
+                self.iconbitmap(sys.executable)
+            except Exception:
+                pass
+
+        if sys.platform.startswith("win"):
+            try:
+                import ctypes
+
+                self.update_idletasks()
+                wid = self.winfo_id()
+                hwnd = ctypes.windll.user32.GetParent(wid) or wid
+
+                h_sm = None
+                h_lg = None
+                if ico_path and os.path.exists(ico_path):
+                    IMAGE_ICON = 1
+                    LR_LOADFROMFILE = 0x10
+                    h_sm = ctypes.windll.user32.LoadImageW(None, ico_path, IMAGE_ICON, 16, 16, LR_LOADFROMFILE)
+                    h_lg = ctypes.windll.user32.LoadImageW(None, ico_path, IMAGE_ICON, 32, 32, LR_LOADFROMFILE)
+                elif getattr(sys, "frozen", False):
+                    h1 = ctypes.c_void_p()
+                    h2 = ctypes.c_void_p()
+                    if (
+                        ctypes.windll.shell32.ExtractIconExW(
+                            sys.executable, 0, ctypes.byref(h1), ctypes.byref(h2), 1
+                        )
+                        > 0
+                    ):
+                        h_lg = h1.value
+                        h_sm = h2.value
+
+                WM_SETICON = 0x80
+                if h_sm:
+                    ctypes.windll.user32.SendMessageW(hwnd, WM_SETICON, 0, h_sm)
+                    ctypes.windll.user32.SendMessageW(wid, WM_SETICON, 0, h_sm)
+                if h_lg:
+                    ctypes.windll.user32.SendMessageW(hwnd, WM_SETICON, 1, h_lg)
+                    ctypes.windll.user32.SendMessageW(wid, WM_SETICON, 1, h_lg)
+            except Exception:
+                pass
 
     def _setup_ui(self):
         # Configure Grid Layout
