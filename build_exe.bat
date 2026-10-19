@@ -42,6 +42,12 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b %ERRORLEVEL%
 )
 
+rem Nuitka appends .dist to folder name, rename to expected destination
+if exist "dist\LeagueVoiceRecorder.dist" (
+    if exist "dist\LeagueVoiceRecorder" rd /s /q "dist\LeagueVoiceRecorder"
+    ren "dist\LeagueVoiceRecorder.dist" "LeagueVoiceRecorder"
+)
+
 echo.
 echo Copying ffmpeg.exe to output directory...
 if exist "ffmpeg.exe" (

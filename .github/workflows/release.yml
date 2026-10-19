@@ -77,19 +77,28 @@ jobs:
             --output-folder-name=LeagueVoiceRecorder `
             --output-filename=LeagueVoiceRecorder.exe `
             main.py
+          if (Test-Path "dist\LeagueVoiceRecorder.dist") {
+              if (Test-Path "dist\LeagueVoiceRecorder") {
+                  Remove-Item -Path "dist\LeagueVoiceRecorder" -Recurse -Force
+              }
+              Rename-Item -Path "dist\LeagueVoiceRecorder.dist" -NewName "LeagueVoiceRecorder"
+          }
 
       - name: Assemble distribution package
         shell: pwsh
         run: |
           Write-Host "Bundling assets into dist/LeagueVoiceRecorder..."
-          Copy-Item -Path "ffmpeg.exe" -Destination "dist\LeagueVoiceRecorder\" -Force
-          Copy-Item -Path "locales" -Destination "dist\LeagueVoiceRecorder\" -Recurse -Force
-          Copy-Item -Path ".env.example" -Destination "dist\LeagueVoiceRecorder\" -Force
+          if (-not (Test-Path "dist\LeagueVoiceRecorder")) {
+              New-Item -ItemType Directory -Path "dist\LeagueVoiceRecorder" -Force
+          }
+          Copy-Item -Path "ffmpeg.exe" -Destination "dist\LeagueVoiceRecorder" -Force
+          Copy-Item -Path "locales" -Destination "dist\LeagueVoiceRecorder" -Recurse -Force
+          Copy-Item -Path ".env.example" -Destination "dist\LeagueVoiceRecorder" -Force
           if (Test-Path "LICENSE") {
-              Copy-Item -Path "LICENSE" -Destination "dist\LeagueVoiceRecorder\" -Force
+              Copy-Item -Path "LICENSE" -Destination "dist\LeagueVoiceRecorder" -Force
           }
           if (Test-Path "README.md") {
-              Copy-Item -Path "README.md" -Destination "dist\LeagueVoiceRecorder\" -Force
+              Copy-Item -Path "README.md" -Destination "dist\LeagueVoiceRecorder" -Force
           }
 
       - name: Create release zip archive
