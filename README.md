@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Release Version](https://img.shields.io/badge/release-v0.1.1-blue?logo=github)
+![Release Version](https://img.shields.io/badge/release-v0.1.2-blue?logo=github)
 ![Python Version](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20(64--bit)-0078D6?logo=windows&logoColor=white)
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen?logo=githubactions&logoColor=white)

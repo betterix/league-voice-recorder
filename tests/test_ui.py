@@ -24,7 +24,7 @@ class TestUIApp(unittest.TestCase):
     def test_initial_window_state(self):
         """Verify initial window properties and button texts."""
         self.assertIn("League Voice Recorder", self.app.title())
-        self.assertIn("v0.1.1", self.app.title())
+        self.assertIn("v0.1.2", self.app.title())
         self.assertEqual(self.app.rec_btn.cget("text"), t("record.start_btn"))
         self.assertEqual(self.app.rep_btn.cget("text"), t("replay.start_btn"))
         self.assertEqual(self.app.rec_status_pill.cget("text"), t("record.status_idle"))
