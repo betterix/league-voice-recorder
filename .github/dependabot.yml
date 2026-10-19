@@ -5,6 +5,7 @@ multi-ecosystem-groups:
   all-updates:
     schedule:
       interval: "daily"
+    open-pull-requests-limit: 10
     labels:
       - "dependencies"
 
@@ -15,7 +16,6 @@ updates:
     multi-ecosystem-group: "all-updates"
     patterns:
       - "*"
-    open-pull-requests-limit: 10
     labels:
       - "dependencies"
       - "python"
@@ -26,7 +26,6 @@ updates:
     multi-ecosystem-group: "all-updates"
     patterns:
       - "*"
-    open-pull-requests-limit: 10
     labels:
       - "dependencies"
       - "github-actions"
