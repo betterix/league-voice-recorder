@@ -55,12 +55,13 @@ def detect_running_rofl_file():
     """Finds the running League replay process and returns the .rofl file path."""
     for proc in psutil.process_iter(["name", "cmdline"]):
         try:
-            if proc.info["name"] and "League of Legends.exe" in proc.info["name"]:
-                cmdline = proc.info["cmdline"]
-                if cmdline:
-                    for arg in cmdline:
-                        if arg.endswith(".rofl") and os.path.exists(arg):
-                            return arg
+            name = proc.info.get("name") or ""
+            if "League of Legends.exe" in name:
+                cmdline = proc.info.get("cmdline") or []
+                for raw_arg in cmdline:
+                    arg = str(raw_arg).strip('\'"')
+                    if arg.lower().endswith(".rofl"):
+                        return arg
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
     return None
@@ -147,19 +148,21 @@ class ReplaySynchronizer:
         is_playing = False
         last_game_time = -1
         last_speed = 1.0
+        has_connected = False
         consecutive_failures = 0
-        MAX_CONSECUTIVE_FAILURES = 8
+        last_waiting_log = 0.0
 
         session = requests.Session()
         session.verify = False
 
         while not self.stop_event.is_set():
             try:
-                response = session.get(API_URL, timeout=0.15)
-                consecutive_failures = 0
-
+                response = session.get(API_URL, timeout=0.25)
                 if response.status_code == 200:
                     data = response.json()
+                    has_connected = True
+                    consecutive_failures = 0
+
                     game_time = data.get("time", 0)
                     replay_paused = data.get("paused", False)
                     replay_speed = data.get("speed", 1.0)
@@ -213,18 +216,42 @@ class ReplaySynchronizer:
                             self.log(t("logs.replay_paused", time=game_time))
                             self.update_status("PAUSED", f"{game_time:.1f}s")
 
+                else:
+                    consecutive_failures += 1
+
             except requests.exceptions.RequestException as e:
                 consecutive_failures += 1
-                if consecutive_failures == 1:
-                    self.log(t("logs.replay_api_waiting", error=type(e).__name__))
+                now = time.time()
 
-                if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                    self.log(t("logs.replay_closed"))
-                    player.stop()
-                    break
+                if not has_connected:
+                    # Replay is still loading inside League client
+                    if now - last_waiting_log >= 4.0:
+                        self.log(t("logs.replay_api_waiting", error=type(e).__name__))
+                        self.update_status(
+                            "WATCHING", f"{os.path.basename(audio_path)} (loading in League...)"
+                        )
+                        last_waiting_log = now
+
+                    # Check every ~2 seconds if the League replay process was closed before finished loading
+                    if consecutive_failures % 8 == 0:
+                        if detect_running_rofl_file() is None:
+                            self.log(t("logs.replay_closed"))
+                            break
+                else:
+                    # Was connected, but connection dropped
+                    if consecutive_failures >= 15:
+                        if detect_running_rofl_file() is None:
+                            self.log(t("logs.replay_closed"))
+                            break
+
+                    if consecutive_failures >= 120:  # ~25s of dead silence
+                        self.log(t("logs.replay_closed"))
+                        break
 
             # Sleep in small slices to respond promptly to stop_event
-            for _ in range(2):
+            sleep_time = 0.25 if not has_connected else 0.05
+            slice_count = max(1, int(sleep_time / 0.025))
+            for _ in range(slice_count):
                 if self.stop_event.is_set():
                     break
                 time.sleep(0.025)
@@ -262,6 +289,8 @@ class ReplaySynchronizer:
                         last_handled_path = rofl_path
                         self.run_sync_loop(exact_audio_path)
                         self.update_status("WATCHING", t("replay.waiting_for_replay"))
+                        if detect_running_rofl_file() is None:
+                            last_handled_path = None
                     else:
                         self.log(
                             t(
