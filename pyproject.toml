@@ -3,7 +3,7 @@ name = "league-scrim-recorder"
 version = "0.1.1"
 description = "Record League of Legends scrim voice audio and synchronize it with replay playback."
 readme = "README.md"
-license = "MIT"
+license = "GPL-3.0-or-later"
 authors = [
     { name = "betterix" }
 ]
@@ -18,7 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.15",
     "Programming Language :: Python :: 3.16",
     "Operating System :: Microsoft :: Windows",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
 ]
 dependencies = [
     "customtkinter>=6.0.0",

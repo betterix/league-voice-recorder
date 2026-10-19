@@ -8,7 +8,7 @@
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen?logo=githubactions&logoColor=white)
 ![Code Style](https://img.shields.io/badge/code%20style-ruff-000000.svg)
 ![i18n](https://img.shields.io/badge/i18n-English%20%7C%20Magyar-success)
-![License](https://img.shields.io/badge/license-MIT-green)
+![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
 **Zero-Latency Automated Scrim Comms Recording & Frame-Accurate Replay Audio Synchronization for League of Legends.**
 
@@ -298,7 +298,7 @@ League Voice Recorder/
 
 ## 📄 License
 
-Distributed under the **MIT License**. See `LICENSE` for more information.
+Distributed under the **GNU General Public License v3.0 (GPLv3)**. See [LICENSE](LICENSE) for more information.
 
 ---
 
