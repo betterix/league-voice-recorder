@@ -34,6 +34,16 @@ if exist ".env.example" (
     copy /y ".env.example" "dist\LeagueVoiceRecorder\.env.example" >nul
 )
 
+echo Copying LICENSE to output directory...
+if exist "LICENSE" (
+    copy /y "LICENSE" "dist\LeagueVoiceRecorder\LICENSE" >nul
+)
+
+echo Copying README.md to output directory...
+if exist "README.md" (
+    copy /y "README.md" "dist\LeagueVoiceRecorder\README.md" >nul
+)
+
 echo.
 echo ========================================================
 echo Build Succeeded!

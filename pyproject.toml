@@ -2,6 +2,11 @@
 name = "league-scrim-recorder"
 version = "0.1.0"
 description = "Record League of Legends scrim voice audio and synchronize it with replay playback."
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "betterix" }
+]
 requires-python = ">3.15"
 dependencies = [
     "customtkinter>=6.0.0",

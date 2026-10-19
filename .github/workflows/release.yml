@@ -65,6 +65,9 @@ jobs:
           Copy-Item -Path "ffmpeg.exe" -Destination "dist\LeagueVoiceRecorder\" -Force
           Copy-Item -Path "locales" -Destination "dist\LeagueVoiceRecorder\" -Recurse -Force
           Copy-Item -Path ".env.example" -Destination "dist\LeagueVoiceRecorder\" -Force
+          if (Test-Path "LICENSE") {
+              Copy-Item -Path "LICENSE" -Destination "dist\LeagueVoiceRecorder\" -Force
+          }
           if (Test-Path "README.md") {
               Copy-Item -Path "README.md" -Destination "dist\LeagueVoiceRecorder\" -Force
           }
