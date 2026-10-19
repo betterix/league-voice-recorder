@@ -1,0 +1,13 @@
+line-length = 100
+
+[lint]
+# Ignore rules related to exception catching, subprocess checks, and import ordering needed by VLC
+ignore = [
+    "BLE001",   # Do not catch blind exception: `Exception`
+    "S110",     # `try`-`except`-`pass` detected, consider logging the exception
+    "E722",     # Do not use bare `except`
+    "E402",     # Module level import not at top of file (required for Windows VLC DLL registration)
+    "I001",     # Import block is un-sorted or un-formatted
+    "PLW1510",  # `subprocess.run` without explicit `check` argument
+    "SIM102",   # Use a single `if` statement instead of nested `if` statements
+]
