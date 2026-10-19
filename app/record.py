@@ -491,6 +491,18 @@ class LeagueRecorder:
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
             os.remove(video_path)
+
+            if os.path.exists(mp3_path) and os.path.getsize(mp3_path) < 10 * 1024:
+                try:
+                    os.remove(mp3_path)
+                except Exception:
+                    pass
+                self.log(
+                    f"⚠️ Discarded tiny stub recording (<10KB): {os.path.basename(mp3_path)}"
+                )
+                self.update_status("IDLE", "")
+                return
+
             self.log(t("logs.saved_mp3", path=mp3_path))
             self.update_status("IDLE", f"{os.path.basename(mp3_path)}")
         except FileNotFoundError:

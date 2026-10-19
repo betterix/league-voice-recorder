@@ -1,6 +1,12 @@
+import os
+import tempfile
 import unittest
 
-from app.play_replay import ReplaySynchronizer, parse_rofl_game_id
+from app.play_replay import (
+    ReplaySynchronizer,
+    find_matching_audio_file,
+    parse_rofl_game_id,
+)
 
 
 class TestReplaySyncModule(unittest.TestCase):
@@ -32,6 +38,35 @@ class TestReplaySyncModule(unittest.TestCase):
 
         sync.set_volume(150)
         self.assertEqual(sync.volume, 100)
+
+    def test_find_matching_audio_file_standard(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = os.path.join(tmpdir, "1234567890.mp3")
+            with open(file_path, "wb") as f:
+                f.write(b"x" * 20000)
+
+            matched = find_matching_audio_file(tmpdir, "1234567890")
+            self.assertEqual(matched, file_path)
+
+    def test_find_matching_audio_file_skips_stub(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # 3 KB stub (corrupt or premature stop)
+            stub_path = os.path.join(tmpdir, "1234567890.mp3")
+            with open(stub_path, "wb") as f:
+                f.write(b"x" * 3000)
+
+            # Real 50 KB recording
+            real_path = os.path.join(tmpdir, "1234567890_1.mp3")
+            with open(real_path, "wb") as f:
+                f.write(b"x" * 50000)
+
+            matched = find_matching_audio_file(tmpdir, "1234567890")
+            self.assertEqual(matched, real_path)
+
+    def test_find_matching_audio_file_not_found(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self.assertIsNone(find_matching_audio_file(tmpdir, "9999999999"))
+            self.assertIsNone(find_matching_audio_file(tmpdir, ""))
 
 
 if __name__ == "__main__":

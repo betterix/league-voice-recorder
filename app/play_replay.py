@@ -1,3 +1,4 @@
+import glob
 import os
 from pathlib import Path
 import sys
@@ -51,9 +52,9 @@ def parse_rofl_game_id(rofl_path):
     return None
 
 
-def detect_running_rofl_file():
-    """Finds the running League replay process and returns the .rofl file path."""
-    for proc in psutil.process_iter(["name", "cmdline"]):
+def detect_running_rofl_process():
+    """Finds the running League replay process and returns (rofl_path, pid)."""
+    for proc in psutil.process_iter(["pid", "name", "cmdline"]):
         try:
             name = proc.info.get("name") or ""
             if "League of Legends.exe" in name:
@@ -61,10 +62,53 @@ def detect_running_rofl_file():
                 for raw_arg in cmdline:
                     arg = str(raw_arg).strip('\'"')
                     if arg.lower().endswith(".rofl"):
-                        return arg
+                        return arg, proc.info.get("pid")
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
-    return None
+    return None, None
+
+
+def detect_running_rofl_file():
+    """Finds the running League replay process and returns the .rofl file path."""
+    rofl_path, _ = detect_running_rofl_process()
+    return rofl_path
+
+
+def is_process_running(pid):
+    """Fast check whether a process with the given PID is still active."""
+    if not pid:
+        return False
+    try:
+        p = psutil.Process(pid)
+        return p.is_running() and "League of Legends" in (p.name() or "")
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return False
+
+
+def find_matching_audio_file(audio_directory, game_id):
+    """
+    Finds the best matching audio file for the game ID.
+    Supports <game_id>.mp3, <game_id>_1.mp3, etc.
+    Prioritizes valid non-empty files (>10 KB) and picks the largest/latest recording.
+    """
+    if not game_id or not audio_directory or not os.path.exists(audio_directory):
+        return None
+
+    pattern = os.path.join(audio_directory, f"{game_id}*.mp3")
+    candidates = glob.glob(pattern)
+    if not candidates:
+        return None
+
+    # Filter out empty or tiny stubs (< 10 KB, typically failed recordings < 1 sec)
+    valid_candidates = [
+        f for f in candidates if os.path.isfile(f) and os.path.getsize(f) > 10 * 1024
+    ]
+
+    # If all candidates are tiny, fall back to whatever is available
+    pool = valid_candidates if valid_candidates else candidates
+    # Sort by file size descending, then modification time descending
+    pool.sort(key=lambda p: (os.path.getsize(p), os.path.getmtime(p)), reverse=True)
+    return pool[0]
 
 
 def create_vlc_instance():
@@ -127,7 +171,7 @@ class ReplaySynchronizer:
             except Exception:
                 pass
 
-    def run_sync_loop(self, audio_path):
+    def run_sync_loop(self, audio_path, replay_pid=None):
         abs_path = os.path.abspath(audio_path)
 
         try:
@@ -175,29 +219,44 @@ class ReplaySynchronizer:
 
                     # 1. Match playing and not paused (game_time > 0.5s)
                     if game_time > 0.5 and not replay_paused:
-                        if not is_playing or abs(game_time - last_game_time) > 2.0:
-                            current_state = player.get_state()
-                            ended_state = getattr(vlc.State, "Ended", 6) if vlc else 6
-                            if current_state == ended_state:
-                                player.stop()
-                                player.set_media(media)
-                                self.log(t("logs.vlc_end_reload"))
+                        current_state = player.get_state() if vlc else 0
+                        ended_state = getattr(vlc.State, "Ended", 6) if vlc else 6
+                        if current_state == ended_state:
+                            player.stop()
+                            player.set_media(media)
+                            self.log(t("logs.vlc_end_reload"))
 
+                        vlc_time = (
+                            (player.get_time() / 1000.0)
+                            if hasattr(player, "get_time")
+                            else -1.0
+                        )
+                        needs_seek = (
+                            not is_playing
+                            or abs(game_time - last_game_time) > 2.0
+                            or (vlc_time >= 0 and abs(vlc_time - game_time) > 2.0)
+                        )
+
+                        if needs_seek:
                             player.play()
                             time.sleep(0.05)
                             player.set_time(int(game_time * 1000))
                             player.set_rate(replay_speed)
                             player.audio_set_volume(self.volume)
 
-                            volume = player.audio_get_volume()
-                            self.log(
-                                t(
-                                    "logs.replay_playing",
-                                    time=game_time,
-                                    speed=replay_speed,
-                                    volume=volume,
+                            if not is_playing or abs(game_time - last_game_time) > 2.0:
+                                volume = player.audio_get_volume()
+                                self.log(
+                                    t(
+                                        "logs.replay_playing",
+                                        time=game_time,
+                                        speed=replay_speed,
+                                        volume=volume,
+                                    )
                                 )
-                            )
+                            is_playing = True
+                        elif not is_playing:
+                            player.play()
                             is_playing = True
 
                         time_min = int(game_time // 60)
@@ -223,26 +282,31 @@ class ReplaySynchronizer:
                 consecutive_failures += 1
                 now = time.time()
 
+                proc_alive = (
+                    is_process_running(replay_pid)
+                    if replay_pid
+                    else (detect_running_rofl_file() is not None)
+                )
+
                 if not has_connected:
                     # Replay is still loading inside League client
                     if now - last_waiting_log >= 4.0:
                         self.log(t("logs.replay_api_waiting", error=type(e).__name__))
                         self.update_status(
-                            "WATCHING", f"{os.path.basename(audio_path)} (loading in League...)"
+                            "WATCHING",
+                            f"{os.path.basename(audio_path)} (loading in League...)",
                         )
                         last_waiting_log = now
 
-                    # Check every ~2 seconds if the League replay process was closed before finished loading
-                    if consecutive_failures % 8 == 0:
-                        if detect_running_rofl_file() is None:
-                            self.log(t("logs.replay_closed"))
-                            break
+                    # Check if the League replay process was closed before finished loading
+                    if consecutive_failures % 8 == 0 and not proc_alive:
+                        self.log(t("logs.replay_closed"))
+                        break
                 else:
                     # Was connected, but connection dropped
-                    if consecutive_failures >= 15:
-                        if detect_running_rofl_file() is None:
-                            self.log(t("logs.replay_closed"))
-                            break
+                    if consecutive_failures >= 15 and not proc_alive:
+                        self.log(t("logs.replay_closed"))
+                        break
 
                     if consecutive_failures >= 120:  # ~25s of dead silence
                         self.log(t("logs.replay_closed"))
@@ -272,7 +336,7 @@ class ReplaySynchronizer:
         last_handled_path = None
 
         while not self.stop_event.is_set():
-            rofl_path = detect_running_rofl_file()
+            rofl_path, rofl_pid = detect_running_rofl_process()
 
             if rofl_path is None:
                 last_handled_path = None
@@ -282,14 +346,16 @@ class ReplaySynchronizer:
                 game_id = parse_rofl_game_id(rofl_path)
 
                 if game_id:
-                    exact_audio_path = os.path.join(self.audio_directory, f"{game_id}.mp3")
+                    matched_file = find_matching_audio_file(self.audio_directory, game_id)
 
-                    if os.path.exists(exact_audio_path):
-                        self.log(t("logs.audio_found", file=f"{game_id}.mp3"))
+                    if matched_file:
+                        self.log(
+                            t("logs.audio_found", file=os.path.basename(matched_file))
+                        )
                         last_handled_path = rofl_path
-                        self.run_sync_loop(exact_audio_path)
+                        self.run_sync_loop(matched_file, replay_pid=rofl_pid)
                         self.update_status("WATCHING", t("replay.waiting_for_replay"))
-                        if detect_running_rofl_file() is None:
+                        if not is_process_running(rofl_pid):
                             last_handled_path = None
                     else:
                         self.log(
@@ -302,14 +368,8 @@ class ReplaySynchronizer:
                         self.update_status("ERROR", f"{game_id}.mp3")
                         last_handled_path = rofl_path
 
-                # Sleep slices
-                for _ in range(50):
-                    if self.stop_event.is_set():
-                        break
-                    time.sleep(0.1)
-
             # Polling delay
-            for _ in range(20):
+            for _ in range(5):
                 if self.stop_event.is_set():
                     break
                 time.sleep(0.1)
