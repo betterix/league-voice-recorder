@@ -9,6 +9,7 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 import psutil
 
+from app import __version__
 from app.config import get_ffmpeg_path, load_config, save_config
 from app.i18n import (
     get_available_languages,
@@ -36,7 +37,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         set_language(self.config.get("language", "en"))
         on_language_change(self._update_ui_texts)
 
-        self.title(t("app.window_title"))
+        self.title(f"{t('app.window_title')} v{__version__}")
         self.geometry("900x740")
         self.minsize(820, 640)
 
@@ -616,7 +617,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             save_config(self.config)
 
     def _update_ui_texts(self):
-        self.title(t("app.window_title"))
+        self.title(f"{t('app.window_title')} v{__version__}")
         if hasattr(self, "title_lbl"):
             self.title_lbl.configure(text=t("app.title"))
             self.sub_lbl.configure(text=t("app.subtitle"))
