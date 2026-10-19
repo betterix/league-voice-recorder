@@ -25,11 +25,16 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Set up Python 3.16
-        run: uv python install 3.16
+      - name: Set up Python
+        run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync --dev --python 3.16
+        run: uv sync --dev --python 3.12
+
+      - name: Install VLC Media Player
+        shell: pwsh
+        run: |
+          choco install vlc --no-progress -y
 
       - name: Run automated test suite
         run: uv run python -m unittest discover tests -v

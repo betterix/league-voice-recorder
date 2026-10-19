@@ -26,7 +26,10 @@ if os.path.exists(VLC_DIR):
         except Exception:
             pass
 
-import vlc
+try:
+    import vlc
+except Exception:
+    vlc = None
 
 requests.packages.urllib3.disable_warnings()
 
@@ -68,6 +71,9 @@ def create_vlc_instance():
     Tries several VLC audio output candidates:
     Order: default (auto) -> mmdevice (WASAPI) -> directsound.
     """
+    if vlc is None:
+        raise RuntimeError("VLC (64-bit) is not installed or libvlc.dll was not found.")
+
     candidates = [
         "--quiet",
         "--quiet --aout=mmdevice",
@@ -168,7 +174,8 @@ class ReplaySynchronizer:
                     if game_time > 0.5 and not replay_paused:
                         if not is_playing or abs(game_time - last_game_time) > 2.0:
                             current_state = player.get_state()
-                            if current_state == vlc.State.Ended:
+                            ended_state = getattr(vlc.State, "Ended", 6) if vlc else 6
+                            if current_state == ended_state:
                                 player.stop()
                                 player.set_media(media)
                                 self.log(t("logs.vlc_end_reload"))

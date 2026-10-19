@@ -22,6 +22,8 @@ python-vlc==3.0.21203
     # via league-scrim-recorder
 requests==2.34.2
     # via league-scrim-recorder
+tomli==2.5.0 ; python_full_version < '3.11'
+    # via obsws-python
 urllib3==2.8.0
     # via
     #   league-scrim-recorder

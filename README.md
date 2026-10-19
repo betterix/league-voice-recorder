@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Python Version](https://img.shields.io/badge/python-3.16%2B-blue?logo=python&logoColor=white)
+![Python Version](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20(64--bit)-0078D6?logo=windows&logoColor=white)
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen?logo=githubactions&logoColor=white)
 ![Code Style](https://img.shields.io/badge/code%20style-ruff-000000.svg)
@@ -246,8 +246,8 @@ uvx ruff check .
 Every time a new GitHub Release is published or a tag matching `v*` (e.g., `v1.0.0`) is pushed, the [GitHub Actions Workflow](.github/workflows/release.yml) automatically:
 
 1. Spins up a clean `windows-latest` virtual environment.
-2. Installs Python 3.16 and dependencies via `uv`.
-3. Runs the complete 26-test suite to verify integrity.
+2. Installs Python (supporting 3.10 through 3.16+) and dependencies via `uv`.
+3. Provisions VLC Media Player and runs the complete 26-test suite.
 4. Compiles the standalone executable with PyInstaller.
 5. Bundles `LeagueVoiceRecorder.exe`, `ffmpeg.exe`, `locales/`, `.env.example`, and `README.md`.
 6. Packages and uploads `LeagueVoiceRecorder-Windows-x64.zip` directly to the GitHub Release.
