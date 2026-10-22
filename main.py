@@ -27,7 +27,9 @@ if sys.platform.startswith("win"):
     try:
         import ctypes
 
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("leaguevoicerecorder.app.v0.1.4")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            f"leaguevoicerecorder.app.v{__version__}"
+        )
     except Exception:
         pass
 
