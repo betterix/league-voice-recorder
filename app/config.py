@@ -130,7 +130,7 @@ def save_config(config_data):
 
 
 def get_ffmpeg_path():
-    """Finds the ffmpeg executable (system PATH or local executable)."""
+    """Finds the ffmpeg executable (system PATH, local, or winget install)."""
     if shutil.which("ffmpeg"):
         return "ffmpeg"
 
@@ -140,5 +140,14 @@ def get_ffmpeg_path():
     ]:
         if os.path.exists(candidate):
             return candidate
+
+    # Fallback for WinGet if terminal hasn't refreshed PATH yet
+    import glob
+    winget_matches = glob.glob(
+        os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages\*FFmpeg*\**\bin\ffmpeg.exe"),
+        recursive=True,
+    )
+    if winget_matches and os.path.exists(winget_matches[0]):
+        return winget_matches[0]
 
     return "ffmpeg"
