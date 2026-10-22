@@ -404,6 +404,19 @@ class LeagueRecorder:
 
         return False
 
+    def is_league_game_running(self):
+        """Checks if the League of Legends 3D game client process is currently running."""
+        try:
+            for proc in psutil.process_iter(["name"]):
+                try:
+                    if "League of Legends.exe" in (proc.info.get("name") or ""):
+                        return True
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except Exception:
+            pass
+        return False
+
     def abort_recording(self):
         """Immediately aborts recording if started by mistake (e.g., during replay)."""
         if not self.recording:
@@ -425,10 +438,11 @@ class LeagueRecorder:
         except Exception as e:
             self.log(t("logs.obs_scene_switch_failed", error=e))
 
-    def start_recording(self, initial_game_time=0.0):
+    def start_recording(self, initial_game_time=0.0, t_poll_start=None):
         """
         Starts OBS recording immediately with zero latency.
         Scene and inputs are already pre-configured to avoid delay.
+        Accurately accounts for OBS invocation latency to ensure sample-accurate alignment.
         """
         if self.recording:
             return
@@ -448,54 +462,41 @@ class LeagueRecorder:
             )
             return
 
-        # Immediate record call to eliminate startup lag
-        is_already_active = False
+        t_start = time.perf_counter()
         try:
-            status = self.obs_client.get_record_status()
-            if status and getattr(status, "output_active", False):
-                is_already_active = True
-        except Exception:
-            pass
-
-        try:
-            if not is_already_active:
-                self.obs_client.start_record()
+            self.obs_client.start_record()
             self.recording = True
-            self.first_game_time = (
-                float(initial_game_time) if initial_game_time is not None else 0.0
-            )
-            self.last_game_time = self.first_game_time
-            self.real_game_id = None
-            self.log(t("logs.match_detected", time=self.first_game_time))
-            init_time = max(0.0, self.first_game_time)
-            init_time_str = f"{int(init_time // 60):02d}:{int(init_time % 60):02d}"
-            self.update_status("RECORDING", t("record.live_match_time", time=init_time_str))
-            threading.Thread(target=self.fetch_game_id_background, daemon=True).start()
         except Exception as e:
             err_msg = str(e)
             # If OBS returned 500 (ResourceAlreadyExists / Output running), adopt active recording
             if "500" in err_msg or "already" in err_msg.lower() or "running" in err_msg.lower():
                 self.recording = True
-                self.first_game_time = (
-                    float(initial_game_time) if initial_game_time is not None else 0.0
-                )
-                self.last_game_time = self.first_game_time
-                self.real_game_id = None
-                self.log(t("logs.match_detected", time=self.first_game_time))
-                init_time = max(0.0, self.first_game_time)
-                init_time_str = f"{int(init_time // 60):02d}:{int(init_time % 60):02d}"
-                self.update_status("RECORDING", t("record.live_match_time", time=init_time_str))
-                threading.Thread(target=self.fetch_game_id_background, daemon=True).start()
             else:
                 self.log(t("logs.rec_start_error", error=e))
                 self.update_status("ERROR", f"{e}")
+                return
+
+        t_now = time.perf_counter()
+        # Compensate for elapsed time between League polling and OBS record start acknowledgment
+        ref_time = t_poll_start if t_poll_start is not None else t_start
+        obs_delay = max(0.0, t_now - ref_time)
+
+        base_time = float(initial_game_time) if initial_game_time is not None else 0.0
+        self.first_game_time = base_time + obs_delay
+        self.last_game_time = self.first_game_time
+        self.real_game_id = None
+        self.log(t("logs.match_detected", time=self.first_game_time))
+        init_time = max(0.0, self.first_game_time)
+        init_time_str = f"{int(init_time // 60):02d}:{int(init_time % 60):02d}"
+        self.update_status("RECORDING", t("record.live_match_time", time=init_time_str))
+        threading.Thread(target=self.fetch_game_id_background, daemon=True).start()
 
     def convert_to_mp3(self, video_path, base_name, initial_offset=0.0):
         """
         Converts the OBS recording to high quality MP3.
         Applies sample-accurate time alignment:
         - If recording started after 0:00 (initial_offset > 0), prepends exact silence (adelay).
-        - If recording started before 0:00 (initial_offset < 0), trims pre-game countdown (-ss).
+        - If recording started before 0:00 (initial_offset < 0), trims pre-game countdown (-ss after -i).
         This guarantees that 00:00:00 in the MP3 matches game_time = 0.000 in League.
         """
         self.log(t("logs.converting_mp3", name=base_name))
@@ -509,15 +510,13 @@ class LeagueRecorder:
 
         ffmpeg_cmd = get_ffmpeg_path()
         try:
-            cmd = [ffmpeg_cmd, "-y"]
-            # If recording started before 0:00 (e.g. -5s), trim pre-game countdown
-            if initial_offset < -0.05:
+            cmd = [ffmpeg_cmd, "-y", "-i", video_path]
+            # If recording started before 0:00 (e.g. -5s), trim pre-game countdown using sample-accurate output seeking (-ss after -i)
+            if initial_offset < -0.005:
                 cmd.extend(["-ss", f"{abs(initial_offset):.3f}"])
 
-            cmd.extend(["-i", video_path])
-
             # If recording started after 0:00 (e.g. 0.8s), prepend silence so 00:00 aligns with match start
-            if initial_offset > 0.05:
+            elif initial_offset > 0.005:
                 delay_ms = int(initial_offset * 1000)
                 cmd.extend(["-af", f"adelay=delays={delay_ms}:all=1"])
 
@@ -568,6 +567,31 @@ class LeagueRecorder:
 
         self.recording = False
         time.sleep(2)
+
+        # Quick final attempt to retrieve real Game ID if background thread hasn't caught it yet
+        if not self.real_game_id:
+            try:
+                install_dir = find_league_install_dir()
+                if install_dir:
+                    lockfile_path = os.path.join(install_dir, "lockfile")
+                    if os.path.exists(lockfile_path):
+                        with open(lockfile_path, "r") as f:
+                            data = f.read().split(":")
+                        port = data[2]
+                        password = data[3]
+                        auth = base64.b64encode(f"riot:{password}".encode()).decode()
+                        r = requests.get(
+                            f"https://127.0.0.1:{port}/lol-gameflow/v1/session",
+                            headers={"Authorization": f"Basic {auth}"},
+                            verify=False,
+                            timeout=1.5,
+                        )
+                        gid = r.json().get("gameData", {}).get("gameId")
+                        if gid and gid > 0:
+                            self.real_game_id = str(gid)
+                            self.log(t("logs.game_id_found", game_id=self.real_game_id))
+            except Exception:
+                pass
 
         if not output_path or not os.path.exists(output_path):
             if self.obs_client:
@@ -620,9 +644,12 @@ class LeagueRecorder:
             self.auto_configure_obs()
             self.set_scene()
 
+        consecutive_misses = 0
+
         while not self.stop_event.is_set():
+            t_poll_start = time.perf_counter()
+            game_time = None
             try:
-                game_time = None
                 # 1. Try lightweight gamestats endpoint (avoids 500 errors during loading screen)
                 try:
                     r = self.session.get(
@@ -651,6 +678,8 @@ class LeagueRecorder:
                         pass
 
                 if game_time is not None:
+                    consecutive_misses = 0
+
                     # CRITICAL REPLAY CHECK: If a replay is running, do NOT record!
                     if self.check_if_game_is_replay():
                         if self.recording:
@@ -662,9 +691,9 @@ class LeagueRecorder:
                             time.sleep(0.1)
                         continue
 
-                    # Game detected: start recording immediately
+                    # Game detected: start recording immediately with timestamp compensation
                     if not self.recording and game_time >= -30:
-                        self.start_recording(initial_game_time=game_time)
+                        self.start_recording(initial_game_time=game_time, t_poll_start=t_poll_start)
 
                     if self.recording:
                         active, is_paused = self.get_obs_status()
@@ -711,19 +740,35 @@ class LeagueRecorder:
 
                         self.last_game_time = game_time
 
+                else:
+                    # game_time is None (League API stopped responding or connection dropped)
+                    if self.recording:
+                        consecutive_misses += 1
+                        # If port 2999 is dead for 3 checks and process exited, or dead for 15 checks: match has ended!
+                        if consecutive_misses >= 3:
+                            league_alive = self.is_league_game_running()
+                            if not league_alive or consecutive_misses >= 15:
+                                self.stop_recording_and_rename()
+                                consecutive_misses = 0
+                                self.update_status("WATCHING", t("record.waiting_for_match"))
+                    else:
+                        consecutive_misses = 0
+
             except requests.exceptions.RequestException:
                 if self.recording:
                     self.stop_recording_and_rename()
                 else:
                     self.update_status("WATCHING", t("record.waiting_for_match"))
 
-            # When recording or match is active, poll at 0.05s. Otherwise use check_time.
-            poll_interval = 0.05 if self.recording else self.check_time
-            sleep_slices = max(1, int(poll_interval / 0.05))
-            for _ in range(sleep_slices):
+            # Dynamic polling interval:
+            # 30ms (0.03s) when recording for instant pause/unpause/stop response.
+            # 100ms (0.1s) while waiting for match.
+            poll_interval = 0.03 if self.recording else min(0.1, self.check_time)
+            slice_count = max(1, int(poll_interval / 0.02))
+            for _ in range(slice_count):
                 if self.stop_event.is_set():
                     break
-                time.sleep(0.05)
+                time.sleep(0.02)
 
         # Clean shutdown if stopped while recording
         if self.recording:

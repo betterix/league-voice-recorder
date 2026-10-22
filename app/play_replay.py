@@ -243,18 +243,17 @@ class ReplaySynchronizer:
                         )
                         needs_seek = (
                             not is_playing
-                            or abs(game_time - last_game_time) > 2.0
-                            or (vlc_time >= 0 and abs(vlc_time - game_time) > 2.0)
+                            or abs(game_time - last_game_time) > 1.0
+                            or (vlc_time >= 0 and abs(vlc_time - game_time) > 0.3)
                         )
 
                         if needs_seek:
                             player.play()
-                            time.sleep(0.05)
                             player.set_time(int(game_time * 1000))
                             player.set_rate(replay_speed)
                             player.audio_set_volume(self.volume)
 
-                            if not is_playing or abs(game_time - last_game_time) > 2.0:
+                            if not is_playing or abs(game_time - last_game_time) > 1.0:
                                 volume = player.audio_get_volume()
                                 self.log(
                                     t(
@@ -314,21 +313,17 @@ class ReplaySynchronizer:
                         break
                 else:
                     # Was connected, but connection dropped
-                    if consecutive_failures >= 15 and not proc_alive:
+                    if (consecutive_failures >= 5 and not proc_alive) or consecutive_failures >= 60:
                         self.log(t("logs.replay_closed"))
                         break
 
-                    if consecutive_failures >= 120:  # ~25s of dead silence
-                        self.log(t("logs.replay_closed"))
-                        break
-
-            # Sleep in small slices: 1.5s while loading to avoid spamming the port, 0.05s once live
-            sleep_time = 1.5 if not has_connected else 0.05
-            slice_count = max(1, int(sleep_time / 0.05))
+            # Sleep in small slices: 1.0s while loading to avoid spamming the port, 0.03s once live
+            sleep_time = 1.0 if not has_connected else 0.03
+            slice_count = max(1, int(sleep_time / 0.03))
             for _ in range(slice_count):
                 if self.stop_event.is_set():
                     break
-                time.sleep(0.05)
+                time.sleep(0.03)
 
         try:
             player.stop()

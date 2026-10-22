@@ -56,6 +56,8 @@ class TestRecorderModule(unittest.TestCase):
         idx = cmd.index("-ss")
         self.assertEqual(cmd[idx + 1], "2.350")
         self.assertNotIn("-af", cmd)
+        # Sample accuracy: -ss must be placed AFTER -i (output seeking)
+        self.assertGreater(cmd.index("-ss"), cmd.index("-i"))
 
     @patch("subprocess.run")
     def test_convert_to_mp3_zero_offset(self, mock_subproc):
@@ -115,6 +117,36 @@ class TestRecorderModule(unittest.TestCase):
         self.recorder._cached_is_replay = False
         is_replay = self.recorder.check_if_game_is_replay()
         self.assertFalse(is_replay)
+
+    def test_start_recording_latency_compensation(self):
+        """start_recording must compensate for the time elapsed between polling and OBS start."""
+        import time
+
+        mock_obs = MagicMock()
+        self.recorder.obs_client = mock_obs
+        self.recorder.check_if_game_is_replay = MagicMock(return_value=False)
+
+        # Simulate 50ms polling delay
+        t_poll_start = time.perf_counter() - 0.05
+        self.recorder.start_recording(initial_game_time=10.0, t_poll_start=t_poll_start)
+
+        self.assertTrue(self.recorder.recording)
+        self.assertGreaterEqual(self.recorder.first_game_time, 10.045)
+        self.assertTrue(mock_obs.start_record.called)
+
+    def test_is_league_game_running(self):
+        """is_league_game_running should accurately detect League of Legends.exe."""
+        with patch("psutil.process_iter") as mock_iter:
+            mock_proc = MagicMock()
+            mock_proc.info = {"name": "League of Legends.exe"}
+            mock_iter.return_value = [mock_proc]
+            self.assertTrue(self.recorder.is_league_game_running())
+
+        with patch("psutil.process_iter") as mock_iter:
+            mock_proc = MagicMock()
+            mock_proc.info = {"name": "chrome.exe"}
+            mock_iter.return_value = [mock_proc]
+            self.assertFalse(self.recorder.is_league_game_running())
 
 
 if __name__ == "__main__":
