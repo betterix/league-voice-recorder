@@ -27,7 +27,9 @@ _listeners: list[Callable[[], None]] = []
 def _get_locales_search_dirs() -> list[str]:
     dirs = []
     # 1. External locales folder next to executable (for community drop-in translations)
-    exe_locales = os.path.join(os.path.dirname(sys.executable), "locales")
+    nuitka_bin = os.environ.get("NUITKA_ONEFILE_BINARY")
+    exe_dir = os.path.dirname(os.path.abspath(nuitka_bin)) if nuitka_bin else os.path.dirname(sys.executable)
+    exe_locales = os.path.join(exe_dir, "locales")
     if os.path.isdir(exe_locales):
         dirs.append(exe_locales)
 

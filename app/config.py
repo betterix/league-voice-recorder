@@ -6,8 +6,14 @@ import shutil
 from dotenv import load_dotenv, set_key
 import sys
 
-if getattr(sys, "frozen", False) or "__compiled__" in globals() or hasattr(sys.modules.get("__main__", None), "__compiled__") or (sys.executable and sys.executable.lower().endswith(".exe") and "python" not in os.path.basename(sys.executable).lower()):
-    PROJECT_ROOT = os.path.dirname(sys.executable)
+if os.environ.get("NUITKA_ONEFILE_BINARY"):
+    PROJECT_ROOT = os.path.dirname(os.path.abspath(os.environ["NUITKA_ONEFILE_BINARY"]))
+    APP_DIR = os.path.join(PROJECT_ROOT, "app")
+elif getattr(sys, "frozen", False) or "__compiled__" in globals() or hasattr(sys.modules.get("__main__", None), "__compiled__") or (sys.executable and sys.executable.lower().endswith(".exe") and "python" not in os.path.basename(sys.executable).lower()):
+    if sys.argv and sys.argv[0] and sys.argv[0].lower().endswith(".exe") and os.path.exists(sys.argv[0]):
+        PROJECT_ROOT = os.path.dirname(os.path.abspath(sys.argv[0]))
+    else:
+        PROJECT_ROOT = os.path.dirname(os.path.abspath(sys.executable))
     APP_DIR = os.path.join(PROJECT_ROOT, "app")
 else:
     APP_DIR = os.path.dirname(os.path.abspath(__file__))
