@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.2.0-blue?logo=github" alt="Release Version" /></a>
-  <img src="https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white" alt="Python Version" />
+  <img src="https://img.shields.io/badge/python-3.14.8-blue?logo=python&logoColor=white" alt="Python Version" />
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%2064--bit-0078D6?logo=windows&logoColor=white" alt="Platform" />
   <img src="https://img.shields.io/badge/build-passing-brightgreen?logo=githubactions&logoColor=white" alt="Build Status" />
   <img src="https://img.shields.io/badge/code%20style-ruff-000000.svg" alt="Code Style" />
@@ -281,7 +281,7 @@ uvx ruff check .
 Every time a new GitHub Release is published or a tag matching `v*` (e.g., `v1.0.0`) is pushed, the [GitHub Actions Workflow](.github/workflows/release.yml) automatically:
 
 1. Spins up a clean `windows-latest` virtual environment.
-2. Installs Python (supporting 3.10 through 3.16+) and dependencies via `uv`.
+2. Installs Python 3.14.8 and dependencies via `uv`.
 3. Provisions VLC Media Player and runs the complete 26-test suite.
 4. Compiles the standalone executable with Nuitka in onefile mode.
 5. Bundles `LeagueVoiceRecorder.exe` (automatically creates `config.json` on first run).
