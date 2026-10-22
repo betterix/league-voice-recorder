@@ -77,6 +77,21 @@ def resolve_path(path_str):
     return os.path.abspath(expanded)
 
 
+def get_clean_default_config():
+    """Builds a clean, safe template config with BLANK password for distribution and new setups."""
+    return {
+        "obs_host": "localhost",
+        "obs_port": 4455,
+        "obs_password": "",
+        "scene_name": "Discord Only",
+        "record_folder": get_current_user_documents_recordings_dir(),
+        "vlc_dir": r"C:\Program Files\VideoLAN\VLC",
+        "check_time": 0.2,
+        "replay_volume": 80,
+        "language": "en",
+    }
+
+
 def get_default_config():
     """Builds default config taking environment variables and current user into account."""
     default_rec_dir = get_current_user_documents_recordings_dir()
@@ -112,10 +127,11 @@ def load_config():
         except Exception as e:
             print(f"⚠️ Failed to load config.json: {e}")
     else:
-        # Create initial config.json next to the executable if not present
+        # Create initial config.json with strictly BLANK password
         try:
+            clean_cfg = get_clean_default_config()
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump(config, f, indent=4, ensure_ascii=False)
+                json.dump(clean_cfg, f, indent=4, ensure_ascii=False)
         except Exception as e:
             print(f"⚠️ Failed to create default config.json: {e}")
 

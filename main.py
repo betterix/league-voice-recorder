@@ -48,7 +48,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
         self.title(f"{t('app.window_title')} v{__version__}")
         self.geometry("900x740")
-        self.minsize(820, 640)
+        self.minsize(720, 520)
 
         # Set Window & Taskbar Icon
         self._apply_window_icon()
@@ -407,7 +407,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         parent.grid_columnconfigure(0, weight=1)
         parent.grid_rowconfigure(0, weight=1)
 
-        # Log Text Box
+        # Log Text Box (expands vertically and horizontally)
         self.log_textbox = ctk.CTkTextbox(
             parent,
             font=ctk.CTkFont(family="Consolas", size=12),
@@ -416,33 +416,24 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             corner_radius=8,
             wrap="word",
         )
-        self.log_textbox.grid(row=0, column=0, columnspan=3, padx=10, pady=(10, 8), sticky="nsew")
+        self.log_textbox.grid(row=0, column=0, padx=10, pady=(10, 8), sticky="nsew")
         self.log_textbox.configure(state="disabled")
 
         # Control Bar below log
+        log_ctrl_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        log_ctrl_frame.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="ew")
+
         self.autoscroll_var = tk.BooleanVar(value=True)
         self.autoscroll_cb = ctk.CTkCheckBox(
-            parent,
+            log_ctrl_frame,
             text=t("log.autoscroll"),
             variable=self.autoscroll_var,
             font=ctk.CTkFont(size=12),
         )
-        self.autoscroll_cb.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="w")
-
-        self.copy_btn = ctk.CTkButton(
-            parent,
-            text=t("log.copy"),
-            width=100,
-            height=28,
-            font=ctk.CTkFont(size=12),
-            fg_color="#334155",
-            hover_color="#475569",
-            command=self._copy_log,
-        )
-        self.copy_btn.grid(row=1, column=1, padx=6, pady=(0, 10), sticky="e")
+        self.autoscroll_cb.pack(side="left")
 
         self.clear_btn = ctk.CTkButton(
-            parent,
+            log_ctrl_frame,
             text=t("log.clear"),
             width=100,
             height=28,
@@ -451,7 +442,19 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             hover_color="#475569",
             command=self._clear_log,
         )
-        self.clear_btn.grid(row=1, column=2, padx=10, pady=(0, 10), sticky="e")
+        self.clear_btn.pack(side="right", padx=(6, 0))
+
+        self.copy_btn = ctk.CTkButton(
+            log_ctrl_frame,
+            text=t("log.copy"),
+            width=100,
+            height=28,
+            font=ctk.CTkFont(size=12),
+            fg_color="#334155",
+            hover_color="#475569",
+            command=self._copy_log,
+        )
+        self.copy_btn.pack(side="right")
 
     # -------------------------------------------------------------
     # TAB 2: RECORDINGS EXPLORER
@@ -512,10 +515,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
     # -------------------------------------------------------------
     def _setup_tab_settings(self, parent):
         parent.grid_columnconfigure(0, weight=1)
+        parent.grid_rowconfigure(0, weight=1)
 
         scroll = ctk.CTkScrollableFrame(parent, fg_color="transparent")
         scroll.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        scroll.grid_columnconfigure(0, weight=0)
         scroll.grid_columnconfigure(1, weight=1)
+        scroll.grid_columnconfigure(2, weight=0)
 
         # --- OBS Settings ---
         self.obs_title_lbl = ctk.CTkLabel(

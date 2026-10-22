@@ -58,8 +58,8 @@ if exist ".env.example" (
     copy /y ".env.example" "dist\LeagueVoiceRecorder\.env.example" >nul
 )
 
-echo Creating default config.json in output directory...
-uv run --python 3.15 python -c "import json; from app.config import get_default_config; json.dump(get_default_config(), open(r'dist\LeagueVoiceRecorder\config.json', 'w', encoding='utf-8'), indent=4)"
+echo Creating clean default config.json with blank password in output directory...
+uv run --python 3.15 python -c "import json; from app.config import get_clean_default_config; json.dump(get_clean_default_config(), open(r'dist\LeagueVoiceRecorder\config.json', 'w', encoding='utf-8'), indent=4)"
 
 echo.
 echo ========================================================

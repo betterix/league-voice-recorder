@@ -73,7 +73,7 @@ jobs:
           New-Item -ItemType Directory -Path "dist\LeagueVoiceRecorder" -Force
           Copy-Item -Path "dist\build\LeagueVoiceRecorder.exe" -Destination "dist\LeagueVoiceRecorder\LeagueVoiceRecorder.exe" -Force
           Copy-Item -Path ".env.example" -Destination "dist\LeagueVoiceRecorder\.env.example" -Force
-          uv run --python 3.15 python -c "import json; from app.config import get_default_config; json.dump(get_default_config(), open(r'dist\LeagueVoiceRecorder\config.json', 'w', encoding='utf-8'), indent=4)"
+          uv run --python 3.15 python -c "import json; from app.config import get_clean_default_config; json.dump(get_clean_default_config(), open(r'dist\LeagueVoiceRecorder\config.json', 'w', encoding='utf-8'), indent=4)"
           if (Test-Path "dist\build") {
               Remove-Item -Path "dist\build" -Recurse -Force
           }
