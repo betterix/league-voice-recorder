@@ -6,18 +6,41 @@ import shutil
 from dotenv import load_dotenv, set_key
 import sys
 
-if os.environ.get("NUITKA_ONEFILE_BINARY"):
-    PROJECT_ROOT = os.path.dirname(os.path.abspath(os.environ["NUITKA_ONEFILE_BINARY"]))
-    APP_DIR = os.path.join(PROJECT_ROOT, "app")
-elif getattr(sys, "frozen", False) or "__compiled__" in globals() or hasattr(sys.modules.get("__main__", None), "__compiled__") or (sys.executable and sys.executable.lower().endswith(".exe") and "python" not in os.path.basename(sys.executable).lower()):
+def _detect_project_root():
+    """Detects the real application directory whether running from source or compiled binary."""
+    # 1. Nuitka compiled information (item 4 / containing_dir is the real exe folder)
+    compiled_info = getattr(sys.modules.get("__main__", None), "__compiled__", None)
+    if compiled_info is None:
+        import builtins
+        compiled_info = getattr(builtins, "__compiled__", None)
+    if compiled_info is not None:
+        containing_dir = getattr(compiled_info, "containing_dir", None)
+        if not containing_dir and len(compiled_info) > 4:
+            containing_dir = compiled_info[4]
+        if containing_dir and os.path.isdir(containing_dir):
+            return os.path.abspath(containing_dir)
+
+    # 2. Nuitka onefile environment variables
+    for env_var in ["NUITKA_ONEFILE_BINARY", "NUITKA_ORIGINAL_ARGV0"]:
+        val = os.environ.get(env_var)
+        if val and os.path.exists(val):
+            return os.path.dirname(os.path.abspath(val))
+
+    # 3. sys.argv[0] if invoked as standalone .exe
     if sys.argv and sys.argv[0] and sys.argv[0].lower().endswith(".exe") and os.path.exists(sys.argv[0]):
-        PROJECT_ROOT = os.path.dirname(os.path.abspath(sys.argv[0]))
-    else:
-        PROJECT_ROOT = os.path.dirname(os.path.abspath(sys.executable))
-    APP_DIR = os.path.join(PROJECT_ROOT, "app")
-else:
-    APP_DIR = os.path.dirname(os.path.abspath(__file__))
-    PROJECT_ROOT = os.path.dirname(APP_DIR)
+        return os.path.dirname(os.path.abspath(sys.argv[0]))
+
+    # 4. Standard frozen executable (PyInstaller, etc.)
+    if getattr(sys, "frozen", False) or (sys.executable and sys.executable.lower().endswith(".exe") and "python" not in os.path.basename(sys.executable).lower()):
+        return os.path.dirname(os.path.abspath(sys.executable))
+
+    # 5. Development mode: parent directory of app package
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.dirname(app_dir)
+
+
+PROJECT_ROOT = _detect_project_root()
+APP_DIR = os.path.join(PROJECT_ROOT, "app")
 
 DOTENV_PATH = os.path.join(PROJECT_ROOT, ".env")
 CONFIG_FILE = os.path.join(PROJECT_ROOT, "config.json")
@@ -88,6 +111,13 @@ def load_config():
                 config.update(user_config)
         except Exception as e:
             print(f"⚠️ Failed to load config.json: {e}")
+    else:
+        # Create initial config.json next to the executable if not present
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"⚠️ Failed to create default config.json: {e}")
 
     # Always resolve record_folder dynamically and ensure it exists on current user's system
     config["record_folder"] = resolve_path(config.get("record_folder"))
