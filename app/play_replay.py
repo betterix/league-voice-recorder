@@ -191,6 +191,7 @@ class ReplaySynchronizer:
         API_URL = "https://127.0.0.1:2999/replay/playback"
         is_playing = False
         last_game_time = -1
+        paused_game_time = -1.0
         last_speed = 1.0
         has_connected = False
         consecutive_failures = 0
@@ -241,32 +242,53 @@ class ReplaySynchronizer:
                             if hasattr(player, "get_time")
                             else -1.0
                         )
-                        needs_seek = (
-                            not is_playing
-                            or abs(game_time - last_game_time) > 1.0
-                            or (vlc_time >= 0 and abs(vlc_time - game_time) > 0.3)
-                        )
 
-                        if needs_seek:
-                            player.play()
-                            player.set_time(int(game_time * 1000))
-                            player.set_rate(replay_speed)
-                            player.audio_set_volume(self.volume)
+                        if not is_playing:
+                            # Resuming from pause or starting
+                            time_diff = (
+                                abs(game_time - paused_game_time)
+                                if paused_game_time >= 0
+                                else 999.0
+                            )
+                            if paused_game_time >= 0 and time_diff < 0.25:
+                                # Replay was unpaused at the same spot — RESUME PLAYBACK INSTANTLY!
+                                # Avoid set_time() which flushes audio pipeline and introduces a ~0.1s lag!
+                                player.play()
+                                player.set_rate(replay_speed)
+                                player.audio_set_volume(self.volume)
+                            else:
+                                # Timeline jump or first start
+                                player.play()
+                                player.set_time(int(game_time * 1000))
+                                player.set_rate(replay_speed)
+                                player.audio_set_volume(self.volume)
 
-                            if not is_playing or abs(game_time - last_game_time) > 1.0:
-                                volume = player.audio_get_volume()
-                                self.log(
-                                    t(
-                                        "logs.replay_playing",
-                                        time=game_time,
-                                        speed=replay_speed,
-                                        volume=volume,
-                                    )
+                            volume = player.audio_get_volume()
+                            self.log(
+                                t(
+                                    "logs.replay_playing",
+                                    time=game_time,
+                                    speed=replay_speed,
+                                    volume=volume,
                                 )
+                            )
                             is_playing = True
-                        elif not is_playing:
-                            player.play()
-                            is_playing = True
+                        else:
+                            # Already playing: check for timeline jump / scrub or drift
+                            time_jump = abs(game_time - last_game_time) > 0.5
+                            if time_jump or (vlc_time >= 0 and abs(vlc_time - game_time) > 0.35):
+                                player.set_time(int(game_time * 1000))
+                                player.set_rate(replay_speed)
+                                if time_jump:
+                                    volume = player.audio_get_volume()
+                                    self.log(
+                                        t(
+                                            "logs.replay_playing",
+                                            time=game_time,
+                                            speed=replay_speed,
+                                            volume=volume,
+                                        )
+                                    )
 
                         time_min = int(game_time // 60)
                         time_sec = int(game_time % 60)
@@ -281,8 +303,13 @@ class ReplaySynchronizer:
                         if is_playing:
                             player.pause()
                             is_playing = False
+                            paused_game_time = game_time
                             self.log(t("logs.replay_paused", time=game_time))
                             self.update_status("PAUSED", f"{game_time:.1f}s")
+                        elif paused_game_time >= 0 and abs(game_time - paused_game_time) > 0.5:
+                            # User scrubbed while paused in League replay
+                            player.set_time(int(game_time * 1000))
+                            paused_game_time = game_time
 
                 else:
                     consecutive_failures += 1

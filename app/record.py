@@ -106,6 +106,7 @@ class LeagueRecorder:
 
         self.obs_client = None
         self.recording = False
+        self.obs_is_paused = False
         self.real_game_id = None
         self.last_game_time = -1
         self.first_game_time = 0.0
@@ -466,11 +467,13 @@ class LeagueRecorder:
         try:
             self.obs_client.start_record()
             self.recording = True
+            self.obs_is_paused = False
         except Exception as e:
             err_msg = str(e)
             # If OBS returned 500 (ResourceAlreadyExists / Output running), adopt active recording
             if "500" in err_msg or "already" in err_msg.lower() or "running" in err_msg.lower():
                 self.recording = True
+                self.obs_is_paused = False
             else:
                 self.log(t("logs.rec_start_error", error=e))
                 self.update_status("ERROR", f"{e}")
@@ -645,6 +648,7 @@ class LeagueRecorder:
             self.set_scene()
 
         consecutive_misses = 0
+        pause_tick_count = 0
 
         while not self.stop_event.is_set():
             t_poll_start = time.perf_counter()
@@ -702,13 +706,14 @@ class LeagueRecorder:
                             self.update_status("WATCHING", t("record.match_countdown", time=cd_str))
 
                     if self.recording:
-                        active, is_paused = self.get_obs_status()
-
-                        # Instant pause if game time paused
+                        # Debounce pause detection: require at least 5 consecutive polls (~100ms) with unchanged game_time
+                        # to avoid false pause triggers during normal 33ms game ticks
                         if game_time == self.last_game_time and game_time > 0:
-                            if active and not is_paused:
+                            pause_tick_count += 1
+                            if pause_tick_count >= 5 and not self.obs_is_paused:
                                 try:
                                     self.obs_client.pause_record()
+                                    self.obs_is_paused = True
                                     self.log(t("logs.pause"))
                                     p_time_val = max(0.0, game_time)
                                     p_time_str = (
@@ -722,6 +727,7 @@ class LeagueRecorder:
                                     self.log(t("logs.pause_failed", error=e))
 
                         elif game_time > self.last_game_time:
+                            pause_tick_count = 0
                             time_val = max(0.0, game_time)
                             time_str = f"{int(time_val // 60):02d}:{int(time_val % 60):02d}"
                             if self.real_game_id:
@@ -733,9 +739,10 @@ class LeagueRecorder:
                             else:
                                 detail_text = t("record.live_match_time", time=time_str)
 
-                            if active and is_paused:
+                            if self.obs_is_paused:
                                 try:
                                     self.obs_client.resume_record()
+                                    self.obs_is_paused = False
                                     self.log(t("logs.unpause"))
                                     self.update_status("RECORDING", detail_text)
                                 except Exception as e:

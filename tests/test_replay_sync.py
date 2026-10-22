@@ -68,6 +68,40 @@ class TestReplaySyncModule(unittest.TestCase):
             self.assertIsNone(find_matching_audio_file(tmpdir, "9999999999"))
             self.assertIsNone(find_matching_audio_file(tmpdir, ""))
 
+    def test_unpause_zero_latency_behavior(self):
+        """Unpausing at the same timestamp must use instant play() and skip pipeline-flushing set_time()."""
+        from unittest.mock import MagicMock
+
+        player = MagicMock()
+        paused_game_time = 120.0
+        game_time = 120.05
+        replay_speed = 1.0
+
+        # When unpausing at the same spot (diff < 0.25s)
+        time_diff = abs(game_time - paused_game_time)
+        if time_diff < 0.25:
+            player.play()
+            player.set_rate(replay_speed)
+        else:
+            player.set_time(int(game_time * 1000))
+
+        self.assertTrue(player.play.called)
+        self.assertFalse(player.set_time.called)
+
+        # When scrubbed to a different time while paused (diff > 0.5s)
+        player.reset_mock()
+        game_time = 145.0
+        time_diff = abs(game_time - paused_game_time)
+        if time_diff < 0.25:
+            player.play()
+            player.set_rate(replay_speed)
+        else:
+            player.play()
+            player.set_time(int(game_time * 1000))
+
+        self.assertTrue(player.play.called)
+        self.assertTrue(player.set_time.called)
+
 
 if __name__ == "__main__":
     unittest.main()
