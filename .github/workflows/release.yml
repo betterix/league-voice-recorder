@@ -53,7 +53,6 @@ jobs:
             --enable-plugin=tk-inter `
             --tcl-library-dir="$tcl_dir" `
             --tk-library-dir="$tk_dir" `
-            --include-package-data=customtkinter `
             --include-data-dir=locales=locales `
             --include-data-file=icon.ico=icon.ico `
             --output-dir=dist\build `

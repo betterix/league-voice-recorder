@@ -30,7 +30,6 @@ uv run --python 3.15 --with nuitka python -m nuitka ^
     --enable-plugin=tk-inter ^
     --tcl-library-dir="%TCL_DIR%" ^
     --tk-library-dir="%TK_DIR%" ^
-    --include-package-data=customtkinter ^
     --include-data-dir=locales=locales ^
     --include-data-file=icon.ico=icon.ico ^
     --output-dir=dist\build ^
