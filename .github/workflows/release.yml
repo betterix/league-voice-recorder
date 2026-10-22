@@ -3,9 +3,6 @@ name: Build & Release Executable
 on:
   release:
     types: [published]
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
 
 permissions:
