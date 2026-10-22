@@ -691,9 +691,15 @@ class LeagueRecorder:
                             time.sleep(0.1)
                         continue
 
-                    # Game detected: start recording immediately with timestamp compensation
-                    if not self.recording and game_time >= -30:
-                        self.start_recording(initial_game_time=game_time, t_poll_start=t_poll_start)
+                    # Only start recording once the match officially starts at 0:00 (game_time >= 0.0).
+                    # Do NOT start recording during loading screen or pre-game countdown (game_time < 0.0).
+                    if not self.recording:
+                        if game_time >= 0.0:
+                            self.start_recording(initial_game_time=game_time, t_poll_start=t_poll_start)
+                        else:
+                            # Pre-game countdown in progress — monitor and wait for 0:00
+                            cd_str = f"-{abs(game_time):.1f}s"
+                            self.update_status("WATCHING", t("record.match_countdown", time=cd_str))
 
                     if self.recording:
                         active, is_paused = self.get_obs_status()
@@ -761,9 +767,10 @@ class LeagueRecorder:
                     self.update_status("WATCHING", t("record.waiting_for_match"))
 
             # Dynamic polling interval:
-            # 30ms (0.03s) when recording for instant pause/unpause/stop response.
-            # 100ms (0.1s) while waiting for match.
-            poll_interval = 0.03 if self.recording else min(0.1, self.check_time)
+            # 20ms (0.02s) when recording or during pre-game countdown (< 0.0) so 00:00 is caught instantly.
+            # 100ms (0.1s) while idle waiting for match.
+            is_high_frequency = self.recording or (game_time is not None and game_time < 0.0)
+            poll_interval = 0.02 if is_high_frequency else min(0.1, self.check_time)
             slice_count = max(1, int(poll_interval / 0.02))
             for _ in range(slice_count):
                 if self.stop_event.is_set():

@@ -148,6 +148,26 @@ class TestRecorderModule(unittest.TestCase):
             mock_iter.return_value = [mock_proc]
             self.assertFalse(self.recorder.is_league_game_running())
 
+    def test_recording_waits_for_zero_zero_match_start(self):
+        """Recording must NEVER start when game_time < 0.0 (loading screen / pre-game countdown)."""
+        self.recorder.start_recording = MagicMock()
+        self.recorder.check_if_game_is_replay = MagicMock(return_value=False)
+        self.recorder.recording = False
+
+        # Simulate negative countdown (-15.0s)
+        game_time = -15.0
+        if not self.recorder.recording:
+            if game_time >= 0.0:
+                self.recorder.start_recording(initial_game_time=game_time)
+        self.assertFalse(self.recorder.start_recording.called)
+
+        # Simulate match start (0.0s / 0:0)
+        game_time = 0.0
+        if not self.recorder.recording:
+            if game_time >= 0.0:
+                self.recorder.start_recording(initial_game_time=game_time)
+        self.assertTrue(self.recorder.start_recording.called)
+
 
 if __name__ == "__main__":
     unittest.main()

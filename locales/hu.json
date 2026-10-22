@@ -31,6 +31,7 @@
         "status_stopped": "● TÉTLEN {detail}",
         "status_error": "⚠️ {detail}",
         "waiting_for_match": "Várakozás meccsre...",
+        "match_countdown": "Kezdés {time} múlva (várakozás a 00:00-ra)...",
         "recording_active": "Meccs folyamatban",
         "match_time": "Meccs #{game_id} ({time})",
         "live_match_time": "Élő meccs ({time})",

@@ -31,6 +31,7 @@
         "status_stopped": "● IDLE {detail}",
         "status_error": "⚠️ {detail}",
         "waiting_for_match": "Waiting for match...",
+        "match_countdown": "Starting in {time} (waiting for 00:00)...",
         "recording_active": "Match in progress",
         "match_time": "Match #{game_id} ({time})",
         "live_match_time": "Live Match ({time})",
