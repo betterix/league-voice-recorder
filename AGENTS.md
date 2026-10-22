@@ -275,8 +275,7 @@ uvx ruff check .
 The application is compiled into a standalone Windows binary distribution using `Nuitka` in `--onefile` portable mode.
 - Built via batch script: `.\build_exe.bat`
 - Output directory: `dist/LeagueVoiceRecorder/` containing strictly:
-  - `LeagueVoiceRecorder.exe`: Single portable native binary with Python runtime, Tkinter, CustomTkinter, and default translations embedded.
-  - `.env.example`: Template for environment and WebSocket configuration.
+  - `LeagueVoiceRecorder.exe`: Single portable native binary with Python runtime, Tkinter, CustomTkinter, and default translations embedded (automatically creates `config.json` next to the binary on first run).
 - Supports external drop-in community translation JSON files in `locales/` alongside the executable if placed by the user.
 
 ---

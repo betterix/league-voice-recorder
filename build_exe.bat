@@ -53,18 +53,10 @@ if exist "dist\build\LeagueVoiceRecorder.exe" (
 )
 if exist "dist\build" rd /s /q "dist\build"
 
-echo Copying .env.example to output directory...
-if exist ".env.example" (
-    copy /y ".env.example" "dist\LeagueVoiceRecorder\.env.example" >nul
-)
-
-echo Creating clean default config.json with blank password in output directory...
-uv run --python 3.15 python -c "import json; from app.config import get_clean_default_config; json.dump(get_clean_default_config(), open(r'dist\LeagueVoiceRecorder\config.json', 'w', encoding='utf-8'), indent=4)"
-
 echo.
 echo ========================================================
 echo Nuitka Build Succeeded!
-echo Clean portable distribution created at: dist\LeagueVoiceRecorder\
+echo Portable executable created at: dist\LeagueVoiceRecorder\
 echo Files in package:
 dir /b "dist\LeagueVoiceRecorder"
 echo ========================================================
