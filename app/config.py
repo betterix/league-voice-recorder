@@ -49,11 +49,18 @@ CONFIG_FILE = os.path.join(PROJECT_ROOT, "config.json")
 load_dotenv(DOTENV_PATH)
 
 
+_CACHED_USER_DOCS_RECORDINGS_DIR = None
+
+
 def get_current_user_documents_recordings_dir():
     """
     Finds or creates the 'League Voice Recorder/recordings' folder
     inside the CURRENT user's Documents directory.
     """
+    global _CACHED_USER_DOCS_RECORDINGS_DIR
+    if _CACHED_USER_DOCS_RECORDINGS_DIR and os.path.exists(_CACHED_USER_DOCS_RECORDINGS_DIR):
+        return _CACHED_USER_DOCS_RECORDINGS_DIR
+
     user_home = Path.home()
     user_docs = user_home / "Documents"
 
@@ -63,7 +70,8 @@ def get_current_user_documents_recordings_dir():
 
     target_dir = user_docs / "League Voice Recorder" / "recordings"
     os.makedirs(target_dir, exist_ok=True)
-    return str(target_dir)
+    _CACHED_USER_DOCS_RECORDINGS_DIR = str(target_dir)
+    return _CACHED_USER_DOCS_RECORDINGS_DIR
 
 
 def resolve_path(path_str):

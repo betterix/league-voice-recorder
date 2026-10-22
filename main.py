@@ -86,8 +86,11 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         nuitka_dir = os.environ.get("NUITKA_ONEFILE_DIRECTORY")
         ico_path = None
         for candidate in [
+            os.path.join(nuitka_dir, "assets", "icon.ico") if nuitka_dir else "",
             os.path.join(nuitka_dir, "icon.ico") if nuitka_dir else "",
+            os.path.join(app_dir, "assets", "icon.ico"),
             os.path.join(app_dir, "icon.ico"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "icon.ico"),
             os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico"),
         ]:
             if candidate and os.path.exists(candidate):

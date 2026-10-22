@@ -1,24 +1,32 @@
 # League Voice Recorder & Replay Synchronizer
 
-<div align="center">
+<p align="center">
+  <img src="assets/icon.svg" width="128" height="128" alt="League Voice Recorder Logo" />
+</p>
 
-<img src="icon.svg" width="128" height="128" alt="League Voice Recorder Logo" />
-<br><br>
-![Release Version](https://img.shields.io/badge/release-v0.2.0-blue?logo=github)
-![Python Version](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)
-![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20(64--bit)-0078D6?logo=windows&logoColor=white)
-![Build Status](https://img.shields.io/badge/build-passing-brightgreen?logo=githubactions&logoColor=white)
-![Code Style](https://img.shields.io/badge/code%20style-ruff-000000.svg)
-![i18n](https://img.shields.io/badge/i18n-English%20%7C%20Magyar-success)
-![License](https://img.shields.io/badge/license-GPL--3.0-blue)
+<p align="center">
+  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.2.0-blue?logo=github" alt="Release Version" /></a>
+  <img src="https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white" alt="Python Version" />
+  <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%2064--bit-0078D6?logo=windows&logoColor=white" alt="Platform" />
+  <img src="https://img.shields.io/badge/build-passing-brightgreen?logo=githubactions&logoColor=white" alt="Build Status" />
+  <img src="https://img.shields.io/badge/code%20style-ruff-000000.svg" alt="Code Style" />
+  <img src="https://img.shields.io/badge/i18n-English%20%7C%20Magyar-success" alt="i18n" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License" /></a>
+</p>
 
-**Zero-Latency Automated Scrim Comms Recording & Frame-Accurate Replay Audio Synchronization for League of Legends.**
+<p align="center">
+  <strong>Zero-Latency Automated Scrim Comms Recording &amp; Frame-Accurate Replay Audio Synchronization for League of Legends.</strong>
+</p>
 
-[Features](#-key-features) • [Quick Start Tutorial](#-quick-start-tutorial) • [Architecture](#-system-architecture) • [Community Translations](#-community-translations-i18n) • [Development](#-development--testing)
+<p align="center">
+  <a href="#-key-features">Features</a> &bull;
+  <a href="#-quick-start-tutorial">Quick Start Tutorial</a> &bull;
+  <a href="#-system-architecture">Architecture</a> &bull;
+  <a href="#-community-translations-i18n">Community Translations</a> &bull;
+  <a href="#-development--testing">Development</a>
+</p>
 
 ---
-
-</div>
 
 ## 📌 The Problem & The Solution
 
@@ -125,13 +133,29 @@ winget install -e --id OBSProject.OBSStudio
 > [!NOTE]
 > In OBS Studio, enable the WebSocket server via **Tools** ➔ **WebSocket Server Settings** ➔ check **Enable WebSocket server** (default port: `4455`).
 
+### ⚙️ Enable League of Legends Replay API (Required for Replay Sync)
+
+> [!IMPORTANT]
+> **Enable the Replay API before starting**:
+> By default, the League of Legends Replay API is disabled. To start using the Replay API for automatic audio synchronization, enable the Replay API in the game client configuration by locating where your game is installed and adding the following lines to your `game.cfg` file:
+>
+> **Example file location:**
+> `C:\Riot Games\League of Legends\Config\game.cfg`
+>
+> **Configuration setting to add:**
+> ```ini
+> [General]
+> EnableReplayApi=1
+> ```
+> *Note: If `[General]` already exists in `game.cfg`, simply add `EnableReplayApi=1` directly under it, then save the file.*
+
 ---
 
 ## 🚀 Quick Start Tutorial
 
 ### Method 1: Download Standalone Release (Recommended)
 
-1. Go to the [Releases](https://github.com/your-username/League-Voice-Recorder/releases) page.
+1. Go to the [Releases](https://github.com/betterix/league-voice-recorder/releases) page.
 2. Download `LeagueVoiceRecorder-Windows-x64.zip`.
 3. Extract the `.zip` archive to any directory on your computer.
 4. Double-click `LeagueVoiceRecorder.exe` to launch the application.
@@ -177,6 +201,9 @@ winget install -e --id OBSProject.OBSStudio
    - Use the **Replay Volume Slider** in the UI to balance team voice comms against game sound.
    - Fast-forward (2x, 4x), rewind, or pause in the League replay—the voice track stays locked frame-by-frame with the gameplay.
 
+> [!TIP]
+> Ensure you have added `EnableReplayApi=1` to your `game.cfg` as described in [Prerequisites](#-prerequisites) so the League client exposes the replay playback API on port `2999`.
+
 ---
 
 ## 🌐 Community Translations (i18n)
@@ -209,7 +236,7 @@ League Voice Recorder features a dynamic internationalization system. Anyone can
 
 ```powershell
 # 1. Clone the repository
-git clone https://github.com/your-username/League-Voice-Recorder.git
+git clone https://github.com/betterix/league-voice-recorder.git
 cd "League-Voice-Recorder"
 
 # 2. Install dependencies with uv
@@ -279,11 +306,16 @@ League Voice Recorder/
 │   ├── record.py           # LeagueRecorder engine (OBS automation & FFmpeg alignment)
 │   └── play_replay.py      # ReplaySynchronizer engine (process watcher & VLC sync)
 │
+├── assets/                 # Visual branding assets (icons, logos)
+│   ├── icon.ico            # Windows executable multi-resolution icon
+│   ├── icon.png            # PNG logo graphic
+│   └── icon.svg            # Scalable vector logo
+│
 ├── locales/                # Community & built-in i18n translation JSON files
 │   ├── en.json             # English (default fallback)
 │   └── hu.json             # Hungarian
 │
-├── tests/                  # Automated test suite (26 unit tests)
+├── tests/                  # Automated test suite (33 unit tests)
 │   ├── __init__.py
 │   ├── test_config.py      # Config defaults, path resolution, and directory creation
 │   ├── test_i18n.py        # Locale discovery, translation lookup, and key parity

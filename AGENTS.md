@@ -35,11 +35,16 @@ League Voice Recorder/
 │   ├── record.py           # LeagueRecorder engine (OBS automation & FFmpeg alignment)
 │   └── play_replay.py      # ReplaySynchronizer engine (process watcher & VLC sync)
 │
+├── assets/                 # Visual branding assets (icons, logos)
+│   ├── icon.ico            # Windows executable multi-resolution icon
+│   ├── icon.png            # PNG logo graphic
+│   └── icon.svg            # Scalable vector logo
+│
 ├── locales/                # Community and built-in i18n translation JSON files
 │   ├── en.json             # English (default fallback)
 │   └── hu.json             # Hungarian
 │
-├── tests/                  # Automated test suite (26 unittests)
+├── tests/                  # Automated test suite (33 unittests)
 │   ├── __init__.py
 │   ├── test_config.py      # Config defaults, path resolution, and directory creation
 │   ├── test_i18n.py        # Locale discovery, translation lookup, and key parity
@@ -217,7 +222,7 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
 | API | URL / Protocol | Authentication | Purpose |
 | :--- | :--- | :--- | :--- |
 | **Live Client Data API** | `https://127.0.0.1:2999/liveclientdata/allgamedata` | None (SSL verify=False) | Read `gameData.gameTime` during live games |
-| **Replay Playback API** | `https://127.0.0.1:2999/replay/playback` | None (SSL verify=False) | Read `time`, `paused`, `speed` during replay |
+| **Replay Playback API** | `https://127.0.0.1:2999/replay/playback` | None (SSL verify=False) | Read `time`, `paused`, `speed` during replay (requires `EnableReplayApi=1` in `Config\game.cfg`) |
 | **LCU Gameflow API** | `https://127.0.0.1:{port}/lol-gameflow/v1/session` | Basic Auth (`riot:<lockfile_pw>`) | Retrieve real match `gameId` from client |
 
 > [!NOTE]
