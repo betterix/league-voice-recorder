@@ -124,18 +124,15 @@ def save_config(config_data):
 
 
 def get_ffmpeg_path():
-    """Finds the ffmpeg executable (project directory or system PATH)."""
-    # 1. Local executable in project root directory or next to executable
+    """Finds the ffmpeg executable (system PATH or local executable)."""
+    if shutil.which("ffmpeg"):
+        return "ffmpeg"
+
     for candidate in [
         os.path.join(PROJECT_ROOT, "ffmpeg.exe"),
         os.path.join(os.path.dirname(sys.executable), "ffmpeg.exe"),
     ]:
         if os.path.exists(candidate):
             return candidate
-
-    # 2. Executable in system PATH
-    path_ffmpeg = shutil.which("ffmpeg")
-    if path_ffmpeg:
-        return path_ffmpeg
 
     return "ffmpeg"

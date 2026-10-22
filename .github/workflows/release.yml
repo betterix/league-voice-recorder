@@ -40,21 +40,6 @@ jobs:
       - name: Run automated test suite
         run: uv run python -m unittest discover tests -v
 
-      - name: Ensure FFmpeg binary is present
-        shell: pwsh
-        run: |
-          if (Get-Command ffmpeg -ErrorAction SilentlyContinue) {
-              $ffmpegPath = (Get-Command ffmpeg).Source
-              Write-Host "Found pre-installed FFmpeg at: $ffmpegPath"
-              Copy-Item -Path $ffmpegPath -Destination "ffmpeg.exe" -Force
-          } else {
-              Write-Host "Downloading portable FFmpeg binary..."
-              Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -OutFile "ffmpeg.zip"
-              Expand-Archive -Path "ffmpeg.zip" -DestinationPath "ffmpeg_extracted"
-              $bin = Get-ChildItem -Path "ffmpeg_extracted" -Filter "ffmpeg.exe" -Recurse | Select-Object -First 1
-              Copy-Item -Path $bin.FullName -Destination "ffmpeg.exe" -Force
-          }
-
       - name: Compile Windows executable with Nuitka
         shell: pwsh
         run: |
@@ -87,7 +72,6 @@ jobs:
           }
           New-Item -ItemType Directory -Path "dist\LeagueVoiceRecorder" -Force
           Copy-Item -Path "dist\build\LeagueVoiceRecorder.exe" -Destination "dist\LeagueVoiceRecorder\LeagueVoiceRecorder.exe" -Force
-          Copy-Item -Path "ffmpeg.exe" -Destination "dist\LeagueVoiceRecorder\ffmpeg.exe" -Force
           Copy-Item -Path ".env.example" -Destination "dist\LeagueVoiceRecorder\.env.example" -Force
           if (Test-Path "dist\build") {
               Remove-Item -Path "dist\build" -Recurse -Force

@@ -276,7 +276,6 @@ The application is compiled into a standalone Windows binary distribution using 
 - Built via batch script: `.\build_exe.bat`
 - Output directory: `dist/LeagueVoiceRecorder/` containing strictly:
   - `LeagueVoiceRecorder.exe`: Single portable native binary with Python runtime, Tkinter, CustomTkinter, and default translations embedded.
-  - `ffmpeg.exe`: Standalone FFmpeg binary for sample-accurate audio conversions.
   - `.env.example`: Template for environment and WebSocket configuration.
 - Supports external drop-in community translation JSON files in `locales/` alongside the executable if placed by the user.
 

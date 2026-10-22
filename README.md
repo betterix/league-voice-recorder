@@ -109,16 +109,21 @@ flowchart TD
 
 ## 📋 Prerequisites
 
-Before running the application, make sure the following dependencies are installed on your Windows system:
+Install the required dependencies via Windows Package Manager (`winget`):
 
-1. **[OBS Studio](https://obsproject.com/)** (v28.0 or newer)
-   - Enable WebSocket: In OBS, go to **Tools** ➔ **WebSocket Server Settings** ➔ check **Enable WebSocket server**.
-   - Note down the Server Port (default: `4455`) and Server Password.
-2. **[League of Legends](https://leagueoflegends.com/)** (Installed and running on your system).
-3. **[VLC Media Player (64-bit)](https://www.videolan.org/vlc/)**
-   - > [!IMPORTANT]
-     > You **must** install the **64-bit** version of VLC (`C:\Program Files\VideoLAN\VLC`), as 32-bit VLC cannot be loaded by 64-bit Python/runtime processes.
-4. **FFmpeg** (Included automatically with releases and in the project repository).
+```powershell
+# 1. FFmpeg (Audio conversion & alignment)
+winget install -e --id Gyan.FFmpeg
+
+# 2. VLC Media Player 64-bit (Replay synchronization)
+winget install -e --id VideoLAN.VLC
+
+# 3. OBS Studio (Match recording)
+winget install -e --id OBSProject.OBSStudio
+```
+
+> [!NOTE]
+> In OBS Studio, enable the WebSocket server via **Tools** ➔ **WebSocket Server Settings** ➔ check **Enable WebSocket server** (default port: `4455`).
 
 ---
 
@@ -251,8 +256,8 @@ Every time a new GitHub Release is published or a tag matching `v*` (e.g., `v1.0
 1. Spins up a clean `windows-latest` virtual environment.
 2. Installs Python (supporting 3.10 through 3.16+) and dependencies via `uv`.
 3. Provisions VLC Media Player and runs the complete 26-test suite.
-4. Compiles the standalone executable with PyInstaller.
-5. Bundles `LeagueVoiceRecorder.exe`, `ffmpeg.exe`, `locales/`, `.env.example`, and `README.md`.
+4. Compiles the standalone executable with Nuitka in onefile mode.
+5. Bundles `LeagueVoiceRecorder.exe` and `.env.example`.
 6. Packages and uploads `LeagueVoiceRecorder-Windows-x64.zip` directly to the GitHub Release.
 
 ---

@@ -53,11 +53,6 @@ if exist "dist\build\LeagueVoiceRecorder.exe" (
 )
 if exist "dist\build" rd /s /q "dist\build"
 
-echo Copying ffmpeg.exe to output directory...
-if exist "ffmpeg.exe" (
-    copy /y "ffmpeg.exe" "dist\LeagueVoiceRecorder\ffmpeg.exe" >nul
-)
-
 echo Copying .env.example to output directory...
 if exist ".env.example" (
     copy /y ".env.example" "dist\LeagueVoiceRecorder\.env.example" >nul
