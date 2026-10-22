@@ -112,7 +112,7 @@
         "obs_connect_failed": "❌ Nem sikerült csatlakozni az OBS WebSockethez ({host}:{port}): {error}",
         "obs_scene_created": "🎬 Létrehozva a(z) '{scene}' jelenet az OBS-ben.",
         "obs_discord_added": "🎙️ Hozzáadva a Discord hangforrás: '{source}'",
-        "obs_scene_configured": "✅ OBS '{scene}' jelenet beállítva: Discord (Window title must match) + Mikrofon bekapcsolva, Asztali hang elnémítva.",
+        "obs_scene_configured": "✅ OBS '{scene}' jelenet beállítva: Discord (Azonos végrehajtható fájl) + Mikrofon bekapcsolva, Asztali hang elnémítva.",
         "obs_config_failed": "⚠️ Nem sikerült automatikusan konfigurálni az OBS jelenetet: {error}",
         "obs_scene_switched": "🎬 Jelenet beállítva: {scene}",
         "obs_scene_switch_failed": "⚠️ Jelenet váltási hiba: {error}",

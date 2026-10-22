@@ -112,7 +112,7 @@
         "obs_connect_failed": "❌ Failed to connect to OBS WebSocket ({host}:{port}): {error}",
         "obs_scene_created": "🎬 Created scene '{scene}' in OBS.",
         "obs_discord_added": "🎙️ Added Discord audio source: '{source}'",
-        "obs_scene_configured": "✅ OBS '{scene}' configured: Discord ('Window title must match') + Mic enabled, Desktop audio muted.",
+        "obs_scene_configured": "✅ OBS '{scene}' configured: Discord ('Match executable') + Mic enabled, Desktop audio muted.",
         "obs_config_failed": "⚠️ Failed to configure OBS scene: {error}",
         "obs_scene_switched": "🎬 OBS scene set to: {scene}",
         "obs_scene_switch_failed": "⚠️ Scene switch error: {error}",

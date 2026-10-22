@@ -190,23 +190,28 @@ class LeagueRecorder:
                 kind = inp.get("inputKind")
                 name = inp.get("inputName")
                 if kind == "wasapi_process_output_capture":
-                    discord_input = name
+                    if "discord" in name.lower() or discord_input is None:
+                        discord_input = name
                 elif kind == "wasapi_input_capture":
-                    mic_input = name
+                    if "mic" in name.lower() or "mikrofon" in name.lower() or mic_input is None:
+                        mic_input = name
                 elif kind == "wasapi_output_capture":
                     desktop_inputs.append(name)
 
-            # --- Configure Discord Audio ('Window title must match' / 'Az ablak címének egyeznie kell') ---
-            if discord_input is None:
+            # --- Configure Discord Audio ('Match title, otherwise find window of same executable') ---
+            if discord_input is None or "discord" not in discord_input.lower():
                 discord_input = "Discord Audio"
-                self.obs_client.create_input(
-                    self.scene_name,
-                    discord_input,
-                    "wasapi_process_output_capture",
-                    {"priority": 1, "window": "Discord.exe"},
-                    True,
-                )
-                self.log(t("logs.obs_discord_added", source=discord_input))
+                try:
+                    self.obs_client.create_input(
+                        self.scene_name,
+                        discord_input,
+                        "wasapi_process_output_capture",
+                        {"priority": 2, "window": ":Chrome_WidgetWin_1:Discord.exe"},
+                        True,
+                    )
+                    self.log(t("logs.obs_discord_added", source=discord_input))
+                except Exception:
+                    pass
 
             if discord_input not in current_scene_sources:
                 try:
@@ -214,15 +219,16 @@ class LeagueRecorder:
                 except Exception:
                     pass
 
-            # Resolve Priority Value: "Window title must match" (EN) / "Az ablak címének egyeznie kell" (HU)
-            priority_val = 1
+            # Resolve Priority Value: 2 = "Match title, otherwise find window of same executable"
+            # This ensures Discord is ALWAYS captured even when switching channels, servers, or voice calls!
+            priority_val = 2
             try:
                 p_items = self.obs_client.get_input_properties_list_property_items(
                     discord_input, "priority"
                 )
                 for item in p_items.property_items:
                     p_name = (item.get("itemName") or "").lower()
-                    if "title must match" in p_name or "egyezni" in p_name or "egyeznie" in p_name:
+                    if "executable" in p_name or "végrehajtható" in p_name:
                         priority_val = item.get("itemValue")
                         break
             except Exception:
@@ -237,16 +243,20 @@ class LeagueRecorder:
                 for item in w_items.property_items:
                     val = item.get("itemValue") or ""
                     w_name = item.get("itemName") or ""
-                    if "discord.exe" in val.lower() or "discord" in w_name.lower():
+                    if "discord.exe" in val.lower() or "discord.exe" in w_name.lower():
                         target_window = val
                         break
             except Exception:
                 pass
 
-            # Apply settings (Window title must match priority + active Discord window)
-            new_discord_settings = {"priority": priority_val}
-            if target_window:
-                new_discord_settings["window"] = target_window
+            if not target_window:
+                target_window = ":Chrome_WidgetWin_1:Discord.exe"
+
+            # Apply settings (executable matching priority + active Discord window)
+            new_discord_settings = {
+                "priority": priority_val,
+                "window": target_window,
+            }
             try:
                 self.obs_client.set_input_settings(
                     discord_input, new_discord_settings, overlay=True
@@ -290,6 +300,12 @@ class LeagueRecorder:
                     self.obs_client.set_input_mute(d_name, True)
                 except Exception:
                     pass
+
+            # --- Switch to Scene in OBS ---
+            try:
+                self.obs_client.set_current_program_scene(self.scene_name)
+            except Exception:
+                pass
 
             self.log(t("logs.obs_scene_configured", scene=self.scene_name))
             return True
