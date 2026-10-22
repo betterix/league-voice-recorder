@@ -25,11 +25,27 @@ _listeners: list[Callable[[], None]] = []
 
 
 def _get_locales_search_dirs() -> list[str]:
-    dirs = [LOCALES_DIR]
-    if getattr(sys, "frozen", False):
-        bundle_locales = os.path.join(getattr(sys, "_MEIPASS", ""), "locales")
-        if os.path.isdir(bundle_locales) and bundle_locales not in dirs:
-            dirs.append(bundle_locales)
+    dirs = []
+    # 1. External locales folder next to executable (for community drop-in translations)
+    exe_locales = os.path.join(os.path.dirname(sys.executable), "locales")
+    if os.path.isdir(exe_locales):
+        dirs.append(exe_locales)
+
+    # 2. Bundled / package locales (Nuitka onefile temp dir, PyInstaller MEIPASS, or source paths)
+    nuitka_dir = os.environ.get("NUITKA_ONEFILE_DIRECTORY")
+    if nuitka_dir:
+        nuitka_locales = os.path.join(nuitka_dir, "locales")
+        if os.path.isdir(nuitka_locales) and nuitka_locales not in dirs:
+            dirs.append(nuitka_locales)
+
+    for candidate in [
+        LOCALES_DIR,
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "locales"),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "locales"),
+        os.path.join(getattr(sys, "_MEIPASS", ""), "locales"),
+    ]:
+        if candidate and os.path.isdir(candidate) and candidate not in dirs:
+            dirs.append(candidate)
     return dirs
 
 

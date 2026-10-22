@@ -81,12 +81,14 @@ class LeagueVoiceRecorderApp(ctk.CTk):
     def _apply_window_icon(self):
         """Set window title bar and taskbar icon with multi-resolution support."""
         app_dir = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+        nuitka_dir = os.environ.get("NUITKA_ONEFILE_DIRECTORY")
         ico_path = None
         for candidate in [
+            os.path.join(nuitka_dir, "icon.ico") if nuitka_dir else "",
             os.path.join(app_dir, "icon.ico"),
             os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico"),
         ]:
-            if os.path.exists(candidate):
+            if candidate and os.path.exists(candidate):
                 ico_path = candidate
                 break
 
@@ -95,7 +97,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.iconbitmap(ico_path)
             except Exception:
                 pass
-        elif getattr(sys, "frozen", False):
+        elif getattr(sys, "frozen", False) or (sys.executable and sys.executable.lower().endswith(".exe")):
             try:
                 self.iconbitmap(sys.executable)
             except Exception:

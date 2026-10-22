@@ -6,7 +6,7 @@ import shutil
 from dotenv import load_dotenv, set_key
 import sys
 
-if getattr(sys, "frozen", False):
+if getattr(sys, "frozen", False) or "__compiled__" in globals() or hasattr(sys.modules.get("__main__", None), "__compiled__") or (sys.executable and sys.executable.lower().endswith(".exe") and "python" not in os.path.basename(sys.executable).lower()):
     PROJECT_ROOT = os.path.dirname(sys.executable)
     APP_DIR = os.path.join(PROJECT_ROOT, "app")
 else:
@@ -125,10 +125,13 @@ def save_config(config_data):
 
 def get_ffmpeg_path():
     """Finds the ffmpeg executable (project directory or system PATH)."""
-    # 1. Local executable in project root directory
-    local_ffmpeg = os.path.join(PROJECT_ROOT, "ffmpeg.exe")
-    if os.path.exists(local_ffmpeg):
-        return local_ffmpeg
+    # 1. Local executable in project root directory or next to executable
+    for candidate in [
+        os.path.join(PROJECT_ROOT, "ffmpeg.exe"),
+        os.path.join(os.path.dirname(sys.executable), "ffmpeg.exe"),
+    ]:
+        if os.path.exists(candidate):
+            return candidate
 
     # 2. Executable in system PATH
     path_ffmpeg = shutil.which("ffmpeg")

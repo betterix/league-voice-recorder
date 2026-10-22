@@ -272,10 +272,13 @@ uvx ruff check .
 ```
 
 ### 5.4 Standalone Executable Packaging
-The application can be compiled into a standalone Windows binary distribution using `PyInstaller`.
+The application is compiled into a standalone Windows binary distribution using `Nuitka` in `--onefile` portable mode.
 - Built via batch script: `.\build_exe.bat`
-- Output directory: `dist/LeagueVoiceRecorder/` containing `LeagueVoiceRecorder.exe`, `ffmpeg.exe`, `locales/`, and runtime dependencies.
-- Handles `sys.frozen` path resolution dynamically, supporting drop-in community translation JSON files in `locales/` alongside the executable.
+- Output directory: `dist/LeagueVoiceRecorder/` containing strictly:
+  - `LeagueVoiceRecorder.exe`: Single portable native binary with Python runtime, Tkinter, CustomTkinter, and default translations embedded.
+  - `ffmpeg.exe`: Standalone FFmpeg binary for sample-accurate audio conversions.
+  - `.env.example`: Template for environment and WebSocket configuration.
+- Supports external drop-in community translation JSON files in `locales/` alongside the executable if placed by the user.
 
 ---
 
