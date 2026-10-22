@@ -449,8 +449,17 @@ class LeagueRecorder:
             return
 
         # Immediate record call to eliminate startup lag
+        is_already_active = False
         try:
-            self.obs_client.start_record()
+            status = self.obs_client.get_record_status()
+            if status and getattr(status, "output_active", False):
+                is_already_active = True
+        except Exception:
+            pass
+
+        try:
+            if not is_already_active:
+                self.obs_client.start_record()
             self.recording = True
             self.first_game_time = (
                 float(initial_game_time) if initial_game_time is not None else 0.0
@@ -463,8 +472,23 @@ class LeagueRecorder:
             self.update_status("RECORDING", t("record.live_match_time", time=init_time_str))
             threading.Thread(target=self.fetch_game_id_background, daemon=True).start()
         except Exception as e:
-            self.log(t("logs.rec_start_error", error=e))
-            self.update_status("ERROR", f"{e}")
+            err_msg = str(e)
+            # If OBS returned 500 (ResourceAlreadyExists / Output running), adopt active recording
+            if "500" in err_msg or "already" in err_msg.lower() or "running" in err_msg.lower():
+                self.recording = True
+                self.first_game_time = (
+                    float(initial_game_time) if initial_game_time is not None else 0.0
+                )
+                self.last_game_time = self.first_game_time
+                self.real_game_id = None
+                self.log(t("logs.match_detected", time=self.first_game_time))
+                init_time = max(0.0, self.first_game_time)
+                init_time_str = f"{int(init_time // 60):02d}:{int(init_time % 60):02d}"
+                self.update_status("RECORDING", t("record.live_match_time", time=init_time_str))
+                threading.Thread(target=self.fetch_game_id_background, daemon=True).start()
+            else:
+                self.log(t("logs.rec_start_error", error=e))
+                self.update_status("ERROR", f"{e}")
 
     def convert_to_mp3(self, video_path, base_name, initial_offset=0.0):
         """
@@ -598,16 +622,33 @@ class LeagueRecorder:
 
         while not self.stop_event.is_set():
             try:
-                r = self.session.get(
-                    "https://127.0.0.1:2999/liveclientdata/allgamedata",
-                    timeout=0.15,
-                )
-                data = r.json() if r.status_code == 200 else {}
-                game_time = (
-                    data.get("gameData", {}).get("gameTime")
-                    if isinstance(data, dict)
-                    else None
-                )
+                game_time = None
+                # 1. Try lightweight gamestats endpoint (avoids 500 errors during loading screen)
+                try:
+                    r = self.session.get(
+                        "https://127.0.0.1:2999/liveclientdata/gamestats",
+                        timeout=0.15,
+                    )
+                    if r.status_code == 200:
+                        data = r.json()
+                        if isinstance(data, dict):
+                            game_time = data.get("gameTime")
+                except Exception:
+                    pass
+
+                # 2. Fallback to allgamedata if needed
+                if game_time is None:
+                    try:
+                        r = self.session.get(
+                            "https://127.0.0.1:2999/liveclientdata/allgamedata",
+                            timeout=0.15,
+                        )
+                        if r.status_code == 200:
+                            data = r.json()
+                            if isinstance(data, dict):
+                                game_time = data.get("gameData", {}).get("gameTime")
+                    except Exception:
+                        pass
 
                 if game_time is not None:
                     # CRITICAL REPLAY CHECK: If a replay is running, do NOT record!
