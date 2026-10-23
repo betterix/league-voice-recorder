@@ -283,7 +283,7 @@ Every time a new GitHub Release is published or a tag matching `v*` (e.g., `v1.0
 1. Spins up a clean `windows-latest` virtual environment.
 2. Installs Python 3.14.8 and dependencies via `uv`.
 3. Provisions VLC Media Player and runs the complete 26-test suite.
-4. Compiles the standalone executable with Nuitka in onefile mode.
+4. Compiles the standalone distribution with Nuitka in standalone mode.
 5. Bundles `LeagueVoiceRecorder.exe` (automatically creates `config.json` on first run).
 6. Packages and uploads `LeagueVoiceRecorder-Windows-x64.zip` directly to the GitHub Release.
 

@@ -2,7 +2,7 @@
 cd /d "%~dp0"
 title Build League Voice Recorder with Nuitka
 echo ========================================================
-echo Building League Voice Recorder with Nuitka (Python 3.14.8)...
+echo Building League Voice Recorder with Nuitka (Python 3.14.8 - Standalone)...
 echo ========================================================
 
 rem Clean previous dist and build folders to prevent file mixing
@@ -10,8 +10,13 @@ if exist "dist\LeagueVoiceRecorder" (
     echo Cleaning existing dist\LeagueVoiceRecorder directory...
     rd /s /q "dist\LeagueVoiceRecorder"
 )
+if exist "dist\LeagueVoiceRecorder.dist" (
+    rd /s /q "dist\LeagueVoiceRecorder.dist"
+)
+if exist "dist\main.dist" (
+    rd /s /q "dist\main.dist"
+)
 if exist "dist\build" (
-    echo Cleaning previous dist\build...
     rd /s /q "dist\build"
 )
 
@@ -22,9 +27,9 @@ for /f "tokens=*" %%i in ('uv run --python 3.14.8 python -c "import sys, os; tcl
 echo Tcl directory: %TCL_DIR%
 echo Tk directory:  %TK_DIR%
 
-rem Compile with Nuitka native C compiler (Onefile portable mode)
+rem Compile with Nuitka native C compiler (Standalone mode)
 uv run --python 3.14.8 --with nuitka python -m nuitka ^
-    --onefile ^
+    --standalone ^
     --windows-console-mode=disable ^
     --assume-yes-for-downloads ^
     --windows-icon-from-ico=icon.ico ^
@@ -33,7 +38,7 @@ uv run --python 3.14.8 --with nuitka python -m nuitka ^
     --tk-library-dir="%TK_DIR%" ^
     --include-data-dir=locales=locales ^
     --include-data-file=icon.ico=icon.ico ^
-    --output-dir=dist\build ^
+    --output-dir=dist ^
     --output-filename=LeagueVoiceRecorder.exe ^
     main.py
 
@@ -44,20 +49,45 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b %ERRORLEVEL%
 )
 
-if not exist "dist\LeagueVoiceRecorder" mkdir "dist\LeagueVoiceRecorder"
+rem Nuitka standalone creates dist\LeagueVoiceRecorder.dist or dist\main.dist
+if exist "dist\LeagueVoiceRecorder.dist" (
+    if exist "dist\LeagueVoiceRecorder" rd /s /q "dist\LeagueVoiceRecorder"
+    ren "dist\LeagueVoiceRecorder.dist" "LeagueVoiceRecorder"
+) else if exist "dist\main.dist" (
+    if exist "dist\LeagueVoiceRecorder" rd /s /q "dist\LeagueVoiceRecorder"
+    ren "dist\main.dist" "LeagueVoiceRecorder"
+)
 
 echo.
-echo Moving compiled executable to dist\LeagueVoiceRecorder...
-if exist "dist\build\LeagueVoiceRecorder.exe" (
-    move /y "dist\build\LeagueVoiceRecorder.exe" "dist\LeagueVoiceRecorder\LeagueVoiceRecorder.exe" >nul
+echo Copying ffmpeg.exe to output directory if present...
+if exist "ffmpeg.exe" (
+    copy /y "ffmpeg.exe" "dist\LeagueVoiceRecorder\" >nul
 )
-if exist "dist\build" rd /s /q "dist\build"
+
+echo Copying locales to output directory...
+if exist "locales" (
+    xcopy /y /s /i "locales" "dist\LeagueVoiceRecorder\locales" >nul
+)
+
+echo Copying .env.example to output directory...
+if exist ".env.example" (
+    copy /y ".env.example" "dist\LeagueVoiceRecorder\.env.example" >nul
+)
+
+echo Copying LICENSE to output directory...
+if exist "LICENSE" (
+    copy /y "LICENSE" "dist\LeagueVoiceRecorder\LICENSE" >nul
+)
+
+echo Copying README.md to output directory...
+if exist "README.md" (
+    copy /y "README.md" "dist\LeagueVoiceRecorder\README.md" >nul
+)
 
 echo.
 echo ========================================================
 echo Nuitka Build Succeeded!
-echo Portable executable created at: dist\LeagueVoiceRecorder\
-echo Files in package:
-dir /b "dist\LeagueVoiceRecorder"
+echo Standalone distribution created at: dist\LeagueVoiceRecorder\
+echo Executable: dist\LeagueVoiceRecorder\LeagueVoiceRecorder.exe
 echo ========================================================
 pause

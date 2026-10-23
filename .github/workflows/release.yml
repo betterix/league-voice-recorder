@@ -15,10 +15,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
           python-version: "3.14.8"
@@ -44,9 +44,11 @@ jobs:
           $tcl_dir = Join-Path $base "tcl"
           $tk_dir = Join-Path $base "tcl\tk9.0"
           if (-not (Test-Path $tk_dir)) { $tk_dir = $tcl_dir }
-          if (Test-Path "dist\build") { Remove-Item -Path "dist\build" -Recurse -Force }
+          if (Test-Path "dist\LeagueVoiceRecorder") { Remove-Item -Path "dist\LeagueVoiceRecorder" -Recurse -Force }
+          if (Test-Path "dist\LeagueVoiceRecorder.dist") { Remove-Item -Path "dist\LeagueVoiceRecorder.dist" -Recurse -Force }
+          if (Test-Path "dist\main.dist") { Remove-Item -Path "dist\main.dist" -Recurse -Force }
           uv run --python 3.14.8 --with nuitka python -m nuitka `
-            --onefile `
+            --standalone `
             --windows-console-mode=disable `
             --assume-yes-for-downloads `
             --windows-icon-from-ico=icon.ico `
@@ -55,21 +57,36 @@ jobs:
             --tk-library-dir="$tk_dir" `
             --include-data-dir=locales=locales `
             --include-data-file=icon.ico=icon.ico `
-            --output-dir=dist\build `
+            --output-dir=dist `
             --output-filename=LeagueVoiceRecorder.exe `
             main.py
+          if (Test-Path "dist\LeagueVoiceRecorder.dist") {
+              if (Test-Path "dist\LeagueVoiceRecorder") {
+                  Remove-Item -Path "dist\LeagueVoiceRecorder" -Recurse -Force
+              }
+              Rename-Item -Path "dist\LeagueVoiceRecorder.dist" -NewName "LeagueVoiceRecorder"
+          } elseif (Test-Path "dist\main.dist") {
+              if (Test-Path "dist\LeagueVoiceRecorder") {
+                  Remove-Item -Path "dist\LeagueVoiceRecorder" -Recurse -Force
+              }
+              Rename-Item -Path "dist\main.dist" -NewName "LeagueVoiceRecorder"
+          }
 
       - name: Assemble distribution package
         shell: pwsh
         run: |
-          Write-Host "Bundling single executable into dist/LeagueVoiceRecorder..."
-          if (Test-Path "dist\LeagueVoiceRecorder") {
-              Remove-Item -Path "dist\LeagueVoiceRecorder" -Recurse -Force
+          Write-Host "Bundling assets into dist/LeagueVoiceRecorder..."
+          if (Test-Path "locales") {
+              Copy-Item -Path "locales" -Destination "dist\LeagueVoiceRecorder\locales" -Recurse -Force
           }
-          New-Item -ItemType Directory -Path "dist\LeagueVoiceRecorder" -Force
-          Copy-Item -Path "dist\build\LeagueVoiceRecorder.exe" -Destination "dist\LeagueVoiceRecorder\LeagueVoiceRecorder.exe" -Force
-          if (Test-Path "dist\build") {
-              Remove-Item -Path "dist\build" -Recurse -Force
+          if (Test-Path ".env.example") {
+              Copy-Item -Path ".env.example" -Destination "dist\LeagueVoiceRecorder\.env.example" -Force
+          }
+          if (Test-Path "LICENSE") {
+              Copy-Item -Path "LICENSE" -Destination "dist\LeagueVoiceRecorder\LICENSE" -Force
+          }
+          if (Test-Path "README.md") {
+              Copy-Item -Path "README.md" -Destination "dist\LeagueVoiceRecorder\README.md" -Force
           }
           Write-Host "Contents of dist/LeagueVoiceRecorder:"
           Get-ChildItem -Path "dist\LeagueVoiceRecorder"
@@ -80,14 +97,14 @@ jobs:
           Compress-Archive -Path "dist\LeagueVoiceRecorder" -DestinationPath "LeagueVoiceRecorder-Windows-x64.zip" -Force
 
       - name: Upload build artifact (Actions tab)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: LeagueVoiceRecorder-Windows-x64
           path: LeagueVoiceRecorder-Windows-x64.zip
 
       - name: Upload zip to GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v2
         with:
           files: LeagueVoiceRecorder-Windows-x64.zip
         env:
