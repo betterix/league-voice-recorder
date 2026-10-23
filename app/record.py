@@ -268,11 +268,16 @@ class LeagueRecorder:
         self.is_paused = False
 
         t_now = time.perf_counter()
-        ref_time = t_poll_start if t_poll_start is not None else t_start
-        delay = max(0.0, t_now - ref_time)
         base_time = float(initial_game_time) if initial_game_time is not None else 0.0
-        self.first_game_time = base_time + delay
-        self.last_game_time = self.first_game_time
+        # If match just started (<= 1.0s), align at 0.0 without prepending adelay silence
+        if base_time <= 1.0:
+            self.first_game_time = 0.0
+        else:
+            ref_time = t_poll_start if t_poll_start is not None else t_start
+            delay = max(0.0, t_now - ref_time)
+            self.first_game_time = base_time + delay
+
+        self.last_game_time = max(0.0, base_time)
         self.real_game_id = None
         self.log(t("logs.match_detected", time=self.first_game_time))
         init_time = max(0.0, self.first_game_time)
@@ -379,7 +384,7 @@ class LeagueRecorder:
         self.update_status("WATCHING", t("record.waiting_for_match"))
 
         consecutive_misses = 0
-        pause_tick_count = 0
+        pause_freeze_perf = None
 
         while not self.stop_event.is_set():
             t_poll_start = time.perf_counter()
@@ -426,30 +431,24 @@ class LeagueRecorder:
                             time.sleep(0.1)
                         continue
 
-                    # Only start recording once the match officially starts at 0:00 (game_time >= 0.0).
-                    # Do NOT start recording during loading screen or pre-game countdown (game_time < 0.0).
+                    # Only start recording once the match clock starts (> 0.0).
+                    # Do NOT start recording during loading screen or pre-game countdown (game_time <= 0.0).
                     if not self.recording:
-                        if game_time >= 0.0:
+                        if game_time > 0.0:
                             self.start_recording(initial_game_time=game_time, t_poll_start=t_poll_start)
+                            pause_freeze_perf = None
+                        elif game_time == 0.0:
+                            # Pre-game / loading screen before 0:00 match start
+                            self.update_status("WATCHING", t("record.waiting_for_match"))
                         else:
                             # Pre-game countdown in progress — monitor and wait for 0:00
                             cd_str = f"-{abs(game_time):.1f}s"
                             self.update_status("WATCHING", t("record.match_countdown", time=cd_str))
 
                     if self.recording:
-                        # Debounce pause detection: require at least 5 consecutive polls (~100ms) with unchanged game_time
-                        if game_time == self.last_game_time and game_time > 0:
-                            pause_tick_count += 1
-                            if pause_tick_count >= 5 and not self.is_paused:
-                                self.native_recorder.pause()
-                                self.is_paused = True
-                                self.log(t("logs.pause"))
-                                p_time_val = max(0.0, game_time)
-                                p_time_str = f"{int(p_time_val // 60):02d}:{int(p_time_val % 60):02d}"
-                                self.update_status("PAUSED", t("record.paused_time", time=p_time_str))
-
-                        elif game_time > self.last_game_time:
-                            pause_tick_count = 0
+                        now_perf = time.perf_counter()
+                        if game_time > self.last_game_time:
+                            pause_freeze_perf = None
                             time_val = max(0.0, game_time)
                             time_str = f"{int(time_val // 60):02d}:{int(time_val % 60):02d}"
                             if self.real_game_id:
@@ -469,6 +468,21 @@ class LeagueRecorder:
                             else:
                                 if int(game_time) != int(self.last_game_time):
                                     self.update_status("RECORDING", detail_text)
+
+                        elif game_time == self.last_game_time and game_time > 0:
+                            if pause_freeze_perf is None:
+                                pause_freeze_perf = now_perf
+
+                            frozen_duration = now_perf - pause_freeze_perf
+                            # Require at least 1.5s of frozen game_time to declare a real match pause
+                            if frozen_duration >= 1.5 and not self.is_paused:
+                                self.is_paused = True
+                                # Roll back audio recorded during the 1.5s freeze detection window
+                                self.native_recorder.pause(rollback_seconds=frozen_duration)
+                                self.log(t("logs.pause"))
+                                p_time_val = max(0.0, game_time)
+                                p_time_str = f"{int(p_time_val // 60):02d}:{int(p_time_val % 60):02d}"
+                                self.update_status("PAUSED", t("record.paused_time", time=p_time_str))
 
                         self.last_game_time = game_time
 

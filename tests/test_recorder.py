@@ -145,7 +145,7 @@ class TestRecorderModule(unittest.TestCase):
             self.assertFalse(self.recorder.is_league_game_running())
 
     def test_recording_waits_for_zero_zero_match_start(self):
-        """Recording must NEVER start when game_time < 0.0 (loading screen / pre-game countdown)."""
+        """Recording must NEVER start when game_time <= 0.0 (loading screen / pre-game countdown)."""
         self.recorder.start_recording = MagicMock()
         self.recorder.check_if_game_is_replay = MagicMock(return_value=False)
         self.recorder.recording = False
@@ -153,16 +153,32 @@ class TestRecorderModule(unittest.TestCase):
         # Simulate negative countdown (-15.0s)
         game_time = -15.0
         if not self.recorder.recording:
-            if game_time >= 0.0:
+            if game_time > 0.0:
                 self.recorder.start_recording(initial_game_time=game_time)
         self.assertFalse(self.recorder.start_recording.called)
 
-        # Simulate match start (0.0s / 0:0)
+        # Simulate loading screen (0.0s static) - must NOT start recording
         game_time = 0.0
         if not self.recorder.recording:
-            if game_time >= 0.0:
+            if game_time > 0.0:
+                self.recorder.start_recording(initial_game_time=game_time)
+        self.assertFalse(self.recorder.start_recording.called)
+
+        # Simulate match start (0.05s / clock ticking past 0:00)
+        game_time = 0.05
+        if not self.recorder.recording:
+            if game_time > 0.0:
                 self.recorder.start_recording(initial_game_time=game_time)
         self.assertTrue(self.recorder.start_recording.called)
+
+    def test_match_start_zero_offset_no_adelay(self):
+        """When recording starts at the start of a match (<= 1.0s), first_game_time must be exactly 0.0."""
+        self.recorder.native_recorder.start_recording = MagicMock()
+        self.recorder.check_if_game_is_replay = MagicMock(return_value=False)
+        self.recorder.recording = False
+
+        self.recorder.start_recording(initial_game_time=0.1)
+        self.assertEqual(self.recorder.first_game_time, 0.0)
 
     def test_recording_lifecycle(self):
         """Verify recording lifecycle starts and stops NativeAudioRecorder cleanly."""
@@ -179,6 +195,33 @@ class TestRecorderModule(unittest.TestCase):
         self.assertFalse(rec.recording)
         self.assertTrue(rec.native_recorder.stop_and_finalize.called)
         rec.close()
+
+    def test_native_recorder_pause_rollback(self):
+        """NativeAudioRecorder.pause(rollback_seconds) accurately rolls back open WAV files."""
+        import wave
+        from app.native_audio import NativeAudioRecorder
+
+        native = NativeAudioRecorder(record_folder=self.temp_dir.name)
+        test_wav = os.path.join(self.temp_dir.name, "test_rollback.wav")
+
+        with wave.open(test_wav, "wb") as wf:
+            wf.setnchannels(2)
+            wf.setsampwidth(2)
+            wf.setframerate(48000)
+            # Write 2.0s of audio (2 * 48000 * 2 * 2 = 384,000 bytes of PCM)
+            wf.writeframes(b"\x00" * 384000)
+            native._discord_wf = wf
+
+            # Roll back 1.5 seconds
+            native.pause(rollback_seconds=1.5)
+            self.assertTrue(native.is_paused)
+
+            native._discord_wf = None
+
+        # Verify the file was truncated to exactly 0.5s of audio (24,000 frames)
+        with wave.open(test_wav, "rb") as rf:
+            self.assertEqual(rf.getnframes(), 24000)
+        native.close()
 
 
 if __name__ == "__main__":

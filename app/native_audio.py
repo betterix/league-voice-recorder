@@ -214,6 +214,10 @@ class NativeAudioRecorder:
         self._mic_queue = queue.Queue()
         self._mic_writer_thread = None
 
+        self._discord_wf = None
+        self._mic_wf = None
+        self._write_lock = threading.Lock()
+        self.mic_rate = 48000
         self.mic_channels = 1
         self.current_app_level = 0.0
         self.current_mic_level = 0.0
@@ -433,6 +437,7 @@ class NativeAudioRecorder:
 
             dev_idx, channels, rate = get_default_microphone_info()
             self.mic_channels = channels
+            self.mic_rate = rate
 
             self._mic_writer_thread = threading.Thread(
                 target=self._write_mic_loop,
@@ -442,15 +447,15 @@ class NativeAudioRecorder:
             self._mic_writer_thread.start()
 
             def mic_callback(indata, frames, time_info, status):
+                try:
+                    floats = np.frombuffer(indata, dtype=np.float32)
+                    if len(floats) > 0:
+                        peak = float(np.max(np.abs(floats)))
+                        self.current_mic_level = max(peak, self.current_mic_level * 0.85)
+                except Exception:
+                    pass
                 if not self.is_paused and self.is_recording:
                     self._mic_queue.put(bytes(indata))
-                    try:
-                        floats = np.frombuffer(indata, dtype=np.float32)
-                        if len(floats) > 0:
-                            peak = float(np.max(np.abs(floats)))
-                            self.current_mic_level = max(peak, self.current_mic_level * 0.85)
-                    except Exception:
-                        pass
 
             # Pause monitor stream if active to take exclusive stream
             if self._monitor_stream:
@@ -486,19 +491,26 @@ class NativeAudioRecorder:
                 wf.setnchannels(2)
                 wf.setsampwidth(2)  # 16-bit PCM
                 wf.setframerate(48000)
+                with self._write_lock:
+                    self._discord_wf = wf
 
                 while not self.stop_event.is_set():
                     d = loop.read()
                     if d:
+                        floats = np.frombuffer(d, dtype=np.float32)
+                        if len(floats) > 0:
+                            peak = float(np.max(np.abs(floats)))
+                            self.current_app_level = max(peak, self.current_app_level * 0.85)
                         if not self.is_paused:
-                            floats = np.frombuffer(d, dtype=np.float32)
-                            if len(floats) > 0:
-                                peak = float(np.max(np.abs(floats)))
-                                self.current_app_level = max(peak, self.current_app_level * 0.85)
                             ints = np.clip(floats * 32767.0, -32768, 32767).astype(np.int16)
-                            wf.writeframes(ints.tobytes())
+                            raw = ints.tobytes()
+                            with self._write_lock:
+                                wf.writeframes(raw)
                     else:
                         time.sleep(0.002)
+
+                with self._write_lock:
+                    self._discord_wf = None
 
             loop.stop()
         except Exception as e:
@@ -511,25 +523,65 @@ class NativeAudioRecorder:
                 wf.setnchannels(channels)
                 wf.setsampwidth(2)  # 16-bit PCM
                 wf.setframerate(rate)
+                with self._write_lock:
+                    self._mic_wf = wf
 
                 while not self.stop_event.is_set() or not self._mic_queue.empty():
                     try:
                         chunk = self._mic_queue.get(timeout=0.05)
                         floats = np.frombuffer(chunk, dtype=np.float32)
                         ints = np.clip(floats * 32767.0, -32768, 32767).astype(np.int16)
-                        wf.writeframes(ints.tobytes())
+                        raw = ints.tobytes()
+                        with self._write_lock:
+                            if not self.is_paused:
+                                wf.writeframes(raw)
                     except queue.Empty:
                         continue
+
+                with self._write_lock:
+                    self._mic_wf = None
         except Exception as e:
             self.log(f"Mic writer error: {e}")
 
-    def pause(self):
-        """Pauses audio recording (e.g. during match pause)."""
-        self.is_paused = True
+    def pause(self, rollback_seconds=0.0):
+        """
+        Pauses audio recording and truncates any excess audio recorded during
+        pause detection so that the recording matches match time with zero delay.
+        """
+        with self._write_lock:
+            self.is_paused = True
+            if rollback_seconds > 0.05:
+                self._rollback_wav(self._discord_wf, rollback_seconds, 48000, 2, 2)
+                if self._mic_wf:
+                    self._rollback_wav(
+                        self._mic_wf, rollback_seconds, self.mic_rate, self.mic_channels, 2
+                    )
+
+    def _rollback_wav(self, wf, rollback_seconds, rate, channels, sampwidth):
+        """Truncates the open WAV file to discard audio recorded during match pause."""
+        if wf is None or getattr(wf, "_file", None) is None:
+            return
+        try:
+            bytes_per_sec = rate * channels * sampwidth
+            bytes_to_cut = int(rollback_seconds * bytes_per_sec)
+            curpos = wf._file.tell()
+            target_pos = max(44, curpos - bytes_to_cut)
+            wf._file.seek(target_pos)
+            wf._file.truncate()
+            written_data = target_pos - 44
+            wf._datawritten = written_data
+            wf._nframeswritten = written_data // (channels * sampwidth)
+            wf._patchheader()
+            self.log(
+                f"Pause rollback: trimmed {rollback_seconds:.2f}s ({bytes_to_cut} bytes) to match game clock."
+            )
+        except Exception as e:
+            self.log(f"⚠️ Warning: Could not rollback WAV file: {e}")
 
     def resume(self):
-        """Resumes audio recording."""
-        self.is_paused = False
+        """Resumes audio recording seamlessly."""
+        with self._write_lock:
+            self.is_paused = False
 
     def stop_and_finalize(self, output_base_name, initial_offset=0.0):
         """
