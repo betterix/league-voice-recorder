@@ -20,6 +20,7 @@ class TestConfigModule(unittest.TestCase):
         self.assertIn("vlc_dir", cfg)
         self.assertIn("check_time", cfg)
         self.assertIn("replay_volume", cfg)
+        self.assertIn("sync_offset_ms", cfg)
         self.assertIn("language", cfg)
 
     def test_recordings_dir_in_user_documents(self):

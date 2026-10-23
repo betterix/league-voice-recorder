@@ -93,6 +93,7 @@
         "browse": "Browse...",
         "check_interval": "Check Interval (sec):",
         "replay_volume": "Replay Volume (%):",
+        "sync_offset": "Audio Sync Offset (ms):",
         "language": "Interface Language:",
         "save_btn": "💾 Save Settings",
         "saved_success": "✅ Settings saved successfully to config.json!",

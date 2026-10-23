@@ -141,6 +141,7 @@ class ReplaySynchronizer:
         self.status_callback = status_callback
         self.audio_directory = self.config.get("record_folder", DEFAULT_AUDIO_DIRECTORY)
         self.volume = int(self.config.get("replay_volume", 80))
+        self.sync_offset = float(self.config.get("sync_offset_ms", 0)) / 1000.0
         self.current_player = None
         self.running = False
         import threading
@@ -243,6 +244,8 @@ class ReplaySynchronizer:
                             else -1.0
                         )
 
+                        target_time = max(0.0, game_time + self.sync_offset)
+
                         if not is_playing:
                             # Resuming from pause or starting
                             time_diff = (
@@ -259,7 +262,7 @@ class ReplaySynchronizer:
                             else:
                                 # Timeline jump or first start
                                 player.play()
-                                player.set_time(int(game_time * 1000))
+                                player.set_time(int(target_time * 1000))
                                 player.set_rate(replay_speed)
                                 player.audio_set_volume(self.volume)
 
@@ -276,8 +279,9 @@ class ReplaySynchronizer:
                         else:
                             # Already playing: check for timeline jump / scrub or drift
                             time_jump = abs(game_time - last_game_time) > 0.5
-                            if time_jump or (vlc_time >= 0 and abs(vlc_time - game_time) > 0.35):
-                                player.set_time(int(game_time * 1000))
+                            drift = abs(vlc_time - target_time) if vlc_time >= 0 else 0
+                            if time_jump or drift > 0.12:
+                                player.set_time(int(target_time * 1000))
                                 player.set_rate(replay_speed)
                                 if time_jump:
                                     volume = player.audio_get_volume()

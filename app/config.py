@@ -94,6 +94,7 @@ def get_clean_default_config():
         "vlc_dir": r"C:\Program Files\VideoLAN\VLC",
         "check_time": 0.2,
         "replay_volume": 80,
+        "sync_offset_ms": 0,
         "language": "en",
     }
 
@@ -115,6 +116,7 @@ def get_default_config():
         "vlc_dir": resolve_path(os.getenv("VLC_DIR", r"C:\Program Files\VideoLAN\VLC")),
         "check_time": float(os.getenv("CHECK_TIME", "0.2")),
         "replay_volume": int(os.getenv("REPLAY_VOLUME", "80")),
+        "sync_offset_ms": int(os.getenv("SYNC_OFFSET_MS", "0")),
         "language": os.getenv("LANGUAGE", "en"),
     }
 
@@ -164,6 +166,7 @@ def save_config(config_data):
                 "vlc_dir": "VLC_DIR",
                 "check_time": "CHECK_TIME",
                 "replay_volume": "REPLAY_VOLUME",
+                "sync_offset_ms": "SYNC_OFFSET_MS",
                 "language": "LANGUAGE",
             }
             for cfg_key, env_key in key_mappings.items():

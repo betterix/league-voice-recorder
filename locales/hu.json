@@ -93,6 +93,7 @@
         "browse": "Tallózás...",
         "check_interval": "Ellenőrzési időköz (mp):",
         "replay_volume": "Visszajátszási hangerő (%):",
+        "sync_offset": "Hang szinkron eltolás (ms):",
         "language": "Kezelőfelület nyelve:",
         "save_btn": "💾 Beállítások mentése",
         "saved_success": "✅ A beállítások sikeresen mentve a config.json fájlba!",

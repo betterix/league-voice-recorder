@@ -268,11 +268,16 @@ class LeagueRecorder:
         self.is_paused = False
 
         t_now = time.perf_counter()
-        ref_time = t_poll_start if t_poll_start is not None else t_start
-        delay = max(0.0, t_now - ref_time)
         base_time = float(initial_game_time) if initial_game_time is not None else 0.0
-        self.first_game_time = base_time + delay
-        self.last_game_time = self.first_game_time
+        # If match just started (<= 2.0s), 0:00 alignment is exactly 0.0 (NO silence prepended!)
+        if base_time <= 2.0:
+            self.first_game_time = 0.0
+            self.last_game_time = max(0.0, base_time)
+        else:
+            ref_time = t_poll_start if t_poll_start is not None else t_start
+            delay = max(0.0, t_now - ref_time)
+            self.first_game_time = base_time + delay
+            self.last_game_time = self.first_game_time
         self.real_game_id = None
         self.log(t("logs.match_detected", time=self.first_game_time))
         init_time = max(0.0, self.first_game_time)
@@ -426,11 +431,13 @@ class LeagueRecorder:
                             time.sleep(0.1)
                         continue
 
-                    # Only start recording once the match officially starts at 0:00 (game_time >= 0.0).
-                    # Do NOT start recording during loading screen or pre-game countdown (game_time < 0.0).
+                    # Only start recording once the match clock starts (> 0.0).
+                    # Do NOT start recording during loading screen (game_time == 0.0) or countdown (< 0.0).
                     if not self.recording:
-                        if game_time >= 0.0:
+                        if game_time > 0.0:
                             self.start_recording(initial_game_time=game_time, t_poll_start=t_poll_start)
+                        elif game_time == 0.0:
+                            self.update_status("WATCHING", t("record.waiting_for_match"))
                         else:
                             # Pre-game countdown in progress — monitor and wait for 0:00
                             cd_str = f"-{abs(game_time):.1f}s"

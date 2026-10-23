@@ -749,6 +749,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.replay_vol_entry.insert(0, str(self.config.get("replay_volume", 80)))
         self.replay_vol_entry.grid(row=4, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
 
+        # Audio Sync Offset (ms)
+        self.sync_offset_lbl = ctk.CTkLabel(scroll, text=t("settings.sync_offset"))
+        self.sync_offset_lbl.grid(row=5, column=0, padx=10, pady=6, sticky="w")
+        self.sync_offset_entry = ctk.CTkEntry(scroll)
+        self.sync_offset_entry.insert(0, str(self.config.get("sync_offset_ms", 0)))
+        self.sync_offset_entry.grid(row=5, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
+
         # Language Selector
         self.lang_code_to_name = get_available_languages()
         self.lang_name_to_code = {v: k for k, v in self.lang_code_to_name.items()}
@@ -756,7 +763,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         current_display = self.lang_code_to_name.get(current_code, "English")
 
         self.lang_lbl = ctk.CTkLabel(scroll, text=t("settings.language"))
-        self.lang_lbl.grid(row=5, column=0, padx=10, pady=6, sticky="w")
+        self.lang_lbl.grid(row=6, column=0, padx=10, pady=6, sticky="w")
 
         self.lang_menu = ctk.CTkOptionMenu(
             scroll,
@@ -767,7 +774,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             button_hover_color="#0369A1",
         )
         self.lang_menu.set(current_display)
-        self.lang_menu.grid(row=5, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
+        self.lang_menu.grid(row=6, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
 
         # Save Button
         self.save_btn = ctk.CTkButton(
@@ -858,6 +865,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.browse_vlc_btn.configure(text=t("settings.browse"))
                 self.check_time_lbl.configure(text=t("settings.check_interval"))
                 self.replay_vol_lbl.configure(text=t("settings.replay_volume"))
+                self.sync_offset_lbl.configure(text=t("settings.sync_offset"))
                 self.lang_lbl.configure(text=t("settings.language"))
                 self.save_btn.configure(text=t("settings.save_btn"))
 
@@ -1427,6 +1435,10 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         try:
             vol_val = int(self.replay_vol_entry.get().strip() or 80)
             vol_val = max(0, min(100, vol_val))
+            try:
+                sync_offset_val = int(self.sync_offset_entry.get().strip() or 0)
+            except ValueError:
+                sync_offset_val = 0
             selected_lang_name = self.lang_menu.get()
             selected_lang_code = self.lang_name_to_code.get(selected_lang_name, "en")
 
@@ -1437,6 +1449,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 "vlc_dir": self.vlc_dir_entry.get().strip(),
                 "check_time": float(self.check_time_entry.get().strip()),
                 "replay_volume": vol_val,
+                "sync_offset_ms": sync_offset_val,
                 "language": selected_lang_code,
             }
             if save_config(new_config):
@@ -1444,6 +1457,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 set_language(selected_lang_code)
                 self.vol_slider.set(vol_val)
                 self._on_replay_volume_slider_changed(vol_val)
+                if hasattr(self, "replay_sync") and self.replay_sync:
+                    self.replay_sync.sync_offset = float(sync_offset_val) / 1000.0
                 self.rec_scene_lbl.configure(
                     text=self._get_engine_display_text()
                 )
