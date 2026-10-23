@@ -55,8 +55,8 @@ jobs:
             --windows-icon-from-ico=icon.ico `
             --company-name="betterix" `
             --product-name="League Voice Recorder" `
-            --file-version=0.2.0.0 `
-            --product-version=0.2.0.0 `
+            --file-version=0.2.1.0 `
+            --product-version=0.2.1.0 `
             --file-description="League Voice Recorder & Replay Synchronizer" `
             --copyright="Copyright (c) 2026 betterix. GPL-3.0 License." `
             --enable-plugin=tk-inter `
