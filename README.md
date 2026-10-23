@@ -125,6 +125,7 @@ winget install -e --id Gyan.FFmpeg
 
 # 2. VLC Media Player 64-bit (Replay synchronization)
 winget install -e --id VideoLAN.VLC
+```
 
 ### ⚙️ Enable League of Legends Replay API (Required for Replay Sync)
 
