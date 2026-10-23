@@ -26,6 +26,87 @@ STREAMKIT_CLIENT_ID = "207646673902501888"
 TOKEN_URL = "https://streamkit.discord.com/overlay/token"
 
 
+def get_token_file_path():
+    """Returns the path to the persisted Discord IPC token file."""
+    try:
+        from app.config import PROJECT_ROOT
+
+        return os.path.join(PROJECT_ROOT, ".discord_token")
+    except Exception:
+        return os.path.abspath(".discord_token")
+
+
+def load_persisted_token():
+    """Loads saved Discord IPC access token from disk or config."""
+    # 1. Try dedicated .discord_token file
+    path = get_token_file_path()
+    try:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                tok = f.read().strip()
+                if tok:
+                    return tok
+    except Exception:
+        pass
+
+    # 2. Try config.json
+    try:
+        from app.config import load_config
+
+        cfg = load_config()
+        tok = cfg.get("discord_ipc_token")
+        if tok and str(tok).strip():
+            return str(tok).strip()
+    except Exception:
+        pass
+
+    return None
+
+
+def save_persisted_token(token):
+    """Saves Discord IPC access token to disk so Discord never prompts for authorization again."""
+    if not token or not str(token).strip():
+        return
+    clean_token = str(token).strip()
+
+    # 1. Save to .discord_token
+    path = get_token_file_path()
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(clean_token)
+    except Exception:
+        pass
+
+    # 2. Save to config.json
+    try:
+        from app.config import load_config, save_config
+
+        cfg = load_config()
+        cfg["discord_ipc_token"] = clean_token
+        save_config(cfg)
+    except Exception:
+        pass
+
+
+def delete_persisted_token():
+    """Removes invalid or expired token file."""
+    path = get_token_file_path()
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except Exception:
+        pass
+    try:
+        from app.config import load_config, save_config
+
+        cfg = load_config()
+        if "discord_ipc_token" in cfg:
+            del cfg["discord_ipc_token"]
+            save_config(cfg)
+    except Exception:
+        pass
+
+
 def find_discord_ipc_pipe():
     """Scans for available Discord IPC named pipes from 0 to 9."""
     for i in range(10):
@@ -52,7 +133,8 @@ class DiscordMuteWatcher:
         self._pipe = None
         self._stop_event = threading.Event()
         self._thread = None
-        self._access_token = None
+        self._access_token = load_persisted_token()
+        self._last_auth_attempt = 0.0
 
     def log(self, msg):
         if self.log_callback:
@@ -166,6 +248,9 @@ class DiscordMuteWatcher:
 
         # 2. Try authentication with cached token if available
         authed = False
+        if not self._access_token:
+            self._access_token = load_persisted_token()
+
         if self._access_token:
             if self._send_frame(
                 pipe,
@@ -177,13 +262,24 @@ class DiscordMuteWatcher:
                 },
             ):
                 _op, auth_res = self._read_frame(pipe, timeout_sec=2.0)
-                if auth_res and auth_res.get("evt") != "ERROR" and auth_res.get("cmd") == "AUTHENTICATE":
+                if (
+                    auth_res
+                    and auth_res.get("evt") != "ERROR"
+                    and auth_res.get("cmd") == "AUTHENTICATE"
+                ):
                     authed = True
                 else:
                     self._access_token = None
+                    delete_persisted_token()
 
         # 3. If not authenticated, request authorization code & exchange token
         if not authed:
+            # Throttle authorization prompts to avoid spamming the user if rejected
+            now = time.monotonic()
+            if (now - self._last_auth_attempt) < 15.0:
+                return False
+            self._last_auth_attempt = now
+
             if not self._send_frame(
                 pipe,
                 1,
@@ -198,7 +294,7 @@ class DiscordMuteWatcher:
             ):
                 return False
 
-            _op, auth_resp = self._read_frame(pipe, timeout_sec=3.0)
+            _op, auth_resp = self._read_frame(pipe, timeout_sec=5.0)
             code = (auth_resp or {}).get("data", {}).get("code")
             if not code:
                 return False
@@ -206,7 +302,10 @@ class DiscordMuteWatcher:
             try:
                 r = requests.post(TOKEN_URL, json={"code": code}, timeout=4.0)
                 if r.status_code == 200:
-                    self._access_token = r.json().get("access_token")
+                    token = r.json().get("access_token")
+                    if token:
+                        self._access_token = token
+                        save_persisted_token(token)
             except Exception:
                 return False
 
@@ -227,6 +326,8 @@ class DiscordMuteWatcher:
 
             _op, auth_res = self._read_frame(pipe, timeout_sec=2.0)
             if not auth_res or auth_res.get("evt") == "ERROR":
+                self._access_token = None
+                delete_persisted_token()
                 return False
 
         # 4. Query current voice settings (initial mute/deaf state)

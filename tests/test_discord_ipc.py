@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import struct
 import tempfile
 import unittest
@@ -7,7 +8,12 @@ from unittest.mock import patch
 
 import numpy as np
 
-from app.discord_ipc import DiscordMuteWatcher
+from app.discord_ipc import (
+    DiscordMuteWatcher,
+    delete_persisted_token,
+    load_persisted_token,
+    save_persisted_token,
+)
 from app.native_audio import NativeAudioRecorder
 
 
@@ -111,6 +117,16 @@ class TestDiscordIpcModule(unittest.TestCase):
                 mock_put.assert_called_with(b"\x00" * len(audio_data))
         finally:
             nr.close()
+
+    def test_persisted_token_lifecycle(self):
+        """Verify token is correctly saved, loaded, and deleted without re-prompting."""
+        token_path = os.path.join(self.temp_dir.name, ".discord_token")
+        with patch("app.discord_ipc.get_token_file_path", return_value=token_path):
+            self.assertIsNone(load_persisted_token())
+            save_persisted_token("my_dummy_test_token_123")
+            self.assertEqual(load_persisted_token(), "my_dummy_test_token_123")
+            delete_persisted_token()
+            self.assertIsNone(load_persisted_token())
 
 
 if __name__ == "__main__":

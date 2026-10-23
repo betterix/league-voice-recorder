@@ -5,6 +5,7 @@
 .env.*
 !.env.example
 config.json
+.discord_token
 
 # ==========================================
 # Large Binaries & Media Assets
