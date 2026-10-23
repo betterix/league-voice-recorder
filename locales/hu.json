@@ -43,10 +43,12 @@
         "stopping_btn": "Leállítás folyamatban...",
         "target_scene": "🎬 Cél OBS jelenet: {scene}",
         "info": "• Automatikusan a 'Discord Only' jelenetre vált OBS-ben\n• Rögzíti a meccs hangját és elmenti <GameID>.mp3 néven",
-        "target_app": "🎯 Rögzítendő program:",
+        "target_app": "🎯 Rögzítendő Discord folyamat:",
         "refresh_targets": "🔄 Frissítés",
-        "app_sound": "Program hang",
-        "microphone": "Mikrofon"
+        "app_sound": "Discord hang",
+        "microphone": "Mikrofon",
+        "sound_detected": "Hang érzékelve",
+        "auto_discord": "Discord (Automatikus hangfelismerés) 🎯"
     },
     "replay": {
         "title": "🎬 VISSZAJÁTSZÁS SZINKRONIZÁLÁS",

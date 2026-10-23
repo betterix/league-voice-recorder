@@ -43,10 +43,12 @@
         "stopping_btn": "Stopping...",
         "target_scene": "🎬 Target Scene: {scene}",
         "info": "• Auto-switches to 'Discord Only' scene in OBS\n• Records match live audio and saves as <GameID>.mp3",
-        "target_app": "🎯 Target Audio Program:",
+        "target_app": "🎯 Target Discord Process:",
         "refresh_targets": "🔄 Refresh",
-        "app_sound": "App Audio",
-        "microphone": "Microphone"
+        "app_sound": "Discord Audio",
+        "microphone": "Microphone",
+        "sound_detected": "Sound Active",
+        "auto_discord": "Discord (Auto Detect Audio) 🎯"
     },
     "replay": {
         "title": "🎬 REPLAY AUTO-SYNC",

@@ -525,6 +525,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.config["target_audio_name"] = name
                 if hasattr(self, "recorder_worker") and self.recorder_worker and hasattr(self.recorder_worker, "native_recorder"):
                     self.recorder_worker.native_recorder.set_target_process(pid, name)
+                if hasattr(self, "_preview_native_recorder") and self._preview_native_recorder:
+                    self._preview_native_recorder.set_target_process(pid, name)
                 save_config(self.config)
                 break
 
@@ -542,9 +544,10 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             elif not hasattr(self, "_preview_native_recorder"):
                 from app.native_audio import NativeAudioRecorder
                 self._preview_native_recorder = NativeAudioRecorder(
+                    record_folder=self.config.get("record_folder"),
                     mic_device=self.config.get("mic_device_index"),
-                    target_pid=self.config.get("target_audio_pid", -1),
-                    target_name=self.config.get("target_audio_name", ""),
+                    target_pid=int(self.config.get("target_audio_pid", -1)),
+                    target_name=self.config.get("target_audio_name", "Discord"),
                 )
                 native_rec = self._preview_native_recorder
             else:
@@ -554,16 +557,16 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 app_l, mic_l = native_rec.poll_audio_levels()
 
                 # Dynamic color based on amplitude
-                app_color = "#22C55E" if app_l < 0.70 else ("#EAB308" if app_l < 0.88 else "#EF4444")
+                app_color = "#22C55E" if app_l < 0.65 else ("#EAB308" if app_l < 0.85 else "#EF4444")
                 self.app_meter_bar.configure(progress_color=app_color)
                 self.app_meter_bar.set(app_l)
 
-                mic_color = "#0284C7" if mic_l < 0.70 else ("#EAB308" if mic_l < 0.88 else "#EF4444")
+                mic_color = "#0284C7" if mic_l < 0.65 else ("#EAB308" if mic_l < 0.85 else "#EF4444")
                 self.mic_meter_bar.configure(progress_color=mic_color)
                 self.mic_meter_bar.set(mic_l)
         except Exception:
             pass
-        self.after(50, self._update_audio_meters)
+        self._meter_timer = self.after(50, self._update_audio_meters)
 
     def _setup_tab_log(self, parent):
         parent.grid_columnconfigure(0, weight=1)
@@ -901,6 +904,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.target_prog_lbl.configure(text=t("record.target_app"))
                 self.app_meter_title.configure(text="🔊 " + t("record.app_sound") + ":")
                 self.mic_meter_title.configure(text="🎤 " + t("record.microphone") + ":")
+                self._refresh_audio_targets()
             self._render_rec_status(*self.last_rec_status)
 
             self.rep_header_lbl.configure(text=t("replay.title"))
@@ -1704,6 +1708,11 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         if hasattr(self, "_queue_timer") and self._queue_timer:
             try:
                 self.after_cancel(self._queue_timer)
+            except Exception:
+                pass
+        if hasattr(self, "_meter_timer") and self._meter_timer:
+            try:
+                self.after_cancel(self._meter_timer)
             except Exception:
                 pass
         super().destroy()

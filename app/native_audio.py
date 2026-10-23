@@ -18,63 +18,91 @@ import psutil
 from app.config import get_ffmpeg_path
 
 
+def scale_vu(peak):
+    """
+    Transforms linear peak amplitude (0.0 to 1.0) into a perceived loudness
+    VU meter value (0.0 to 1.0) using logarithmic/power curve matching OBS.
+    """
+    if peak <= 0.00005:
+        return 0.0
+    val = peak ** 0.28
+    return max(0.0, min(1.0, val))
+
+
 def get_available_audio_targets():
     """
-    Scans running processes and Windows Core Audio sessions to find
-    all applications available for process loopback audio capture.
-    Returns a sorted list of dicts: [{'pid': int, 'name': str, 'display': str, 'active': bool}]
+    Scans running Discord processes and Windows Core Audio sessions.
+    Returns a sorted list of dicts for DISCORD ONLY:
+    [{'pid': int, 'name': str, 'display': str, 'active': bool}]
     """
+    from app.i18n import t
+
     targets = []
     seen_pids = set()
 
-    # 1. First add 'Discord (Auto)' default target
+    # 1. Default 'Discord (Auto Detect Audio)' target
+    auto_label = t("record.auto_discord")
     targets.append({
         "pid": -1,
         "name": "discord_auto",
-        "display": "Discord (Auto Detect Active Audio) 🎯",
+        "display": auto_label,
         "active": False,
     })
 
-    # 2. Query Windows Core Audio sessions via pycaw
+    # 2. Query Discord Core Audio sessions via pycaw
+    audio_sessions = []
     try:
-        from pycaw.pycaw import AudioUtilities
+        from pycaw.pycaw import AudioUtilities, IAudioMeterInformation
 
         for s in AudioUtilities.GetAllSessions():
-            if s.Process and s.ProcessId > 0:
+            if s.Process and "discord.exe" in s.Process.name().lower():
                 pid = s.ProcessId
-                name = s.Process.name()
-                if pid not in seen_pids:
-                    seen_pids.add(pid)
-                    targets.append({
-                        "pid": pid,
-                        "name": name,
-                        "display": f"{name} (PID: {pid}) 🔊",
-                        "active": True,
-                    })
+                peak = 0.0
+                try:
+                    meter = s._ctl.QueryInterface(IAudioMeterInformation)
+                    peak = float(meter.GetPeakValue())
+                except Exception:
+                    pass
+                audio_sessions.append((pid, peak))
     except Exception:
         pass
 
-    # 3. Add other common media & communication apps
-    common_apps = [
-        "discord.exe", "spotify.exe", "chrome.exe", "firefox.exe",
-        "msedge.exe", "ts3client_win64.exe", "telegram.exe", "vlc.exe",
-        "league of legends.exe"
-    ]
-    for proc in psutil.process_iter(["pid", "name"]):
+    # Sort audio sessions so active/loudest audio session comes first
+    audio_sessions.sort(key=lambda x: x[1], reverse=True)
+
+    sound_detected_str = t("record.sound_detected")
+    for pid, peak in audio_sessions:
+        if pid not in seen_pids:
+            seen_pids.add(pid)
+            if peak > 0.0001:
+                display = f"Discord (PID: {pid}) 🔊 [{sound_detected_str}]"
+            else:
+                display = f"Discord (PID: {pid}) [Audio Session]"
+            targets.append({
+                "pid": pid,
+                "name": "Discord.exe",
+                "display": display,
+                "active": peak > 0.0001,
+            })
+
+    # 3. Add other running Discord processes from psutil (renderer, main)
+    for proc in psutil.process_iter(["pid", "name", "cmdline"]):
         try:
+            name = (proc.info.get("name") or "").lower()
             pid = proc.info["pid"]
-            name = proc.info.get("name") or ""
-            lower = name.lower()
-            if pid not in seen_pids and any(lower == app or lower.startswith(app.split(".")[0]) for app in common_apps):
-                if "helper" not in lower and "crash" not in lower:
-                    seen_pids.add(pid)
-                    targets.append({
-                        "pid": pid,
-                        "name": name,
-                        "display": f"{name} (PID: {pid})",
-                        "active": False,
-                    })
-        except Exception:
+            if name == "discord.exe" and pid not in seen_pids:
+                cmd = " ".join(proc.info.get("cmdline") or []).lower()
+                if "crashpad" in cmd or "gpu-process" in cmd:
+                    continue
+                tag = "Renderer" if "--type=renderer" in cmd else ("Utility" if "--type=utility" in cmd else "Main")
+                seen_pids.add(pid)
+                targets.append({
+                    "pid": pid,
+                    "name": "Discord.exe",
+                    "display": f"Discord (PID: {pid}) [{tag}]",
+                    "active": False,
+                })
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
 
     return targets
@@ -83,31 +111,58 @@ def get_available_audio_targets():
 def find_discord_active_pid():
     """
     Finds the specific Discord.exe process ID that owns an active audio session.
-    If no active session exists, returns the primary Discord.exe process.
+    Prioritizes the session with the highest audio peak.
+    If all sessions are quiet, prioritizes the renderer process.
     """
-    # 1. Check pycaw audio sessions first
     try:
-        from pycaw.pycaw import AudioUtilities
+        from pycaw.pycaw import AudioUtilities, IAudioMeterInformation
+
+        best_pid = None
+        highest_peak = 0.0
+        candidate_pids = []
 
         for s in AudioUtilities.GetAllSessions():
             if s.Process and "discord.exe" in s.Process.name().lower():
-                return s.ProcessId
+                pid = s.ProcessId
+                candidate_pids.append(pid)
+                try:
+                    meter = s._ctl.QueryInterface(IAudioMeterInformation)
+                    peak = float(meter.GetPeakValue())
+                    if peak > highest_peak:
+                        highest_peak = peak
+                        best_pid = pid
+                except Exception:
+                    pass
+
+        # If any Discord session has audible sound, return it immediately
+        if best_pid and highest_peak > 0.0001:
+            return best_pid
+
+        # If candidates exist but peak is 0 (quiet), find the renderer process
+        for pid in candidate_pids:
+            try:
+                proc = psutil.Process(pid)
+                cmd = " ".join(proc.cmdline()).lower()
+                if "--type=renderer" in cmd:
+                    return pid
+            except Exception:
+                pass
+
+        if candidate_pids:
+            return candidate_pids[-1]
     except Exception:
         pass
 
-    # 2. Find Discord.exe processes from psutil (excluding helpers)
-    discord_pids = []
-    for proc in psutil.process_iter(["pid", "name"]):
+    # Fallback to psutil search for renderer Discord
+    for proc in psutil.process_iter(["pid", "name", "cmdline"]):
         try:
             name = (proc.info.get("name") or "").lower()
             if name == "discord.exe":
-                discord_pids.append(proc.info["pid"])
+                cmd = " ".join(proc.info.get("cmdline") or []).lower()
+                if "--type=renderer" in cmd:
+                    return proc.info["pid"]
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
-
-    if discord_pids:
-        # Prefer the last spawned or first valid Discord.exe
-        return discord_pids[-1]
 
     return None
 
@@ -139,12 +194,13 @@ class NativeAudioRecorder:
     Exposes live audio level metering (VU meter) for UI visualization.
     """
 
-    def __init__(self, record_folder=None, log_callback=None):
+    def __init__(self, record_folder=None, log_callback=None, target_pid=-1, target_name="Discord", mic_device=None):
         self.record_folder = record_folder or os.path.abspath("recordings")
         self.log_callback = log_callback
 
-        self.target_pid = -1  # -1 means auto-detect active Discord session
-        self.target_name = "Discord"
+        self.target_pid = target_pid  # -1 means auto-detect active Discord session
+        self.target_name = target_name
+        self.mic_device = mic_device
 
         self.is_recording = False
         self.is_paused = False
@@ -257,7 +313,11 @@ class NativeAudioRecorder:
             else:
                 self.current_app_level *= 0.85
 
-        return min(1.0, self.current_app_level), min(1.0, self.current_mic_level)
+        scaled_app = scale_vu(self.current_app_level)
+        scaled_mic = scale_vu(self.current_mic_level)
+        self.current_mic_level *= 0.85
+
+        return scaled_app, scaled_mic
 
     def resolve_target_pid(self):
         """Resolves target_pid to an actual running Windows process ID."""
