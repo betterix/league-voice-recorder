@@ -444,10 +444,12 @@ class LeagueRecorder:
                             self.update_status("WATCHING", t("record.match_countdown", time=cd_str))
 
                     if self.recording:
-                        # Debounce pause detection: require at least 5 consecutive polls (~100ms) with unchanged game_time
+                        # Debounce pause detection: require at least 50 consecutive polls (~1.0s) with unchanged game_time.
+                        # Riot's Live Client Data API refreshes gameTime every 150-250ms during live play,
+                        # so normal gameplay never triggers false pauses.
                         if game_time == self.last_game_time and game_time > 0:
                             pause_tick_count += 1
-                            if pause_tick_count >= 5 and not self.is_paused:
+                            if pause_tick_count >= 50 and not self.is_paused:
                                 self.native_recorder.pause()
                                 self.is_paused = True
                                 self.log(t("logs.pause"))

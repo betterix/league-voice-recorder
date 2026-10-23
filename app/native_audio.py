@@ -580,29 +580,42 @@ class NativeAudioRecorder:
         ffmpeg_cmd = get_ffmpeg_path()
         cmd = [ffmpeg_cmd, "-y"]
 
-        filter_parts = []
         if discord_ok and mic_ok:
             cmd.extend(["-i", self.discord_wav_path, "-i", self.mic_wav_path])
-            filter_parts.append("[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0")
+            mix_filter = (
+                "[0:a]aresample=48000,aformat=channel_layouts=stereo[app];"
+                "[1:a]aresample=48000,aformat=channel_layouts=stereo[mic];"
+                "[app][mic]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0"
+            )
         elif discord_ok:
             cmd.extend(["-i", self.discord_wav_path])
-            filter_parts.append("[0:a]anull")
+            mix_filter = "[0:a]aresample=48000,aformat=channel_layouts=stereo"
         else:
             cmd.extend(["-i", self.mic_wav_path])
-            filter_parts.append("[0:a]anull")
+            mix_filter = "[0:a]aresample=48000,aformat=channel_layouts=stereo"
 
-        # Offset alignment chained directly inside filter_complex
+        post_filters = []
         if initial_offset < -0.005:
-            filter_parts.append(f"atrim=start={abs(initial_offset):.3f},asetpts=PTS-STARTPTS")
+            post_filters.append(f"atrim=start={abs(initial_offset):.3f},asetpts=PTS-STARTPTS")
         elif initial_offset > 0.005:
             delay_ms = int(initial_offset * 1000)
-            filter_parts.append(f"adelay=delays={delay_ms}:all=1")
+            post_filters.append(f"adelay=delays={delay_ms}:all=1")
 
-        # Broadcast loudness normalization for optimal volume and clarity
-        filter_parts.append("loudnorm=I=-16:TP=-1.5:LRA=11")
+        if post_filters:
+            if discord_ok and mic_ok:
+                filter_chain = f"{mix_filter}[mixed];[mixed]{','.join(post_filters)}[aout]"
+            else:
+                filter_chain = f"{mix_filter},{','.join(post_filters)}[aout]"
+        else:
+            filter_chain = f"{mix_filter}[aout]"
 
-        filter_chain = ",".join(filter_parts) + "[aout]"
-        cmd.extend(["-filter_complex", filter_chain, "-map", "[aout]", "-b:a", "192k", mp3_path])
+        cmd.extend([
+            "-filter_complex", filter_chain,
+            "-map", "[aout]",
+            "-c:a", "libmp3lame",
+            "-q:a", "0",
+            mp3_path,
+        ])
 
         try:
             res = subprocess.run(

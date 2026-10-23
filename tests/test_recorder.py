@@ -196,6 +196,36 @@ class TestRecorderModule(unittest.TestCase):
         self.assertTrue(rec.native_recorder.stop_and_finalize.called)
         rec.close()
 
+    @patch("subprocess.run")
+    def test_native_audio_mix_to_mp3_quality_and_filters(self, mock_subproc):
+        """Verify _mix_to_mp3 uses highest quality VBR (-q:a 0) and resamples cleanly without loudnorm."""
+        mock_subproc.return_value = MagicMock(returncode=0)
+        nr = self.recorder.native_recorder
+        d_wav = os.path.join(self.temp_dir.name, "d.wav")
+        m_wav = os.path.join(self.temp_dir.name, "m.wav")
+        with open(d_wav, "wb") as f:
+            f.write(b"x" * 100)
+        with open(m_wav, "wb") as f:
+            f.write(b"x" * 100)
+        nr.discord_wav_path = d_wav
+        nr.mic_wav_path = m_wav
+
+        mp3 = nr._mix_to_mp3("test_game", initial_offset=0.0)
+        self.assertIsNotNone(mp3)
+        self.assertTrue(mock_subproc.called)
+        cmd = mock_subproc.call_args[0][0]
+
+        # Verify highest quality VBR
+        self.assertIn("-q:a", cmd)
+        q_idx = cmd.index("-q:a")
+        self.assertEqual(cmd[q_idx + 1], "0")
+
+        # Verify no loudnorm filter distorting voices
+        filter_str = cmd[cmd.index("-filter_complex") + 1]
+        self.assertNotIn("loudnorm", filter_str)
+        self.assertIn("aresample=48000", filter_str)
+        self.assertIn("amix=inputs=2", filter_str)
+
 
 if __name__ == "__main__":
     unittest.main()
