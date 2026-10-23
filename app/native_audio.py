@@ -431,14 +431,16 @@ class NativeAudioRecorder:
 
                 while not self.stop_event.is_set():
                     d = loop.read()
-                    if d and not self.is_paused:
-                        floats = np.frombuffer(d, dtype=np.float32)
-                        if len(floats) > 0:
-                            peak = float(np.max(np.abs(floats)))
-                            self.current_app_level = max(peak, self.current_app_level * 0.85)
-                        ints = np.clip(floats * 32767.0, -32768, 32767).astype(np.int16)
-                        wf.writeframes(ints.tobytes())
-                    time.sleep(0.015)
+                    if d:
+                        if not self.is_paused:
+                            floats = np.frombuffer(d, dtype=np.float32)
+                            if len(floats) > 0:
+                                peak = float(np.max(np.abs(floats)))
+                                self.current_app_level = max(peak, self.current_app_level * 0.85)
+                            ints = np.clip(floats * 32767.0, -32768, 32767).astype(np.int16)
+                            wf.writeframes(ints.tobytes())
+                    else:
+                        time.sleep(0.002)
 
             loop.stop()
         except Exception as e:
@@ -525,7 +527,7 @@ class NativeAudioRecorder:
         filter_parts = []
         if discord_ok and mic_ok:
             cmd.extend(["-i", self.discord_wav_path, "-i", self.mic_wav_path])
-            filter_parts.append("[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=0")
+            filter_parts.append("[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0")
         elif discord_ok:
             cmd.extend(["-i", self.discord_wav_path])
             filter_parts.append("[0:a]anull")
@@ -540,8 +542,11 @@ class NativeAudioRecorder:
             delay_ms = int(initial_offset * 1000)
             filter_parts.append(f"adelay=delays={delay_ms}:all=1")
 
+        # Broadcast loudness normalization for optimal volume and clarity
+        filter_parts.append("loudnorm=I=-16:TP=-1.5:LRA=11")
+
         filter_chain = ",".join(filter_parts) + "[aout]"
-        cmd.extend(["-filter_complex", filter_chain, "-map", "[aout]", "-q:a", "0", mp3_path])
+        cmd.extend(["-filter_complex", filter_chain, "-map", "[aout]", "-b:a", "192k", mp3_path])
 
         try:
             res = subprocess.run(
