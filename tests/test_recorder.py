@@ -196,31 +196,16 @@ class TestRecorderModule(unittest.TestCase):
         self.assertTrue(rec.native_recorder.stop_and_finalize.called)
         rec.close()
 
-    def test_native_recorder_pause_rollback(self):
-        """NativeAudioRecorder.pause(rollback_seconds) accurately rolls back open WAV files."""
-        import wave
+    def test_native_recorder_pause_and_resume(self):
+        """NativeAudioRecorder.pause() and resume() update is_paused flag safely."""
         from app.native_audio import NativeAudioRecorder
 
         native = NativeAudioRecorder(record_folder=self.temp_dir.name)
-        test_wav = os.path.join(self.temp_dir.name, "test_rollback.wav")
-
-        with wave.open(test_wav, "wb") as wf:
-            wf.setnchannels(2)
-            wf.setsampwidth(2)
-            wf.setframerate(48000)
-            # Write 2.0s of audio (2 * 48000 * 2 * 2 = 384,000 bytes of PCM)
-            wf.writeframes(b"\x00" * 384000)
-            native._discord_wf = wf
-
-            # Roll back 1.5 seconds
-            native.pause(rollback_seconds=1.5)
-            self.assertTrue(native.is_paused)
-
-            native._discord_wf = None
-
-        # Verify the file was truncated to exactly 0.5s of audio (24,000 frames)
-        with wave.open(test_wav, "rb") as rf:
-            self.assertEqual(rf.getnframes(), 24000)
+        self.assertFalse(native.is_paused)
+        native.pause()
+        self.assertTrue(native.is_paused)
+        native.resume()
+        self.assertFalse(native.is_paused)
         native.close()
 
 

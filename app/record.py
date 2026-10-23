@@ -477,8 +477,7 @@ class LeagueRecorder:
                             # Require at least 1.5s of frozen game_time to declare a real match pause
                             if frozen_duration >= 1.5 and not self.is_paused:
                                 self.is_paused = True
-                                # Roll back audio recorded during the 1.5s freeze detection window
-                                self.native_recorder.pause(rollback_seconds=frozen_duration)
+                                self.native_recorder.pause()
                                 self.log(t("logs.pause"))
                                 p_time_val = max(0.0, game_time)
                                 p_time_str = f"{int(p_time_val // 60):02d}:{int(p_time_val % 60):02d}"
