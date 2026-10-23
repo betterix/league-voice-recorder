@@ -194,6 +194,7 @@ class TestRecorderModule(unittest.TestCase):
         rec.stop_recording_and_rename()
         self.assertFalse(rec.recording)
         self.assertTrue(rec.native_recorder.stop_and_finalize.called)
+        self.assertTrue(rec.stop_event.is_set(), "Completion of match recording must stop listening")
         rec.close()
 
     @patch("subprocess.run")

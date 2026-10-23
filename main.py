@@ -951,6 +951,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 pass
 
     def _render_rec_status(self, status, detail):
+        prev_status = getattr(self, "last_rec_status", (None, None))[0]
         self.last_rec_status = (status, detail)
         if status == "RECORDING":
             text = (
@@ -1002,17 +1003,18 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 text_color="#22C55E",
                 fg_color="#052E16",
             )
+            self._reset_rec_button_state()
             self._refresh_recordings_list()
         elif status in ("STOPPED", "IDLE"):
-            self.rec_status_pill.configure(
-                text=t("record.status_stopped", detail=detail).strip()
-                if detail
-                else t("record.status_idle"),
-                text_color="#94A3B8",
-                fg_color="#0F172A",
-            )
-            if not self.recorder_worker or getattr(self.recorder_worker, "stop_event", None) is None or self.recorder_worker.stop_event.is_set():
-                self._reset_rec_button_state()
+            if prev_status != "SAVED":
+                self.rec_status_pill.configure(
+                    text=t("record.status_stopped", detail=detail).strip()
+                    if detail
+                    else t("record.status_idle"),
+                    text_color="#94A3B8",
+                    fg_color="#0F172A",
+                )
+            self._reset_rec_button_state()
             self._refresh_recordings_list()
         elif status == "ERROR":
             self.rec_status_pill.configure(

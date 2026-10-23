@@ -374,6 +374,8 @@ class LeagueRecorder:
         if final_mp3:
             self.log(t("logs.saved_mp3", path=final_mp3))
             self.update_status("SAVED", f"{os.path.basename(final_mp3)}")
+            # Match recording completed: automatically stop listening
+            self.stop()
         else:
             self.update_status("WATCHING", t("record.waiting_for_match"))
         self.first_game_time = 0.0
@@ -489,13 +491,14 @@ class LeagueRecorder:
                             if not league_alive or consecutive_misses >= 15:
                                 self.stop_recording_and_rename()
                                 consecutive_misses = 0
-                                self.update_status("WATCHING", t("record.waiting_for_match"))
+                                break
                     else:
                         consecutive_misses = 0
 
             except requests.exceptions.RequestException:
                 if self.recording:
                     self.stop_recording_and_rename()
+                    break
                 else:
                     self.update_status("WATCHING", t("record.waiting_for_match"))
 

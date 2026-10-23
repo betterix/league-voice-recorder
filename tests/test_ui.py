@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import MagicMock
 
 from app import __version__
 from app.i18n import reset_listeners, set_language, t
@@ -101,6 +102,26 @@ class TestUIApp(unittest.TestCase):
         log_content = self.app.log_textbox.get("1.0", "end")
         self.app.log_textbox.configure(state="disabled")
         self.assertIn("Automated UI Test Log Message", log_content)
+
+    def test_recording_saved_automatically_stops_listening(self):
+        """When recording is saved, the button resets to Start and listening is stopped."""
+        # Simulate active recording state
+        self.app.recorder_worker = MagicMock()
+        self.app.rec_btn.configure(text=t("record.stop_btn"))
+
+        # Message arrives that recording is saved
+        self.app.msg_queue.put(("STATUS_REC", "SAVED", "8018190134.mp3"))
+        self.app._process_queue()
+
+        # Button must be reset to Start
+        self.assertEqual(self.app.rec_btn.cget("text"), t("record.start_btn"))
+        self.assertIsNone(self.app.recorder_worker)
+        self.assertIn("SAVED: 8018190134.mp3", self.app.rec_status_pill.cget("text"))
+
+        # Subsequent STOPPED signal should not overwrite the green SAVED message
+        self.app.msg_queue.put(("STATUS_REC", "STOPPED", ""))
+        self.app._process_queue()
+        self.assertIn("SAVED: 8018190134.mp3", self.app.rec_status_pill.cget("text"))
 
 
 if __name__ == "__main__":
