@@ -84,10 +84,8 @@ if exist "assets" (
     xcopy /y /s /i "assets" "dist\LeagueVoiceRecorder\assets" >nul
 )
 
-echo Copying .env.example to output directory...
-if exist ".env.example" (
-    copy /y ".env.example" "dist\LeagueVoiceRecorder\.env.example" >nul
-)
+echo Generating default config.json in output directory...
+uv run --python 3.14.8 python -c "import sys, json; sys.path.insert(0, '.'); from app.config import get_clean_default_config; json.dump(get_clean_default_config(), open(r'dist\LeagueVoiceRecorder\config.json', 'w', encoding='utf-8'), indent=4, ensure_ascii=False)"
 
 echo Copying LICENSE to output directory...
 if exist "LICENSE" (

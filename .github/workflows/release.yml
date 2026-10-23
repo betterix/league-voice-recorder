@@ -90,9 +90,8 @@ jobs:
           if (Test-Path "locales") {
               Copy-Item -Path "locales" -Destination "dist\LeagueVoiceRecorder\locales" -Recurse -Force
           }
-          if (Test-Path ".env.example") {
-              Copy-Item -Path ".env.example" -Destination "dist\LeagueVoiceRecorder\.env.example" -Force
-          }
+          Write-Host "Generating default config.json in dist/LeagueVoiceRecorder..."
+          uv run --python 3.14.8 python -c "import sys, json; sys.path.insert(0, '.'); from app.config import get_clean_default_config; json.dump(get_clean_default_config(), open(r'dist\LeagueVoiceRecorder\config.json', 'w', encoding='utf-8'), indent=4, ensure_ascii=False)"
           if (Test-Path "LICENSE") {
               Copy-Item -Path "LICENSE" -Destination "dist\LeagueVoiceRecorder\LICENSE" -Force
           }

@@ -131,7 +131,7 @@ def load_config():
         except Exception as e:
             print(f"⚠️ Failed to load config.json: {e}")
     else:
-        # Create initial config.json with strictly BLANK password
+        # Create initial default config.json if not present
         try:
             clean_cfg = get_clean_default_config()
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
