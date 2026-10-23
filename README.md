@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.2.2-blue?logo=github" alt="Release Version" /></a>
+  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.2.3-blue?logo=github" alt="Release Version" /></a>
   <img src="https://img.shields.io/badge/python-3.14.8-blue?logo=python&logoColor=white" alt="Python Version" />
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%2064--bit-0078D6?logo=windows&logoColor=white" alt="Platform" />
   <img src="https://img.shields.io/badge/build-passing-brightgreen?logo=githubactions&logoColor=white" alt="Build Status" />
@@ -45,6 +45,8 @@ In competitive League of Legends scrimmages and tournament matches, reviewing ga
 ## ✨ Key Features
 
 - ⚡ **Zero-Latency Match Start**: Attaches instantly to Discord and mic. When your game launches, recording starts in under 1 millisecond.
+- 🔇 **Discord Live Mute & Deafen Sync**: Real-time integration via Discord Local IPC (`\\.\pipe\discord-ipc-*`). When you mute or deafen in Discord (or via hotkey), the app automatically injects silence into the recording while preserving sample-accurate timeline alignment.
+- ⏹️ **Hands-Free Match Auto-Stop**: When the nexus explodes or the match ends, the watcher automatically finalizes your `<GameID>.mp3` and stops listening without requiring manual button clicks.
 - 🎯 **Sample-Accurate Audio Alignment**:
   - If recording begins after 00:00, exact silence is prepended via FFmpeg (`adelay`).
   - If recording begins before 00:00 during countdown, the pre-game buffer is trimmed (`-ss`).
@@ -143,6 +145,18 @@ winget install -e --id VideoLAN.VLC
 > ```
 > *Note: If `[General]` already exists in `game.cfg`, simply add `EnableReplayApi=1` directly under it, then save the file.*
 
+### 🛡️ Discord Local IPC & Safe One-Time Authorization
+
+> [!NOTE]
+> **Is Discord IPC safe? Yes, 100%!**
+> - **Zero Third-Party Drivers**: Does not install virtual audio cables, audio drivers, or injected DLLs.
+> - **How it connects**: Connects locally through Windows' secure local named pipe (`\\.\pipe\discord-ipc-*`) directly to your running Discord desktop client using Discord's official first-party **StreamKit Overlay RPC** client ID (`207646673902501888`).
+> - **What it does**: It only monitors your voice status (`mute` and `deaf` states). When you mute yourself in Discord or via your mouse/keyboard hotkey, the app automatically feeds synchronized silence bytes into the microphone stream. This ensures private team comms or callouts stay muted in recordings while keeping the audio track in 100% sample-accurate alignment with match time.
+> - **One-time authorization prompt**: On your very first run, Discord will display a popup:
+>   > *"StreamKit Overlay wants to access your Discord account: Access your voice settings."*
+>   
+>   **Do not be afraid or alarmed!** Simply click **Authorize**. The application securely saves the authorized token locally on your machine (`.discord_token`). **Discord will remember your decision and will NEVER ask you again.** All subsequent launches authenticate silently in under 50 milliseconds.
+
 ---
 
 ## 🚀 Quick Start Tutorial
@@ -175,7 +189,7 @@ winget install -e --id VideoLAN.VLC
 4. **Hands-free Automation**:
    - As soon as the game loads, the status updates to `RECORDING: Live Match (MM:SS)`.
    - If the game pauses, recording automatically pauses.
-   - When the nexus explodes or the game exits, the app automatically fetches the official Riot Game ID, aligns the audio to `00:00:00`, and saves `<GameID>.mp3` into your recordings folder.
+   - When the nexus explodes or the game exits, the app automatically fetches the official Riot Game ID, aligns the audio to `00:00:00`, saves `<GameID>.mp3` into your recordings folder, and automatically stops listening.
 
 ---
 

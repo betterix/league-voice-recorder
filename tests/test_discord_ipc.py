@@ -121,7 +121,12 @@ class TestDiscordIpcModule(unittest.TestCase):
     def test_persisted_token_lifecycle(self):
         """Verify token is correctly saved, loaded, and deleted without re-prompting."""
         token_path = os.path.join(self.temp_dir.name, ".discord_token")
-        with patch("app.discord_ipc.get_token_file_path", return_value=token_path):
+        mock_cfg = {}
+        with (
+            patch("app.discord_ipc.get_token_file_path", return_value=token_path),
+            patch("app.config.load_config", return_value=mock_cfg),
+            patch("app.config.save_config", side_effect=lambda c: mock_cfg.update(c)),
+        ):
             self.assertIsNone(load_persisted_token())
             save_persisted_token("my_dummy_test_token_123")
             self.assertEqual(load_persisted_token(), "my_dummy_test_token_123")
