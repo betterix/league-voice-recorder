@@ -218,6 +218,13 @@ class NativeAudioRecorder:
         self.current_app_level = 0.0
         self.current_mic_level = 0.0
 
+        # Delay buffers to cut out pause detection lag with sample accuracy
+        import collections
+        self._buffer_lock = threading.Lock()
+        self._discord_buffer = collections.deque()
+        self._mic_buffer = collections.deque()
+        self._delay_sec = 0.30
+
         # Background monitoring for VU meters (runs non-blocking in background thread)
         self._cached_resolved_pid = None
         self._last_resolved_time = 0.0
@@ -401,6 +408,9 @@ class NativeAudioRecorder:
         self._stop_idle_monitor()
         self.stop_event.clear()
         self.is_paused = False
+        with self._buffer_lock:
+            self._discord_buffer.clear()
+            self._mic_buffer.clear()
 
         resolved_pid = self.resolve_target_pid()
 
@@ -493,14 +503,28 @@ class NativeAudioRecorder:
                         time.sleep(0.002)
                         continue
                     while d:
-                        if not self.is_paused:
-                            floats = np.frombuffer(d, dtype=np.float32)
-                            if len(floats) > 0:
-                                peak = float(np.max(np.abs(floats)))
-                                self.current_app_level = max(peak, self.current_app_level * 0.85)
-                            ints = np.clip(floats * 32767.0, -32768, 32767).astype(np.int16)
-                            wf.writeframes(ints.tobytes())
+                        floats = np.frombuffer(d, dtype=np.float32)
+                        if len(floats) > 0:
+                            peak = float(np.max(np.abs(floats)))
+                            self.current_app_level = max(peak, self.current_app_level * 0.85)
+                        ints = np.clip(floats * 32767.0, -32768, 32767).astype(np.int16)
+                        raw_bytes = ints.tobytes()
+
+                        with self._buffer_lock:
+                            if not self.is_paused:
+                                now = time.perf_counter()
+                                self._discord_buffer.append((now, raw_bytes))
+                                cutoff = now - self._delay_sec
+                                while self._discord_buffer and self._discord_buffer[0][0] <= cutoff:
+                                    _, chunk = self._discord_buffer.popleft()
+                                    wf.writeframes(chunk)
                         d = loop.read()
+
+                # Flush any remaining frames on stop
+                with self._buffer_lock:
+                    while self._discord_buffer:
+                        _, chunk = self._discord_buffer.popleft()
+                        wf.writeframes(chunk)
 
             loop.stop()
         except Exception as e:
@@ -519,19 +543,39 @@ class NativeAudioRecorder:
                         chunk = self._mic_queue.get(timeout=0.05)
                         floats = np.frombuffer(chunk, dtype=np.float32)
                         ints = np.clip(floats * 32767.0, -32768, 32767).astype(np.int16)
-                        wf.writeframes(ints.tobytes())
+                        raw_bytes = ints.tobytes()
+
+                        with self._buffer_lock:
+                            if not self.is_paused:
+                                now = time.perf_counter()
+                                self._mic_buffer.append((now, raw_bytes))
+                                cutoff = now - self._delay_sec
+                                while self._mic_buffer and self._mic_buffer[0][0] <= cutoff:
+                                    _, frame_bytes = self._mic_buffer.popleft()
+                                    wf.writeframes(frame_bytes)
                     except queue.Empty:
                         continue
+
+                # Flush any remaining frames on stop
+                with self._buffer_lock:
+                    while self._mic_buffer:
+                        _, frame_bytes = self._mic_buffer.popleft()
+                        wf.writeframes(frame_bytes)
         except Exception as e:
             self.log(f"Mic writer error: {e}")
 
     def pause(self):
-        """Pauses audio recording (e.g. during match pause)."""
-        self.is_paused = True
+        """Pauses audio recording and instantly discards detection delay window."""
+        with self._buffer_lock:
+            self.is_paused = True
+            self._discord_buffer.clear()
+            self._mic_buffer.clear()
+        self.log("Pause confirmed: detection delay cleanly purged from audio buffer.")
 
     def resume(self):
         """Resumes audio recording."""
-        self.is_paused = False
+        with self._buffer_lock:
+            self.is_paused = False
 
     def stop_and_finalize(self, output_base_name, initial_offset=0.0):
         """

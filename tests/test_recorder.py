@@ -226,6 +226,23 @@ class TestRecorderModule(unittest.TestCase):
         self.assertIn("aresample=48000", filter_str)
         self.assertIn("amix=inputs=2", filter_str)
 
+    def test_delay_buffer_pause_purges_detection_window(self):
+        """Verify that calling pause() purges the delay buffers to cut out detection latency."""
+        nr = self.recorder.native_recorder
+        nr._discord_buffer.append((100.0, b"frame1"))
+        nr._discord_buffer.append((100.1, b"frame2"))
+        nr._mic_buffer.append((100.0, b"mic1"))
+        self.assertEqual(len(nr._discord_buffer), 2)
+        self.assertEqual(len(nr._mic_buffer), 1)
+
+        nr.pause()
+        self.assertTrue(nr.is_paused)
+        self.assertEqual(len(nr._discord_buffer), 0)
+        self.assertEqual(len(nr._mic_buffer), 0)
+
+        nr.resume()
+        self.assertFalse(nr.is_paused)
+
 
 if __name__ == "__main__":
     unittest.main()
