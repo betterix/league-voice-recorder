@@ -2,6 +2,7 @@
 Native WASAPI Audio Recorder module for Discord and Player Microphone.
 Captures Discord audio directly from the Discord process tree via Windows WASAPI
 Process Loopback (no OBS Studio required) and combines it with the player's microphone.
+Includes real-time VU audio meter monitoring and application/process selection.
 """
 
 import os
@@ -17,36 +18,98 @@ import psutil
 from app.config import get_ffmpeg_path
 
 
-def find_discord_root_pid():
+def get_available_audio_targets():
     """
-    Finds the root/parent process ID for Discord.
-    Scans running processes for 'discord.exe' (case-insensitive) and identifies
-    the root process whose parent is not also a Discord process.
+    Scans running processes and Windows Core Audio sessions to find
+    all applications available for process loopback audio capture.
+    Returns a sorted list of dicts: [{'pid': int, 'name': str, 'display': str, 'active': bool}]
     """
-    discord_pids = set()
-    pid_to_ppid = {}
+    targets = []
+    seen_pids = set()
 
-    for proc in psutil.process_iter(["pid", "name", "ppid"]):
+    # 1. First add 'Discord (Auto)' default target
+    targets.append({
+        "pid": -1,
+        "name": "discord_auto",
+        "display": "Discord (Auto Detect Active Audio) 🎯",
+        "active": False,
+    })
+
+    # 2. Query Windows Core Audio sessions via pycaw
+    try:
+        from pycaw.pycaw import AudioUtilities
+
+        for s in AudioUtilities.GetAllSessions():
+            if s.Process and s.ProcessId > 0:
+                pid = s.ProcessId
+                name = s.Process.name()
+                if pid not in seen_pids:
+                    seen_pids.add(pid)
+                    targets.append({
+                        "pid": pid,
+                        "name": name,
+                        "display": f"{name} (PID: {pid}) 🔊",
+                        "active": True,
+                    })
+    except Exception:
+        pass
+
+    # 3. Add other common media & communication apps
+    common_apps = [
+        "discord.exe", "spotify.exe", "chrome.exe", "firefox.exe",
+        "msedge.exe", "ts3client_win64.exe", "telegram.exe", "vlc.exe",
+        "league of legends.exe"
+    ]
+    for proc in psutil.process_iter(["pid", "name"]):
         try:
+            pid = proc.info["pid"]
             name = proc.info.get("name") or ""
-            if "discord" in name.lower() and name.lower().endswith(".exe"):
-                pid = proc.info["pid"]
-                ppid = proc.info.get("ppid")
-                discord_pids.add(pid)
-                pid_to_ppid[pid] = ppid
+            lower = name.lower()
+            if pid not in seen_pids and any(lower == app or lower.startswith(app.split(".")[0]) for app in common_apps):
+                if "helper" not in lower and "crash" not in lower:
+                    seen_pids.add(pid)
+                    targets.append({
+                        "pid": pid,
+                        "name": name,
+                        "display": f"{name} (PID: {pid})",
+                        "active": False,
+                    })
+        except Exception:
+            pass
+
+    return targets
+
+
+def find_discord_active_pid():
+    """
+    Finds the specific Discord.exe process ID that owns an active audio session.
+    If no active session exists, returns the primary Discord.exe process.
+    """
+    # 1. Check pycaw audio sessions first
+    try:
+        from pycaw.pycaw import AudioUtilities
+
+        for s in AudioUtilities.GetAllSessions():
+            if s.Process and "discord.exe" in s.Process.name().lower():
+                return s.ProcessId
+    except Exception:
+        pass
+
+    # 2. Find Discord.exe processes from psutil (excluding helpers)
+    discord_pids = []
+    for proc in psutil.process_iter(["pid", "name"]):
+        try:
+            name = (proc.info.get("name") or "").lower()
+            if name == "discord.exe":
+                discord_pids.append(proc.info["pid"])
         except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
+            pass
 
-    if not discord_pids:
-        return None
+    if discord_pids:
+        # Prefer the last spawned or first valid Discord.exe
+        return discord_pids[-1]
 
-    # Find root Discord PID whose parent is not in discord_pids
-    for pid, ppid in pid_to_ppid.items():
-        if ppid not in discord_pids:
-            return pid
-
-    # Fallback to the first found PID
-    return next(iter(discord_pids))
+    return None
 
 
 def get_default_microphone_info():
@@ -70,14 +133,18 @@ def get_default_microphone_info():
 
 class NativeAudioRecorder:
     """
-    Zero-latency background audio recorder for Discord + Microphone.
-    Directly attaches to Discord.exe via Windows WASAPI Process Loopback
+    Zero-latency background audio recorder for Discord/App + Microphone.
+    Directly attaches to target process via Windows WASAPI Process Loopback
     and captures default microphone input into synchronized WAV buffers.
+    Exposes live audio level metering (VU meter) for UI visualization.
     """
 
     def __init__(self, record_folder=None, log_callback=None):
         self.record_folder = record_folder or os.path.abspath("recordings")
         self.log_callback = log_callback
+
+        self.target_pid = -1  # -1 means auto-detect active Discord session
+        self.target_name = "Discord"
 
         self.is_recording = False
         self.is_paused = False
@@ -91,8 +158,12 @@ class NativeAudioRecorder:
         self._mic_queue = queue.Queue()
         self._mic_writer_thread = None
 
-        self.discord_pid = None
         self.mic_channels = 1
+        self.current_app_level = 0.0
+        self.current_mic_level = 0.0
+
+        # Background microphone monitoring stream for VU meter (started lazily on demand)
+        self._monitor_stream = None
 
     def log(self, message):
         print(f"[NativeRecorder] {message}")
@@ -102,32 +173,140 @@ class NativeAudioRecorder:
             except Exception:
                 pass
 
+    def _start_mic_monitor(self):
+        """Runs a persistent lightweight microphone input stream for the live VU meter."""
+        if self._monitor_stream is not None:
+            return
+        try:
+            import sounddevice as sd
+
+            dev_idx, channels, rate = get_default_microphone_info()
+
+            def monitor_cb(indata, frames, time_info, status):
+                try:
+                    floats = np.frombuffer(indata, dtype=np.float32)
+                    if len(floats) > 0:
+                        peak = float(np.max(np.abs(floats)))
+                        self.current_mic_level = max(peak, self.current_mic_level * 0.85)
+                except Exception:
+                    pass
+
+            self._monitor_stream = sd.RawInputStream(
+                samplerate=rate,
+                channels=channels,
+                dtype="float32",
+                device=dev_idx,
+                callback=monitor_cb,
+            )
+            self._monitor_stream.start()
+        except Exception:
+            self._monitor_stream = None
+
+    def _stop_mic_monitor(self):
+        """Stops and closes the live microphone monitor stream."""
+        if self._monitor_stream is not None:
+            try:
+                self._monitor_stream.stop()
+                self._monitor_stream.close()
+            except Exception:
+                pass
+            finally:
+                self._monitor_stream = None
+
+    def close(self):
+        self._stop_mic_monitor()
+        if self.is_recording:
+            try:
+                self.stop_and_finalize("closed")
+            except Exception:
+                pass
+
+    def __del__(self):
+        try:
+            self._stop_mic_monitor()
+        except Exception:
+            pass
+
+    def poll_audio_levels(self):
+        """
+        Returns (app_level, mic_level) as floats between 0.0 and 1.0.
+        Uses smooth decay for visual VU meter animations.
+        """
+        if not self.is_recording and self._monitor_stream is None:
+            self._start_mic_monitor()
+
+        # When idle, poll target process audio peak via pycaw
+        if not self.is_recording:
+            resolved_pid = self.resolve_target_pid()
+            if resolved_pid and resolved_pid > 0:
+                try:
+                    from pycaw.pycaw import AudioUtilities, IAudioMeterInformation
+
+                    found = False
+                    for s in AudioUtilities.GetAllSessions():
+                        if s.Process and s.ProcessId == resolved_pid:
+                            meter = s._ctl.QueryInterface(IAudioMeterInformation)
+                            peak = float(meter.GetPeakValue())
+                            self.current_app_level = max(peak, self.current_app_level * 0.85)
+                            found = True
+                            break
+                    if not found:
+                        self.current_app_level *= 0.85
+                except Exception:
+                    self.current_app_level *= 0.85
+            else:
+                self.current_app_level *= 0.85
+
+        return min(1.0, self.current_app_level), min(1.0, self.current_mic_level)
+
+    def resolve_target_pid(self):
+        """Resolves target_pid to an actual running Windows process ID."""
+        if self.target_pid and self.target_pid > 0:
+            if psutil.pid_exists(self.target_pid):
+                return self.target_pid
+
+        # Auto-detect Discord
+        return find_discord_active_pid()
+
+    def set_target_process(self, pid, name=None):
+        """Updates the target application/process to record."""
+        self.target_pid = pid
+        if name:
+            self.target_name = name
+        self.log(f"Target process set to: PID {pid} ({name or 'Auto'})")
+
     def start_recording(self, session_id):
-        """Starts asynchronous capture of Discord process audio and player microphone."""
+        """Starts asynchronous capture of target process audio and player microphone."""
         if self.is_recording:
             return
 
+        self._stop_mic_monitor()
         self.stop_event.clear()
         self.is_paused = False
-        self.discord_pid = find_discord_root_pid()
+
+        resolved_pid = self.resolve_target_pid()
 
         temp_dir = os.path.join(self.record_folder, ".temp_audio")
         os.makedirs(temp_dir, exist_ok=True)
 
-        self.discord_wav_path = os.path.join(temp_dir, f"{session_id}_discord.wav")
+        self.discord_wav_path = os.path.join(temp_dir, f"{session_id}_app.wav")
         self.mic_wav_path = os.path.join(temp_dir, f"{session_id}_mic.wav")
 
-        # 1. Start Discord capture thread if Discord is running
-        if self.discord_pid:
-            self.log(f"Found Discord root process (PID: {self.discord_pid}). Hooking WASAPI loopback...")
+        # 1. Start App loopback thread
+        if resolved_pid:
+            try:
+                proc_name = psutil.Process(resolved_pid).name()
+            except Exception:
+                proc_name = "Target App"
+            self.log(f"Hooking WASAPI process loopback for {proc_name} (PID: {resolved_pid})...")
             self._discord_thread = threading.Thread(
                 target=self._capture_discord_loop,
-                args=(self.discord_pid, self.discord_wav_path),
+                args=(resolved_pid, self.discord_wav_path),
                 daemon=True,
             )
             self._discord_thread.start()
         else:
-            self.log("Discord is not running. Recording microphone only.")
+            self.log("⚠️ No target audio process found. Recording microphone only.")
             self.discord_wav_path = None
 
         # 2. Start Microphone capture
@@ -147,6 +326,20 @@ class NativeAudioRecorder:
             def mic_callback(indata, frames, time_info, status):
                 if not self.is_paused and self.is_recording:
                     self._mic_queue.put(bytes(indata))
+                    try:
+                        floats = np.frombuffer(indata, dtype=np.float32)
+                        if len(floats) > 0:
+                            peak = float(np.max(np.abs(floats)))
+                            self.current_mic_level = max(peak, self.current_mic_level * 0.85)
+                    except Exception:
+                        pass
+
+            # Pause monitor stream if active to take exclusive stream
+            if self._monitor_stream:
+                try:
+                    self._monitor_stream.stop()
+                except Exception:
+                    pass
 
             self._mic_stream = sd.RawInputStream(
                 samplerate=rate,
@@ -156,7 +349,7 @@ class NativeAudioRecorder:
                 callback=mic_callback,
             )
             self._mic_stream.start()
-            self.log(f"Microphone recording started (WASAPI default input, {channels}ch @ {rate}Hz).")
+            self.log(f"Microphone recording started ({channels}ch @ {rate}Hz).")
         except Exception as e:
             self.log(f"Warning: Could not start microphone capture: {e}")
             self.mic_wav_path = None
@@ -164,7 +357,7 @@ class NativeAudioRecorder:
         self.is_recording = True
 
     def _capture_discord_loop(self, pid, wav_path):
-        """Polls Discord audio frames from WASAPI ProcessLoopback and writes to WAV."""
+        """Polls process audio frames from WASAPI ProcessLoopback and writes to WAV."""
         try:
             from proctap._native import ProcessLoopback
 
@@ -180,13 +373,16 @@ class NativeAudioRecorder:
                     d = loop.read()
                     if d and not self.is_paused:
                         floats = np.frombuffer(d, dtype=np.float32)
+                        if len(floats) > 0:
+                            peak = float(np.max(np.abs(floats)))
+                            self.current_app_level = max(peak, self.current_app_level * 0.85)
                         ints = np.clip(floats * 32767.0, -32768, 32767).astype(np.int16)
                         wf.writeframes(ints.tobytes())
                     time.sleep(0.015)
 
             loop.stop()
         except Exception as e:
-            self.log(f"Discord capture error: {e}")
+            self.log(f"Process audio capture error: {e}")
 
     def _write_mic_loop(self, wav_path, channels, rate):
         """Consumes microphone audio chunks from queue and writes to WAV."""
@@ -235,6 +431,9 @@ class NativeAudioRecorder:
                 pass
             self._mic_stream = None
 
+        # Restart microphone monitor stream for VU meter
+        self._start_mic_monitor()
+
         # Wait for threads to finish writing headers
         if self._discord_thread and self._discord_thread.is_alive():
             self._discord_thread.join(timeout=2.0)
@@ -253,11 +452,11 @@ class NativeAudioRecorder:
             mp3_path = os.path.join(self.record_folder, f"{base_name}_{counter}.mp3")
             counter += 1
 
-        discord_ok = self.discord_wav_path and os.path.exists(self.discord_wav_path) and os.path.getsize(self.discord_wav_path) > 100
-        mic_ok = self.mic_wav_path and os.path.exists(self.mic_wav_path) and os.path.getsize(self.mic_wav_path) > 100
+        discord_ok = self.discord_wav_path and os.path.exists(self.discord_wav_path) and os.path.getsize(self.discord_wav_path) > 44
+        mic_ok = self.mic_wav_path and os.path.exists(self.mic_wav_path) and os.path.getsize(self.mic_wav_path) > 44
 
         if not discord_ok and not mic_ok:
-            self.log("⚠️ No audio data captured (neither Discord nor Microphone had data).")
+            self.log("⚠️ No audio data captured (neither target app nor Microphone had data).")
             return None
 
         ffmpeg_cmd = get_ffmpeg_path()

@@ -23,6 +23,7 @@ dependencies = [
     "obsws-python>=1.7.0",
     "proc-tap>=1.1.1",
     "psutil>=5.9.0",
+    "pycaw>=20260927",
     "python-dotenv>=1.2.4",
     "python-vlc>=3.0.0",
     "requests>=2.31.0",

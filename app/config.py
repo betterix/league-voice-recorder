@@ -89,6 +89,8 @@ def get_clean_default_config():
     """Builds a clean, safe template config with BLANK password for distribution and new setups."""
     return {
         "recording_mode": "native",
+        "target_audio_pid": -1,
+        "target_audio_name": "Discord",
         "obs_host": "localhost",
         "obs_port": 4455,
         "obs_password": "",
@@ -113,6 +115,8 @@ def get_default_config():
 
     return {
         "recording_mode": os.getenv("RECORDING_MODE", "native"),
+        "target_audio_pid": int(os.getenv("TARGET_AUDIO_PID", "-1")),
+        "target_audio_name": os.getenv("TARGET_AUDIO_NAME", "Discord"),
         "obs_host": os.getenv("OBS_HOST", "localhost"),
         "obs_port": int(os.getenv("OBS_PORT", "4455")),
         "obs_password": os.getenv("OBS_PASSWORD", ""),

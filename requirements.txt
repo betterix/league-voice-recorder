@@ -6,6 +6,8 @@ cffi==2.1.1
     # via sounddevice
 charset-normalizer==3.5.2
     # via requests
+comtypes==1.4.17
+    # via pycaw
 customtkinter==6.0.0
     # via league-scrim-recorder
 darkdetect==0.8.0
@@ -31,9 +33,13 @@ packaging==26.3
 proc-tap==1.1.1
     # via league-scrim-recorder
 psutil==7.2.2
-    # via league-scrim-recorder
+    # via
+    #   league-scrim-recorder
+    #   pycaw
 pulsectl==24.12.0 ; sys_platform == 'linux'
     # via proc-tap
+pycaw==20260927
+    # via league-scrim-recorder
 pycparser==3.11 ; python_full_version < '3.11' and implementation_name != 'PyPy'
     # via cffi
 pycparser==3.12 ; python_full_version >= '3.11' and implementation_name != 'PyPy'

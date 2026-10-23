@@ -42,7 +42,11 @@
         "stop_btn": "⏹ Stop Recording Watcher",
         "stopping_btn": "Stopping...",
         "target_scene": "🎬 Target Scene: {scene}",
-        "info": "• Auto-switches to 'Discord Only' scene in OBS\n• Records match live audio and saves as <GameID>.mp3"
+        "info": "• Auto-switches to 'Discord Only' scene in OBS\n• Records match live audio and saves as <GameID>.mp3",
+        "target_app": "🎯 Target Audio Program:",
+        "refresh_targets": "🔄 Refresh",
+        "app_sound": "App Audio",
+        "microphone": "Microphone"
     },
     "replay": {
         "title": "🎬 REPLAY AUTO-SYNC",

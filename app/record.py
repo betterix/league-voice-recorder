@@ -99,6 +99,10 @@ class LeagueRecorder:
         self.record_folder = self.config.get("record_folder", os.path.abspath("recordings"))
         self.recording_mode = self.config.get("recording_mode", "native")
         self.native_recorder = NativeAudioRecorder(record_folder=self.record_folder, log_callback=self.log)
+        self.native_recorder.set_target_process(
+            pid=int(self.config.get("target_audio_pid", -1)),
+            name=self.config.get("target_audio_name", "Discord"),
+        )
         self.obs_host = self.config.get("obs_host", "localhost")
         self.obs_port = int(self.config.get("obs_port", 4455))
         self.obs_password = self.config.get("obs_password", "")
@@ -438,6 +442,15 @@ class LeagueRecorder:
                 except Exception:
                     pass
         self.log(t("logs.replay_abort"))
+
+    def close(self):
+        """Closes all recording and monitoring resources."""
+        self.abort_recording()
+        if hasattr(self, "native_recorder") and self.native_recorder:
+            try:
+                self.native_recorder.close()
+            except Exception:
+                pass
 
     def set_scene(self):
         if not self.obs_client:

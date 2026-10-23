@@ -42,7 +42,11 @@
         "stop_btn": "⏹ Felvétel figyelő leállítása",
         "stopping_btn": "Leállítás folyamatban...",
         "target_scene": "🎬 Cél OBS jelenet: {scene}",
-        "info": "• Automatikusan a 'Discord Only' jelenetre vált OBS-ben\n• Rögzíti a meccs hangját és elmenti <GameID>.mp3 néven"
+        "info": "• Automatikusan a 'Discord Only' jelenetre vált OBS-ben\n• Rögzíti a meccs hangját és elmenti <GameID>.mp3 néven",
+        "target_app": "🎯 Rögzítendő program:",
+        "refresh_targets": "🔄 Frissítés",
+        "app_sound": "Program hang",
+        "microphone": "Mikrofon"
     },
     "replay": {
         "title": "🎬 VISSZAJÁTSZÁS SZINKRONIZÁLÁS",

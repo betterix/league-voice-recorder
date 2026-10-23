@@ -12,6 +12,7 @@ import psutil
 
 from app import __version__
 from app.config import get_ffmpeg_path, load_config, save_config
+from app.native_audio import get_available_audio_targets
 from app.i18n import (
     get_available_languages,
     get_language,
@@ -76,6 +77,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         # Periodic queue checker and health check
         self._queue_timer = self.after(50, self._process_queue)
         self.after(500, self._check_system_health)
+        self.after(200, self._refresh_audio_targets)
+        self._start_audio_meter_loop()
 
         # Handle window close
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -291,6 +294,84 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         )
         self.rec_scene_lbl.pack(padx=10, pady=6, anchor="w")
 
+        # Program selector frame
+        prog_frame = ctk.CTkFrame(rec_card, fg_color="#0F172A", corner_radius=8)
+        prog_frame.pack(fill="x", padx=16, pady=(0, 10))
+        prog_frame.grid_columnconfigure(0, weight=1)
+        prog_frame.grid_columnconfigure(1, weight=0)
+
+        self.target_prog_lbl = ctk.CTkLabel(
+            prog_frame,
+            text=t("record.target_app"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#38BDF8",
+        )
+        self.target_prog_lbl.grid(row=0, column=0, columnspan=2, padx=10, pady=(6, 2), sticky="w")
+
+        self.available_targets = []
+        self.target_prog_menu = ctk.CTkOptionMenu(
+            prog_frame,
+            values=["Discord (Auto Detect Active Audio) 🎯"],
+            command=self._on_target_prog_selected,
+            fg_color="#1E293B",
+            button_color="#0284C7",
+            button_hover_color="#0369A1",
+        )
+        self.target_prog_menu.grid(row=1, column=0, padx=(10, 4), pady=(0, 8), sticky="ew")
+
+        self.refresh_progs_btn = ctk.CTkButton(
+            prog_frame,
+            text="🔄",
+            width=36,
+            fg_color="#334155",
+            hover_color="#475569",
+            command=self._refresh_audio_targets,
+        )
+        self.refresh_progs_btn.grid(row=1, column=1, padx=(0, 10), pady=(0, 8))
+
+        # Live Audio VU Meter Frame (Hangcsik)
+        meter_frame = ctk.CTkFrame(rec_card, fg_color="#0F172A", corner_radius=8)
+        meter_frame.pack(fill="x", padx=16, pady=(0, 10))
+        meter_frame.grid_columnconfigure(1, weight=1)
+
+        # App Audio Meter
+        self.app_meter_title = ctk.CTkLabel(
+            meter_frame,
+            text="🔊 " + t("record.app_sound") + ":",
+            font=ctk.CTkFont(size=10, weight="bold"),
+            text_color="#94A3B8",
+        )
+        self.app_meter_title.grid(row=0, column=0, padx=(10, 6), pady=(6, 2), sticky="w")
+
+        self.app_meter_bar = ctk.CTkProgressBar(
+            meter_frame,
+            height=8,
+            corner_radius=4,
+            fg_color="#1E293B",
+            progress_color="#22C55E",
+        )
+        self.app_meter_bar.set(0.0)
+        self.app_meter_bar.grid(row=0, column=1, padx=(0, 10), pady=(6, 2), sticky="ew")
+
+        # Mic Meter
+        self.mic_meter_title = ctk.CTkLabel(
+            meter_frame,
+            text="🎤 " + t("record.microphone") + ":",
+            font=ctk.CTkFont(size=10, weight="bold"),
+            text_color="#94A3B8",
+        )
+        self.mic_meter_title.grid(row=1, column=0, padx=(10, 6), pady=(2, 8), sticky="w")
+
+        self.mic_meter_bar = ctk.CTkProgressBar(
+            meter_frame,
+            height=8,
+            corner_radius=4,
+            fg_color="#1E293B",
+            progress_color="#0284C7",
+        )
+        self.mic_meter_bar.set(0.0)
+        self.mic_meter_bar.grid(row=1, column=1, padx=(0, 10), pady=(2, 8), sticky="ew")
+
         self.rec_info_lbl = ctk.CTkLabel(
             rec_card,
             text=t("record.info"),
@@ -414,6 +495,76 @@ class LeagueVoiceRecorderApp(ctk.CTk):
     # -------------------------------------------------------------
     # TAB 1: ACTIVITY LOG
     # -------------------------------------------------------------
+        # ==========================================
+    # TARGET AUDIO PROGRAM & LIVE VU METER
+    # ==========================================
+    def _refresh_audio_targets(self):
+        try:
+            self.available_targets = get_available_audio_targets()
+            displays = [t_item["display"] for t_item in self.available_targets]
+            self.target_prog_menu.configure(values=displays)
+
+            saved_pid = int(self.config.get("target_audio_pid", -1))
+            current_choice = displays[0]
+            for t_item in self.available_targets:
+                if t_item["pid"] == saved_pid and saved_pid != -1:
+                    current_choice = t_item["display"]
+                    break
+
+            self.target_prog_menu.set(current_choice)
+            self._on_target_prog_selected(current_choice)
+        except Exception as e:
+            self.log_message(f"Error listing audio targets: {e}")
+
+    def _on_target_prog_selected(self, chosen_display):
+        for t_item in getattr(self, "available_targets", []):
+            if t_item["display"] == chosen_display:
+                pid = t_item["pid"]
+                name = t_item["name"]
+                self.config["target_audio_pid"] = pid
+                self.config["target_audio_name"] = name
+                if hasattr(self, "recorder_worker") and self.recorder_worker and hasattr(self.recorder_worker, "native_recorder"):
+                    self.recorder_worker.native_recorder.set_target_process(pid, name)
+                save_config(self.config)
+                break
+
+    def _start_audio_meter_loop(self):
+        self._update_audio_meters()
+
+    def _update_audio_meters(self):
+        if getattr(self, "_is_destroyed", False):
+            return
+        try:
+            # We can use recorder_worker's native_recorder if active, or inspect via NativeAudioRecorder directly
+            native_rec = None
+            if hasattr(self, "recorder_worker") and self.recorder_worker and hasattr(self.recorder_worker, "native_recorder"):
+                native_rec = self.recorder_worker.native_recorder
+            elif not hasattr(self, "_preview_native_recorder"):
+                from app.native_audio import NativeAudioRecorder
+                self._preview_native_recorder = NativeAudioRecorder(
+                    mic_device=self.config.get("mic_device_index"),
+                    target_pid=self.config.get("target_audio_pid", -1),
+                    target_name=self.config.get("target_audio_name", ""),
+                )
+                native_rec = self._preview_native_recorder
+            else:
+                native_rec = self._preview_native_recorder
+
+            if native_rec:
+                app_l, mic_l = native_rec.poll_audio_levels()
+
+                # Dynamic color based on amplitude
+                app_color = "#22C55E" if app_l < 0.70 else ("#EAB308" if app_l < 0.88 else "#EF4444")
+                self.app_meter_bar.configure(progress_color=app_color)
+                self.app_meter_bar.set(app_l)
+
+                mic_color = "#0284C7" if mic_l < 0.70 else ("#EAB308" if mic_l < 0.88 else "#EF4444")
+                self.mic_meter_bar.configure(progress_color=mic_color)
+                self.mic_meter_bar.set(mic_l)
+        except Exception:
+            pass
+        self.after(50, self._update_audio_meters)
+
     def _setup_tab_log(self, parent):
         parent.grid_columnconfigure(0, weight=1)
         parent.grid_rowconfigure(0, weight=1)
@@ -746,6 +897,10 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 text=t("record.target_scene", scene=self.config.get("scene_name", "Discord Only"))
             )
             self.rec_info_lbl.configure(text=t("record.info"))
+            if hasattr(self, "target_prog_lbl"):
+                self.target_prog_lbl.configure(text=t("record.target_app"))
+                self.app_meter_title.configure(text="🔊 " + t("record.app_sound") + ":")
+                self.mic_meter_title.configure(text="🎤 " + t("record.microphone") + ":")
             self._render_rec_status(*self.last_rec_status)
 
             self.rep_header_lbl.configure(text=t("replay.title"))
@@ -1540,6 +1695,11 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
     def destroy(self):
         self._is_destroyed = True
+        if hasattr(self, "_preview_native_recorder") and self._preview_native_recorder:
+            try:
+                self._preview_native_recorder._stop_mic_monitor()
+            except Exception:
+                pass
         remove_language_change_listener(self._update_ui_texts)
         if hasattr(self, "_queue_timer") and self._queue_timer:
             try:

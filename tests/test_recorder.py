@@ -23,7 +23,7 @@ class TestRecorderModule(unittest.TestCase):
         self.recorder = LeagueRecorder(self.config, log_callback=lambda msg: None)
 
     def tearDown(self):
-        self.recorder.abort_recording()
+        self.recorder.close()
         self.print_patch.stop()
         self.temp_dir.cleanup()
 
@@ -190,6 +190,7 @@ class TestRecorderModule(unittest.TestCase):
         rec.stop_recording_and_rename()
         self.assertFalse(rec.recording)
         self.assertTrue(rec.native_recorder.stop_and_finalize.called)
+        rec.close()
 
 if __name__ == "__main__":
     unittest.main()
