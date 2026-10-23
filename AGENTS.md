@@ -233,7 +233,7 @@ The project uses `uv` for Python virtual environment and dependency management.
 uv run main.py
 
 # Or run via launcher script
-.\start_ui.bat
+.\scripts\start_ui.bat
 
 # Run the recorder standalone (CLI)
 uv run python -m app.record
@@ -259,7 +259,7 @@ The project includes a comprehensive suite of 26 unit tests covering configurati
 
 ```powershell
 # Run the test suite via the Windows batch launcher
-.\run_tests.bat
+.\scripts\run_tests.bat
 
 # Or run tests directly with uv
 uv run python -m unittest discover tests -v
@@ -270,7 +270,7 @@ uvx ruff check .
 
 ### 5.4 Standalone Executable Packaging
 The application is compiled into a standalone Windows binary distribution using `Nuitka` in `--standalone` mode.
-- Built via batch script: `.\build_exe.bat`
+- Built via batch script: `.\scripts\build_exe.bat`
 - Output directory: `dist/LeagueVoiceRecorder/` containing:
   - `LeagueVoiceRecorder.exe`: Standalone binary with instant startup (<100ms) and zero runtime extraction overhead.
   - Python runtime DLL, dependency libraries, and Tkinter assets.
@@ -286,4 +286,5 @@ The application is compiled into a standalone Windows binary distribution using 
 3. **Recording Safety**: When stopping the recorder (either via the UI button or on application close), if an active recording is in progress, `stop_recording_and_rename()` must be called to ensure the recording is finalized and converted to MP3.
 4. **VLC Initialization**: On 64-bit Windows, VLC requires explicit DLL directory registration before importing `vlc`. Always configure `os.add_dll_directory(VLC_DIR)` and ensure fallback audio output drivers (`--quiet`, `--quiet --aout=mmdevice`, `--quiet --aout=directsound`) are handled.
 5. **Fast Process Lookup**: Always use `psutil` before falling back to PowerShell subprocess calls for detecting `LeagueClientUx.exe` and `League of Legends.exe`. `psutil` executes in single-digit milliseconds without spawning console windows.
+
 

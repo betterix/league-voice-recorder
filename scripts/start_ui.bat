@@ -1,5 +1,5 @@
 @echo off
-cd /d "%~dp0"
+cd /d "%~dp0\.."
 title League Voice Recorder
 echo Starting League Voice Recorder UI...
 uv run main.py

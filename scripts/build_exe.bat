@@ -1,5 +1,5 @@
 @echo off
-cd /d "%~dp0"
+cd /d "%~dp0\.."
 title Build League Voice Recorder with Nuitka
 echo ========================================================
 echo Building League Voice Recorder with Nuitka (Python 3.14.8 - Standalone)...
@@ -32,7 +32,7 @@ uv run --python 3.14.8 --with nuitka python -m nuitka ^
     --standalone ^
     --windows-console-mode=disable ^
     --assume-yes-for-downloads ^
-    --windows-icon-from-ico=icon.ico ^
+    --windows-icon-from-ico=assets\icon.ico ^
     --company-name="betterix" ^
     --product-name="League Voice Recorder" ^
     --file-version=0.2.1.0 ^
@@ -47,7 +47,7 @@ uv run --python 3.14.8 --with nuitka python -m nuitka ^
     --tcl-library-dir="%TCL_DIR%" ^
     --tk-library-dir="%TK_DIR%" ^
     --include-data-dir=locales=locales ^
-    --include-data-file=icon.ico=icon.ico ^
+    --include-data-dir=assets=assets ^
     --output-dir=dist ^
     --output-filename=LeagueVoiceRecorder.exe ^
     main.py
@@ -79,6 +79,11 @@ if exist "locales" (
     xcopy /y /s /i "locales" "dist\LeagueVoiceRecorder\locales" >nul
 )
 
+echo Copying assets to output directory...
+if exist "assets" (
+    xcopy /y /s /i "assets" "dist\LeagueVoiceRecorder\assets" >nul
+)
+
 echo Copying .env.example to output directory...
 if exist ".env.example" (
     copy /y ".env.example" "dist\LeagueVoiceRecorder\.env.example" >nul
@@ -98,6 +103,5 @@ echo.
 echo ========================================================
 echo Nuitka Build Succeeded!
 echo Standalone distribution created at: dist\LeagueVoiceRecorder\
-echo Executable: dist\LeagueVoiceRecorder\LeagueVoiceRecorder.exe
 echo ========================================================
 pause

@@ -1,5 +1,5 @@
 @echo off
-cd /d "%~dp0"
+cd /d "%~dp0\.."
 title League Voice Recorder - Test Suite
 echo ========================================================
 echo Running League Voice Recorder Automated Test Suite...

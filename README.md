@@ -230,7 +230,7 @@ cd "League-Voice-Recorder"
 uv sync --dev
 
 # 3. Launch the desktop GUI
-.\start_ui.bat
+.\scripts\start_ui.bat
 # Or directly via uv:
 uv run main.py
 
@@ -245,7 +245,7 @@ The project includes an automated test suite with 26 unit tests covering configu
 
 ```powershell
 # Run tests with the Windows launcher script
-.\run_tests.bat
+.\scripts\run_tests.bat
 
 # Or run tests directly with uv
 uv run python -m unittest discover tests -v
@@ -258,7 +258,7 @@ uvx ruff check .
 
 ```powershell
 # Build standalone distribution in dist/LeagueVoiceRecorder/
-.\build_exe.bat
+.\scripts\build_exe.bat
 ```
 
 ---
@@ -331,3 +331,4 @@ Distributed under the **GNU General Public License v3.0 (GPLv3)**. See [LICENSE]
 <div align="center">
 Built with ❤️ for competitive League of Legends teams, coaches, and players.
 </div>
+
