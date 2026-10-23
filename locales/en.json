@@ -46,6 +46,7 @@
         "refresh_targets": "🔄 Refresh",
         "app_sound": "Discord Audio",
         "microphone": "Microphone",
+        "muted": "MUTED",
         "sound_detected": "Sound Active",
         "auto_discord": "Discord (Auto Detect Audio) 🎯"
     },

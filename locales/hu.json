@@ -46,6 +46,7 @@
         "refresh_targets": "🔄 Frissítés",
         "app_sound": "Discord hang",
         "microphone": "Mikrofon",
+        "muted": "NÉMÍTVA",
         "sound_detected": "Hang aktív",
         "auto_discord": "Discord (Automatikus hangfelismerés) 🎯"
     },

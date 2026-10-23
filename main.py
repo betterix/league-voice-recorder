@@ -557,6 +557,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
             if native_rec:
                 app_l, mic_l = native_rec.poll_audio_levels()
+                is_discord_muted = getattr(native_rec, "is_discord_muted", lambda: False)()
 
                 # Dynamic color based on amplitude, only reconfigure when changed
                 app_color = "#22C55E" if app_l < 0.65 else ("#EAB308" if app_l < 0.85 else "#EF4444")
@@ -565,11 +566,28 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                     self._last_app_color = app_color
                 self.app_meter_bar.set(app_l)
 
-                mic_color = "#0284C7" if mic_l < 0.65 else ("#EAB308" if mic_l < 0.85 else "#EF4444")
-                if getattr(self, "_last_mic_color", None) != mic_color:
-                    self.mic_meter_bar.configure(progress_color=mic_color)
-                    self._last_mic_color = mic_color
-                self.mic_meter_bar.set(mic_l)
+                if is_discord_muted:
+                    if getattr(self, "_last_mic_muted_state", None) is not True:
+                        self._last_mic_muted_state = True
+                        self.mic_meter_title.configure(
+                            text=f"🎤 {t('record.microphone')} [{t('record.muted')} 🔇]:",
+                            text_color="#EF4444",
+                        )
+                        self.mic_meter_bar.configure(progress_color="#EF4444")
+                        self._last_mic_color = "#EF4444"
+                    self.mic_meter_bar.set(0.0)
+                else:
+                    if getattr(self, "_last_mic_muted_state", None) is not False:
+                        self._last_mic_muted_state = False
+                        self.mic_meter_title.configure(
+                            text=f"🎤 {t('record.microphone')}:",
+                            text_color="#94A3B8",
+                        )
+                    mic_color = "#0284C7" if mic_l < 0.65 else ("#EAB308" if mic_l < 0.85 else "#EF4444")
+                    if getattr(self, "_last_mic_color", None) != mic_color:
+                        self.mic_meter_bar.configure(progress_color=mic_color)
+                        self._last_mic_color = mic_color
+                    self.mic_meter_bar.set(mic_l)
         except Exception:
             pass
         self._meter_timer = self.after(60, self._update_audio_meters)
@@ -825,7 +843,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             if hasattr(self, "target_prog_lbl"):
                 self.target_prog_lbl.configure(text=t("record.target_app"))
                 self.app_meter_title.configure(text="🔊 " + t("record.app_sound") + ":")
-                self.mic_meter_title.configure(text="🎤 " + t("record.microphone") + ":")
+                self._last_mic_muted_state = None
+                self.mic_meter_title.configure(text="🎤 " + t("record.microphone") + ":", text_color="#94A3B8")
                 self._refresh_audio_targets()
             self._render_rec_status(*self.last_rec_status)
 

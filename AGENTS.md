@@ -31,6 +31,7 @@ League Voice Recorder/
 ├── app/                    # Core Python application package
 │   ├── __init__.py         # Package marker
 │   ├── config.py           # Configuration loader, saver, and path resolver
+│   ├── discord_ipc.py      # Discord Local IPC client (live mute/deafen tracking)
 │   ├── i18n.py             # Internationalization and community translation loader
 │   ├── record.py           # LeagueRecorder engine (WASAPI capture & FFmpeg alignment)
 │   ├── native_audio.py     # Native WASAPI audio capture (Discord loopback & mic)
@@ -45,9 +46,10 @@ League Voice Recorder/
 │   ├── en.json             # English (default fallback)
 │   └── hu.json             # Hungarian
 │
-├── tests/                  # Automated test suite (33 unittests)
+├── tests/                  # Automated test suite (40 unittests)
 │   ├── __init__.py
 │   ├── test_config.py      # Config defaults, path resolution, and directory creation
+│   ├── test_discord_ipc.py # Discord Local IPC & mute silence injection
 │   ├── test_i18n.py        # Locale discovery, translation lookup, and key parity
 │   ├── test_recorder.py    # FFmpeg sample-accurate offset alignment & replay guard
 │   ├── test_replay_sync.py # ROFL Game ID extraction & volume clamping
@@ -152,6 +154,7 @@ Responsible for live match detection, native WASAPI voice capture, and audio exp
 - **Native WASAPI Capture (`native_audio.py`)**:
   - Captures Discord voice chat directly via Windows WASAPI Process Loopback.
   - Captures player microphone via sounddevice.
+  - Tracks Discord mute & deafen state in real time via local IPC (\\.\pipe\discord-ipc-*). When muted, feeds synchronized silence bytes to keep timeline aligned.
   - Automatically mixes and normalizes both streams into sample-accurate <GameID>.mp3.
 
 ### 3.3 `play_replay.py` (`ReplaySynchronizer`)

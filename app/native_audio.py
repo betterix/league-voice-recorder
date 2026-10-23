@@ -16,6 +16,7 @@ import numpy as np
 import psutil
 
 from app.config import get_ffmpeg_path
+from app.discord_ipc import DiscordMuteWatcher
 
 
 def scale_vu(peak):
@@ -225,12 +226,30 @@ class NativeAudioRecorder:
         self._mic_buffer = collections.deque()
         self._delay_sec = 0.30
 
+        # Discord local IPC mute watcher
+        self.discord_mute_watcher = DiscordMuteWatcher(
+            on_mute_change=self._on_discord_mute_change,
+            log_callback=self.log,
+        )
+        self.discord_mute_watcher.start()
+
         # Background monitoring for VU meters (runs non-blocking in background thread)
         self._cached_resolved_pid = None
         self._last_resolved_time = 0.0
         self._monitor_stream = None
         self._idle_monitor_thread = None
         self._stop_idle_monitor_event = threading.Event()
+
+    def _on_discord_mute_change(self, is_muted):
+        """Callback triggered when Discord mute/deafen state changes."""
+        if is_muted:
+            self.current_mic_level = 0.0
+
+    def is_discord_muted(self):
+        """Returns True if the user is currently muted or deafened in Discord."""
+        if hasattr(self, "discord_mute_watcher") and self.discord_mute_watcher:
+            return bool(self.discord_mute_watcher.is_muted)
+        return False
 
     def log(self, message):
         print(f"[NativeRecorder] {message}")
@@ -251,6 +270,9 @@ class NativeAudioRecorder:
 
             def monitor_cb(indata, frames, time_info, status):
                 try:
+                    if self.is_discord_muted():
+                        self.current_mic_level = 0.0
+                        return
                     floats = np.frombuffer(indata, dtype=np.float32)
                     if len(floats) > 0:
                         peak = float(np.max(np.abs(floats)))
@@ -340,6 +362,11 @@ class NativeAudioRecorder:
 
     def close(self):
         self._stop_idle_monitor()
+        if hasattr(self, "discord_mute_watcher") and self.discord_mute_watcher:
+            try:
+                self.discord_mute_watcher.stop()
+            except Exception:
+                pass
         if self.is_recording:
             try:
                 self.stop_and_finalize("closed")
@@ -349,6 +376,8 @@ class NativeAudioRecorder:
     def __del__(self):
         try:
             self._stop_idle_monitor()
+            if hasattr(self, "discord_mute_watcher") and self.discord_mute_watcher:
+                self.discord_mute_watcher.stop()
         except Exception:
             pass
 
@@ -361,6 +390,9 @@ class NativeAudioRecorder:
         if not self.is_recording:
             if self._idle_monitor_thread is None or not self._idle_monitor_thread.is_alive():
                 self._start_idle_monitor()
+
+        if self.is_discord_muted():
+            self.current_mic_level = 0.0
 
         scaled_app = scale_vu(self.current_app_level)
         scaled_mic = scale_vu(self.current_mic_level)
@@ -453,14 +485,19 @@ class NativeAudioRecorder:
 
             def mic_callback(indata, frames, time_info, status):
                 if not self.is_paused and self.is_recording:
-                    self._mic_queue.put(bytes(indata))
-                    try:
-                        floats = np.frombuffer(indata, dtype=np.float32)
-                        if len(floats) > 0:
-                            peak = float(np.max(np.abs(floats)))
-                            self.current_mic_level = max(peak, self.current_mic_level * 0.85)
-                    except Exception:
-                        pass
+                    if self.is_discord_muted():
+                        # Inject silence zeros while maintaining exact frame timeline alignment
+                        self._mic_queue.put(b"\x00" * len(indata))
+                        self.current_mic_level = 0.0
+                    else:
+                        self._mic_queue.put(bytes(indata))
+                        try:
+                            floats = np.frombuffer(indata, dtype=np.float32)
+                            if len(floats) > 0:
+                                peak = float(np.max(np.abs(floats)))
+                                self.current_mic_level = max(peak, self.current_mic_level * 0.85)
+                        except Exception:
+                            pass
 
             # Pause monitor stream if active to take exclusive stream
             if self._monitor_stream:
