@@ -263,35 +263,40 @@ class NativeAudioRecorder:
         ffmpeg_cmd = get_ffmpeg_path()
         cmd = [ffmpeg_cmd, "-y"]
 
+        filter_parts = []
         if discord_ok and mic_ok:
             cmd.extend(["-i", self.discord_wav_path, "-i", self.mic_wav_path])
-            cmd.extend(["-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=0[aout]", "-map", "[aout]"])
+            filter_parts.append("[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=0")
         elif discord_ok:
-            cmd.extend(["-i", self.discord_wav_path, "-map", "a"])
+            cmd.extend(["-i", self.discord_wav_path])
+            filter_parts.append("[0:a]anull")
         else:
-            cmd.extend(["-i", self.mic_wav_path, "-map", "a"])
+            cmd.extend(["-i", self.mic_wav_path])
+            filter_parts.append("[0:a]anull")
 
-        # Offset alignment
+        # Offset alignment chained directly inside filter_complex
         if initial_offset < -0.005:
-            cmd.extend(["-ss", f"{abs(initial_offset):.3f}"])
+            filter_parts.append(f"atrim=start={abs(initial_offset):.3f},asetpts=PTS-STARTPTS")
         elif initial_offset > 0.005:
             delay_ms = int(initial_offset * 1000)
-            # If using amix, adelay is chained or applied
-            cmd.extend(["-af", f"adelay=delays={delay_ms}:all=1"])
+            filter_parts.append(f"adelay=delays={delay_ms}:all=1")
 
-        cmd.extend(["-q:a", "0", mp3_path])
+        filter_chain = ",".join(filter_parts) + "[aout]"
+        cmd.extend(["-filter_complex", filter_chain, "-map", "[aout]", "-q:a", "0", mp3_path])
 
         try:
-            subprocess.run(
+            res = subprocess.run(
                 cmd,
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
+            if res.returncode != 0:
+                self.log(f"FFmpeg mixing error: {res.stderr.strip()[:300]}")
+                return None
             self.log(f"Successfully mixed and saved: {os.path.basename(mp3_path)}")
         except Exception as e:
-            self.log(f"FFmpeg mixing error: {e}")
+            self.log(f"FFmpeg execution error: {e}")
             return None
         finally:
             # Clean up temporary WAV files
