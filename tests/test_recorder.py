@@ -12,6 +12,7 @@ class TestRecorderModule(unittest.TestCase):
         self.print_patch.start()
         self.temp_dir = tempfile.TemporaryDirectory()
         self.config = {
+            "recording_mode": "obs",
             "record_folder": self.temp_dir.name,
             "obs_host": "localhost",
             "obs_port": 4455,
@@ -22,6 +23,7 @@ class TestRecorderModule(unittest.TestCase):
         self.recorder = LeagueRecorder(self.config, log_callback=lambda msg: None)
 
     def tearDown(self):
+        self.recorder.abort_recording()
         self.print_patch.stop()
         self.temp_dir.cleanup()
 
@@ -168,6 +170,26 @@ class TestRecorderModule(unittest.TestCase):
                 self.recorder.start_recording(initial_game_time=game_time)
         self.assertTrue(self.recorder.start_recording.called)
 
+
+    def test_native_mode_recording_lifecycle(self):
+        """Verify native recording mode starts and stops NativeAudioRecorder without OBS."""
+        native_cfg = {
+            "recording_mode": "native",
+            "record_folder": self.temp_dir.name,
+        }
+        rec = LeagueRecorder(native_cfg, log_callback=lambda msg: None)
+        rec.check_if_game_is_replay = MagicMock(return_value=False)
+        rec.native_recorder.start_recording = MagicMock()
+        rec.native_recorder.stop_and_finalize = MagicMock(return_value=os.path.join(self.temp_dir.name, "123.mp3"))
+
+        rec.start_recording(initial_game_time=5.0)
+        self.assertTrue(rec.recording)
+        self.assertTrue(rec.native_recorder.start_recording.called)
+        self.assertIsNone(rec.obs_client)
+
+        rec.stop_recording_and_rename()
+        self.assertFalse(rec.recording)
+        self.assertTrue(rec.native_recorder.stop_and_finalize.called)
 
 if __name__ == "__main__":
     unittest.main()

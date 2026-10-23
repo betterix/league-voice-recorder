@@ -60,6 +60,8 @@ jobs:
             --file-description="League Voice Recorder & Replay Synchronizer" `
             --copyright="Copyright (c) 2026 betterix. GPL-3.0 License." `
             --enable-plugin=tk-inter `
+            --include-package=proctap `
+            --include-package=sounddevice `
             --tcl-library-dir="$tcl_dir" `
             --tk-library-dir="$tk_dir" `
             --include-data-dir=locales=locales `

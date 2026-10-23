@@ -21,10 +21,12 @@ classifiers = [
 dependencies = [
     "customtkinter>=6.0.0",
     "obsws-python>=1.7.0",
+    "proc-tap>=1.1.1",
     "psutil>=5.9.0",
     "python-dotenv>=1.2.4",
     "python-vlc>=3.0.0",
     "requests>=2.31.0",
+    "sounddevice>=0.5.6",
     "urllib3>=2.0.0",
 ]
 

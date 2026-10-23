@@ -18,7 +18,8 @@
         "client_offline": "⚪ Offline",
         "ready": "🟢 Kész",
         "not_found": "🔴 Nem található",
-        "refresh": "🔄 Frissítés"
+        "refresh": "🔄 Frissítés",
+        "discord": "Discord:"
     },
     "record": {
         "title": "🎙️ SCRIM FELVÉTEL",
@@ -106,7 +107,10 @@
         "obs_setup_title": "OBS automatikus konfiguráció",
         "obs_setup_success": "✅ Az OBS jelenet ('{scene}') sikeresen beállítva!\n\n• Discord hang: Engedélyezve ('Az ablak címének egyeznie kell')\n• Játékos mikrofonja: Engedélyezve és visszahangosítva\n• Asztali hang: Némítva (csak a hangkommunikáció rögzül)",
         "obs_setup_error": "❌ Nem sikerült kapcsolódni az OBS-hez ({host}:{port})!\n\nKérjük, ellenőrizd, hogy fut-e az OBS és helyes-e a megadott jelszó.",
-        "obs_setup_partial": "⚠️ Nem sikerült teljesen beállítani a(z) '{scene}' jelenetet. Részletekért lásd a naplót."
+        "obs_setup_partial": "⚠️ Nem sikerült teljesen beállítani a(z) '{scene}' jelenetet. Részletekért lásd a naplót.",
+        "recording_engine": "Hangrögzítő motor:",
+        "mode_native": "Közvetlen Windows WASAPI (Discord + Mikrofon, OBS nélkül)",
+        "mode_obs": "OBS Studio (WebSocket)"
     },
     "logs": {
         "obs_connected": "✅ Sikeres csatlakozás az OBS-hez! ({host}:{port})",

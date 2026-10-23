@@ -14,6 +14,7 @@ from app.config import (
 class TestConfigModule(unittest.TestCase):
     def test_default_config_fields(self):
         cfg = get_default_config()
+        self.assertIn("recording_mode", cfg)
         self.assertIn("obs_host", cfg)
         self.assertIn("obs_port", cfg)
         self.assertIn("obs_password", cfg)

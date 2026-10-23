@@ -18,7 +18,8 @@
         "client_offline": "⚪ Offline",
         "ready": "🟢 Ready",
         "not_found": "🔴 Not Found",
-        "refresh": "🔄 Refresh"
+        "refresh": "🔄 Refresh",
+        "discord": "Discord:"
     },
     "record": {
         "title": "🎙️ SCRIM RECORDER",
@@ -106,7 +107,10 @@
         "obs_setup_title": "OBS Auto-Setup",
         "obs_setup_success": "✅ OBS scene ('{scene}') configured successfully!\n\n• Discord Audio: Enabled ('Window title must match')\n• Player Microphone: Enabled & Unmuted in scene\n• Desktop Audio: Muted (only voice is recorded)",
         "obs_setup_error": "❌ Failed to connect to OBS ({host}:{port})!\n\nPlease verify OBS is running and password is correct.",
-        "obs_setup_partial": "⚠️ Could not fully configure '{scene}' scene. Check logs for details."
+        "obs_setup_partial": "⚠️ Could not fully configure '{scene}' scene. Check logs for details.",
+        "recording_engine": "Recording Engine:",
+        "mode_native": "Direct Windows WASAPI (Discord + Mic, No OBS)",
+        "mode_obs": "OBS Studio (WebSocket)"
     },
     "logs": {
         "obs_connected": "✅ Connected to OBS successfully! ({host}:{port})",

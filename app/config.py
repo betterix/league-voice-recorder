@@ -88,6 +88,7 @@ def resolve_path(path_str):
 def get_clean_default_config():
     """Builds a clean, safe template config with BLANK password for distribution and new setups."""
     return {
+        "recording_mode": "native",
         "obs_host": "localhost",
         "obs_port": 4455,
         "obs_password": "",
@@ -111,6 +112,7 @@ def get_default_config():
         rec_folder = default_rec_dir
 
     return {
+        "recording_mode": os.getenv("RECORDING_MODE", "native"),
         "obs_host": os.getenv("OBS_HOST", "localhost"),
         "obs_port": int(os.getenv("OBS_PORT", "4455")),
         "obs_password": os.getenv("OBS_PASSWORD", ""),

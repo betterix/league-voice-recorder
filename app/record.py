@@ -21,6 +21,7 @@ import urllib3
 
 from app.config import get_ffmpeg_path, load_config
 from app.i18n import t
+from app.native_audio import NativeAudioRecorder
 
 urllib3.disable_warnings()
 
@@ -95,11 +96,13 @@ class LeagueRecorder:
         self.log_callback = log_callback
         self.status_callback = status_callback
 
+        self.record_folder = self.config.get("record_folder", os.path.abspath("recordings"))
+        self.recording_mode = self.config.get("recording_mode", "native")
+        self.native_recorder = NativeAudioRecorder(record_folder=self.record_folder, log_callback=self.log)
         self.obs_host = self.config.get("obs_host", "localhost")
         self.obs_port = int(self.config.get("obs_port", 4455))
         self.obs_password = self.config.get("obs_password", "")
         self.scene_name = self.config.get("scene_name", "Discord Only")
-        self.record_folder = self.config.get("record_folder", os.path.abspath("recordings"))
         self.check_time = float(self.config.get("check_time", 0.2))
 
         os.makedirs(self.record_folder, exist_ok=True)
@@ -423,11 +426,17 @@ class LeagueRecorder:
         if not self.recording:
             return
         self.recording = False
-        if self.obs_client:
+        if self.recording_mode == "native":
             try:
-                self.obs_client.stop_record()
+                self.native_recorder.stop_and_finalize("aborted")
             except Exception:
                 pass
+        else:
+            if self.obs_client:
+                try:
+                    self.obs_client.stop_record()
+                except Exception:
+                    pass
         self.log(t("logs.replay_abort"))
 
     def set_scene(self):
@@ -452,6 +461,28 @@ class LeagueRecorder:
             self.log(t("logs.replay_guard"))
             return
 
+        t_start = time.perf_counter()
+
+        if self.recording_mode == "native":
+            session_id = str(int(time.time()))
+            self.native_recorder.start_recording(session_id)
+            self.recording = True
+            self.obs_is_paused = False
+
+            t_now = time.perf_counter()
+            ref_time = t_poll_start if t_poll_start is not None else t_start
+            delay = max(0.0, t_now - ref_time)
+            base_time = float(initial_game_time) if initial_game_time is not None else 0.0
+            self.first_game_time = base_time + delay
+            self.last_game_time = self.first_game_time
+            self.real_game_id = None
+            self.log(t("logs.match_detected", time=self.first_game_time))
+            init_time = max(0.0, self.first_game_time)
+            init_time_str = f"{int(init_time // 60):02d}:{int(init_time % 60):02d}"
+            self.update_status("RECORDING", t("record.live_match_time", time=init_time_str))
+            threading.Thread(target=self.fetch_game_id_background, daemon=True).start()
+            return
+
         if not self.obs_client and not self.connect_obs():
             self.log(
                 t(
@@ -463,7 +494,6 @@ class LeagueRecorder:
             )
             return
 
-        t_start = time.perf_counter()
         try:
             self.obs_client.start_record()
             self.recording = True
@@ -558,6 +588,44 @@ class LeagueRecorder:
 
         self.log(t("logs.rec_stop"))
         self.update_status("SAVING", t("record.saving_audio"))
+
+        if self.recording_mode == "native":
+            self.recording = False
+            # Quick final attempt to retrieve real Game ID if not found yet
+            if not self.real_game_id:
+                try:
+                    install_dir = find_league_install_dir()
+                    if install_dir:
+                        lockfile_path = os.path.join(install_dir, "lockfile")
+                        if os.path.exists(lockfile_path):
+                            with open(lockfile_path, "r") as f:
+                                data = f.read().split(":")
+                            port = data[2]
+                            password = data[3]
+                            auth = base64.b64encode(f"riot:{password}".encode()).decode()
+                            r = requests.get(
+                                f"https://127.0.0.1:{port}/lol-gameflow/v1/session",
+                                headers={"Authorization": f"Basic {auth}"},
+                                verify=False,
+                                timeout=1.5,
+                            )
+                            gid = r.json().get("gameData", {}).get("gameId")
+                            if gid and gid > 0:
+                                self.real_game_id = str(gid)
+                                self.log(t("logs.game_id_found", game_id=self.real_game_id))
+                except Exception:
+                    pass
+
+            base_name = self.real_game_id if self.real_game_id else f"Scrim_{time.strftime('%Y%m%d_%H%M%S')}"
+            final_mp3 = self.native_recorder.stop_and_finalize(base_name, initial_offset=self.first_game_time)
+            if final_mp3:
+                self.log(t("logs.saved_mp3", path=final_mp3))
+                self.update_status("IDLE", f"{os.path.basename(final_mp3)}")
+            else:
+                self.update_status("IDLE", "")
+            self.first_game_time = 0.0
+            return
+
         output_path = None
 
         if self.obs_client:
@@ -640,12 +708,13 @@ class LeagueRecorder:
         self.log(t("logs.recorder_started"))
         self.update_status("WATCHING", t("record.waiting_for_match"))
 
-        # Initial OBS connection & pre-configuration
-        if not self.obs_client:
-            self.connect_obs()
-        else:
-            self.auto_configure_obs()
-            self.set_scene()
+        # Initial OBS connection & pre-configuration (only if using OBS mode)
+        if self.recording_mode == "obs":
+            if not self.obs_client:
+                self.connect_obs()
+            else:
+                self.auto_configure_obs()
+                self.set_scene()
 
         consecutive_misses = 0
         pause_tick_count = 0
@@ -711,20 +780,28 @@ class LeagueRecorder:
                         if game_time == self.last_game_time and game_time > 0:
                             pause_tick_count += 1
                             if pause_tick_count >= 5 and not self.obs_is_paused:
-                                try:
-                                    self.obs_client.pause_record()
+                                if self.recording_mode == "native":
+                                    self.native_recorder.pause()
                                     self.obs_is_paused = True
                                     self.log(t("logs.pause"))
                                     p_time_val = max(0.0, game_time)
-                                    p_time_str = (
-                                        f"{int(p_time_val // 60):02d}:{int(p_time_val % 60):02d}"
-                                    )
-                                    self.update_status(
-                                        "PAUSED",
-                                        t("record.paused_time", time=p_time_str),
-                                    )
-                                except Exception as e:
-                                    self.log(t("logs.pause_failed", error=e))
+                                    p_time_str = f"{int(p_time_val // 60):02d}:{int(p_time_val % 60):02d}"
+                                    self.update_status("PAUSED", t("record.paused_time", time=p_time_str))
+                                else:
+                                    try:
+                                        self.obs_client.pause_record()
+                                        self.obs_is_paused = True
+                                        self.log(t("logs.pause"))
+                                        p_time_val = max(0.0, game_time)
+                                        p_time_str = (
+                                            f"{int(p_time_val // 60):02d}:{int(p_time_val % 60):02d}"
+                                        )
+                                        self.update_status(
+                                            "PAUSED",
+                                            t("record.paused_time", time=p_time_str),
+                                        )
+                                    except Exception as e:
+                                        self.log(t("logs.pause_failed", error=e))
 
                         elif game_time > self.last_game_time:
                             pause_tick_count = 0
@@ -740,13 +817,19 @@ class LeagueRecorder:
                                 detail_text = t("record.live_match_time", time=time_str)
 
                             if self.obs_is_paused:
-                                try:
-                                    self.obs_client.resume_record()
+                                if self.recording_mode == "native":
+                                    self.native_recorder.resume()
                                     self.obs_is_paused = False
                                     self.log(t("logs.unpause"))
                                     self.update_status("RECORDING", detail_text)
-                                except Exception as e:
-                                    self.log(t("logs.unpause_failed", error=e))
+                                else:
+                                    try:
+                                        self.obs_client.resume_record()
+                                        self.obs_is_paused = False
+                                        self.log(t("logs.unpause"))
+                                        self.update_status("RECORDING", detail_text)
+                                    except Exception as e:
+                                        self.log(t("logs.unpause_failed", error=e))
                             else:
                                 if int(game_time) != int(self.last_game_time):
                                     self.update_status("RECORDING", detail_text)
