@@ -33,6 +33,12 @@ uv run --python 3.14.8 --with nuitka python -m nuitka ^
     --windows-console-mode=disable ^
     --assume-yes-for-downloads ^
     --windows-icon-from-ico=icon.ico ^
+    --company-name="betterix" ^
+    --product-name="League Voice Recorder" ^
+    --file-version=0.2.0.0 ^
+    --product-version=0.2.0.0 ^
+    --file-description="League Voice Recorder & Replay Synchronizer" ^
+    --copyright="Copyright (c) 2026 betterix. GPL-3.0 License." ^
     --enable-plugin=tk-inter ^
     --tcl-library-dir="%TCL_DIR%" ^
     --tk-library-dir="%TK_DIR%" ^
