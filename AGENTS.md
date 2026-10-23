@@ -9,7 +9,7 @@ Welcome to the **League Voice Recorder** project documentation. This document is
 In competitive League of Legends scrimmages and team matches, reviewing gameplay with synchronized team communications is critical. 
 
 This project solves two primary problems:
-1. **Automated Scrim Voice Recording (`record.py`)**: Monitors the active League of Legends client. When a match starts, it automatically switches OBS Studio to a designated scene (`"Discord Only"`, capturing team Discord voice + player microphone) and triggers recording. It dynamically pauses/unpauses recording if the game pauses, stops when the game ends, extracts the official Riot Game ID, and converts the recording into a compressed `.mp3` file named `<GameID>.mp3`.
+1. **Automated Scrim Voice Recording (`record.py`)**: Monitors the active League of Legends client. When a match starts, it automatically captures team Discord voice chat (via WASAPI loopback) along with the player's microphone and records them without requiring OBS Studio. It dynamically pauses/unpauses recording if the game pauses, stops when the game ends, extracts the official Riot Game ID, and converts the recording into a compressed `.mp3` file named `<GameID>.mp3`.
 2. **Automated Replay Audio Synchronization (`play_replay.py`)**: When the user opens any `.rofl` replay in the League client, it detects the running replay, parses the Game ID from the file name, locates the matching `<GameID>.mp3`, and plays the audio in VLC while continuously synchronizing playback time and playback speed (0.5x, 1x, 2x, 4x, etc.) with the League replay playback API.
 
 The project provides both:
@@ -32,7 +32,8 @@ League Voice Recorder/
 │   ├── __init__.py         # Package marker
 │   ├── config.py           # Configuration loader, saver, and path resolver
 │   ├── i18n.py             # Internationalization and community translation loader
-│   ├── record.py           # LeagueRecorder engine (OBS automation & FFmpeg alignment)
+│   ├── record.py           # LeagueRecorder engine (WASAPI capture & FFmpeg alignment)
+│   ├── native_audio.py     # Native WASAPI audio capture (Discord loopback & mic)
 │   └── play_replay.py      # ReplaySynchronizer engine (process watcher & VLC sync)
 │
 ├── assets/                 # Visual branding assets (icons, logos)
@@ -78,11 +79,11 @@ flowchart TD
         FFmpegHelper["FFmpeg Path Resolver"]
     end
 
-    subgraph Recorder_Engine ["Recorder Engine (app/record.py)"]
+    subgraph Recorder_Engine ["Recorder Engine (app/record.py & app/native_audio.py)"]
         LeagueRec["LeagueRecorder"]
         LiveAPI["Live Client Data (:2999)"]
         LCULockfile["LCU Lockfile / Gameflow API"]
-        OBSWS["OBS WebSocket (obsws-python)"]
+        NativeWASAPI["Native WASAPI (Discord Loopback + Mic)"]
         FFmpegProc["FFmpeg MP3 Converter"]
     end
 
@@ -104,7 +105,7 @@ flowchart TD
 
     LeagueRec --> LiveAPI
     LeagueRec --> LCULockfile
-    LeagueRec --> OBSWS
+    LeagueRec --> NativeWASAPI
     LeagueRec --> FFmpegProc
     FFmpegProc --> AudioFiles
 
@@ -124,11 +125,11 @@ The desktop GUI application built using `customtkinter`.
   - `🔴 Start Recording Watcher` / `⏹ Stop Recording Watcher`: Toggles the recording watcher thread (`LeagueRecorder.run_loop()`).
   - `▶ Start Replay Auto-Sync` / `⏹ Stop Replay Auto-Sync`: Toggles the replay sync watcher thread (`ReplaySynchronizer.run_loop()`). No manual file selection is needed; it detects and synchronizes automatically.
 - **Header & System Health**:
-  - Real-time diagnostics for OBS WebSocket, League Client process, VLC 64-bit engine, and FFmpeg binary.
+  - Real-time diagnostics for Discord voice capture, League Client process, VLC 64-bit engine, and FFmpeg binary.
 - **Tabbed Center Area**:
   - **Activity Log**: Thread-safe monospace log terminal displaying live events with timestamps and auto-scroll.
   - **Scrim Recordings**: File manager showing recorded `.mp3` files, sizes, creation timestamps, with "Play in VLC" and "Open in Explorer" actions.
-  - **Settings**: Configuration editor for OBS host/port/password/scene, directory paths, and polling intervals with instant connection testing.
+  - **Settings**: Configuration editor for recording folder, VLC directory, polling intervals, replay volume, and interface language.
 
 ### 3.2 `record.py` (`LeagueRecorder`)
 Responsible for live match detection, OBS recording lifecycle, and audio export.

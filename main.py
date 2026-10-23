@@ -149,10 +149,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 pass
 
     def _get_engine_display_text(self):
-        curr_mode = self.config.get("recording_mode", "native")
-        if curr_mode == "native":
-            return "🎙️ Engine: Direct WASAPI (Discord + Mic)"
-        return t("record.target_scene", scene=self.config.get("scene_name", "Discord Only"))
+        return t("record.target_scene", scene="Discord + Mic")
 
     def _setup_ui(self):
         # Configure Grid Layout
@@ -189,13 +186,14 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         health_frame = ctk.CTkFrame(header_frame, fg_color="#0F172A", corner_radius=8)
         health_frame.grid(row=1, column=0, padx=16, pady=(0, 12), sticky="ew")
 
-        self.obs_badge = ctk.CTkLabel(
+        self.discord_badge = ctk.CTkLabel(
             health_frame,
-            text=f"{t('health.obs')} {t('health.checking')}",
+            text=f"{t('health.discord')} {t('health.checking')}",
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color="#CBD5E1",
         )
-        self.obs_badge.pack(side="left", padx=12, pady=6)
+        self.discord_badge.pack(side="left", padx=12, pady=6)
+        self.obs_badge = self.discord_badge
 
         self.lol_badge = ctk.CTkLabel(
             health_frame,
@@ -688,97 +686,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         scroll.grid_columnconfigure(1, weight=1)
         scroll.grid_columnconfigure(2, weight=0)
 
-        # --- Recording Engine Settings ---
-        self.rec_mode_lbl = ctk.CTkLabel(scroll, text=t("settings.recording_engine"))
-        self.rec_mode_lbl.grid(row=0, column=0, padx=10, pady=(6, 8), sticky="w")
-
-        curr_mode = self.config.get("recording_mode", "native")
-        self.native_label = t("settings.mode_native")
-        self.obs_label = t("settings.mode_obs")
-        curr_mode_label = self.native_label if curr_mode == "native" else self.obs_label
-
-        self.rec_mode_menu = ctk.CTkOptionMenu(
-            scroll,
-            values=[self.native_label, self.obs_label],
-            command=self._on_recording_mode_changed,
-            fg_color="#334155",
-            button_color="#0284C7",
-            button_hover_color="#0369A1",
-        )
-        self.rec_mode_menu.set(curr_mode_label)
-        self.rec_mode_menu.grid(row=0, column=1, columnspan=2, padx=10, pady=(6, 8), sticky="ew")
-
-        # --- OBS Settings ---
-        self.obs_title_lbl = ctk.CTkLabel(
-            scroll,
-            text=t("settings.obs_title"),
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color="#38BDF8",
-        )
-        self.obs_title_lbl.grid(row=1, column=0, columnspan=3, padx=10, pady=(12, 8), sticky="w")
-
-        # Host
-        self.obs_host_lbl = ctk.CTkLabel(scroll, text=t("settings.host"))
-        self.obs_host_lbl.grid(row=2, column=0, padx=10, pady=6, sticky="w")
-        self.obs_host_entry = ctk.CTkEntry(scroll)
-        self.obs_host_entry.insert(0, str(self.config.get("obs_host", "localhost")))
-        self.obs_host_entry.grid(row=2, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
-
-        # Port
-        self.obs_port_lbl = ctk.CTkLabel(scroll, text=t("settings.port"))
-        self.obs_port_lbl.grid(row=3, column=0, padx=10, pady=6, sticky="w")
-        self.obs_port_entry = ctk.CTkEntry(scroll)
-        self.obs_port_entry.insert(0, str(self.config.get("obs_port", 4455)))
-        self.obs_port_entry.grid(row=3, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
-
-        # Password
-        self.obs_pw_lbl = ctk.CTkLabel(scroll, text=t("settings.password"))
-        self.obs_pw_lbl.grid(row=4, column=0, padx=10, pady=6, sticky="w")
-        self.obs_pw_entry = ctk.CTkEntry(scroll, show="*")
-        self.obs_pw_entry.insert(0, str(self.config.get("obs_password", "")))
-        self.obs_pw_entry.grid(row=4, column=1, padx=(10, 4), pady=6, sticky="ew")
-
-        self.show_pw_var = tk.BooleanVar(value=False)
-        self.show_pw_btn = ctk.CTkCheckBox(
-            scroll,
-            text=t("settings.show_pw"),
-            width=60,
-            variable=self.show_pw_var,
-            command=self._toggle_password_visibility,
-        )
-        self.show_pw_btn.grid(row=4, column=2, padx=(4, 10), pady=6, sticky="w")
-
-        # Scene Name
-        self.obs_scene_lbl = ctk.CTkLabel(scroll, text=t("settings.scene_name"))
-        self.obs_scene_lbl.grid(row=5, column=0, padx=10, pady=6, sticky="w")
-        self.obs_scene_entry = ctk.CTkEntry(scroll)
-        self.obs_scene_entry.insert(0, str(self.config.get("scene_name", "Discord Only")))
-        self.obs_scene_entry.grid(row=5, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
-
-        # OBS Action Buttons (Test & Auto-Setup)
-        obs_btn_frame = ctk.CTkFrame(scroll, fg_color="transparent")
-        obs_btn_frame.grid(row=6, column=1, columnspan=2, padx=10, pady=(6, 16), sticky="w")
-
-        self.test_obs_btn = ctk.CTkButton(
-            obs_btn_frame,
-            text=t("settings.test_obs"),
-            height=32,
-            fg_color="#334155",
-            hover_color="#475569",
-            command=self._test_obs_connection,
-        )
-        self.test_obs_btn.pack(side="left", padx=(0, 8))
-
-        self.setup_obs_btn = ctk.CTkButton(
-            obs_btn_frame,
-            text=t("settings.auto_setup_obs"),
-            height=32,
-            fg_color="#0284C7",
-            hover_color="#0369A1",
-            command=self._auto_setup_obs_scene,
-        )
-        self.setup_obs_btn.pack(side="left", padx=0)
-
         # --- Directory Settings ---
         self.dir_title_lbl = ctk.CTkLabel(
             scroll,
@@ -786,16 +693,16 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color="#38BDF8",
         )
-        self.dir_title_lbl.grid(row=7, column=0, columnspan=3, padx=10, pady=(12, 8), sticky="w")
+        self.dir_title_lbl.grid(row=0, column=0, columnspan=3, padx=10, pady=(12, 8), sticky="w")
 
         # Recordings Folder
         self.rec_folder_lbl = ctk.CTkLabel(scroll, text=t("settings.rec_folder"))
-        self.rec_folder_lbl.grid(row=8, column=0, padx=10, pady=6, sticky="w")
+        self.rec_folder_lbl.grid(row=1, column=0, padx=10, pady=6, sticky="w")
         self.rec_folder_entry = ctk.CTkEntry(scroll)
         self.rec_folder_entry.insert(
             0, str(self.config.get("record_folder", os.path.abspath("recordings")))
         )
-        self.rec_folder_entry.grid(row=8, column=1, padx=(10, 4), pady=6, sticky="ew")
+        self.rec_folder_entry.grid(row=1, column=1, padx=(10, 4), pady=6, sticky="ew")
 
         self.browse_rec_btn = ctk.CTkButton(
             scroll,
@@ -805,16 +712,16 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             hover_color="#475569",
             command=self._browse_rec_folder,
         )
-        self.browse_rec_btn.grid(row=8, column=2, padx=(4, 10), pady=6, sticky="w")
+        self.browse_rec_btn.grid(row=1, column=2, padx=(4, 10), pady=6, sticky="w")
 
         # VLC Directory
         self.vlc_dir_lbl = ctk.CTkLabel(scroll, text=t("settings.vlc_dir"))
-        self.vlc_dir_lbl.grid(row=9, column=0, padx=10, pady=6, sticky="w")
+        self.vlc_dir_lbl.grid(row=2, column=0, padx=10, pady=6, sticky="w")
         self.vlc_dir_entry = ctk.CTkEntry(scroll)
         self.vlc_dir_entry.insert(
             0, str(self.config.get("vlc_dir", r"C:\Program Files\VideoLAN\VLC"))
         )
-        self.vlc_dir_entry.grid(row=9, column=1, padx=(10, 4), pady=6, sticky="ew")
+        self.vlc_dir_entry.grid(row=2, column=1, padx=(10, 4), pady=6, sticky="ew")
 
         self.browse_vlc_btn = ctk.CTkButton(
             scroll,
@@ -824,21 +731,21 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             hover_color="#475569",
             command=self._browse_vlc_folder,
         )
-        self.browse_vlc_btn.grid(row=9, column=2, padx=(4, 10), pady=6, sticky="w")
+        self.browse_vlc_btn.grid(row=2, column=2, padx=(4, 10), pady=6, sticky="w")
 
         # Polling Interval
         self.check_time_lbl = ctk.CTkLabel(scroll, text=t("settings.check_interval"))
-        self.check_time_lbl.grid(row=10, column=0, padx=10, pady=6, sticky="w")
+        self.check_time_lbl.grid(row=3, column=0, padx=10, pady=6, sticky="w")
         self.check_time_entry = ctk.CTkEntry(scroll)
         self.check_time_entry.insert(0, str(self.config.get("check_time", 0.2)))
-        self.check_time_entry.grid(row=10, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
+        self.check_time_entry.grid(row=3, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
 
         # Replay Volume
         self.replay_vol_lbl = ctk.CTkLabel(scroll, text=t("settings.replay_volume"))
-        self.replay_vol_lbl.grid(row=11, column=0, padx=10, pady=6, sticky="w")
+        self.replay_vol_lbl.grid(row=4, column=0, padx=10, pady=6, sticky="w")
         self.replay_vol_entry = ctk.CTkEntry(scroll)
         self.replay_vol_entry.insert(0, str(self.config.get("replay_volume", 80)))
-        self.replay_vol_entry.grid(row=11, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
+        self.replay_vol_entry.grid(row=4, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
 
         # Language Selector
         self.lang_code_to_name = get_available_languages()
@@ -847,7 +754,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         current_display = self.lang_code_to_name.get(current_code, "English")
 
         self.lang_lbl = ctk.CTkLabel(scroll, text=t("settings.language"))
-        self.lang_lbl.grid(row=12, column=0, padx=10, pady=6, sticky="w")
+        self.lang_lbl.grid(row=5, column=0, padx=10, pady=6, sticky="w")
 
         self.lang_menu = ctk.CTkOptionMenu(
             scroll,
@@ -858,7 +765,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             button_hover_color="#0369A1",
         )
         self.lang_menu.set(current_display)
-        self.lang_menu.grid(row=12, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
+        self.lang_menu.grid(row=5, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
 
         # Save Button
         self.save_btn = ctk.CTkButton(
@@ -870,7 +777,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             hover_color="#0369A1",
             command=self._save_settings,
         )
-        self.save_btn.grid(row=13, column=0, columnspan=3, padx=10, pady=(20, 10), sticky="ew")
+        self.save_btn.grid(row=6, column=0, columnspan=3, padx=10, pady=(20, 10), sticky="ew")
 
     # ==========================================
     # I18N DYNAMIC TEXT REFRESH
@@ -938,26 +845,10 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self._refresh_recordings_list()
 
             # Settings tab
-            if hasattr(self, "rec_mode_lbl"):
-                self.rec_mode_lbl.configure(text=t("settings.recording_engine"))
-                curr_mode = self.config.get("recording_mode", "native")
-                native_l = t("settings.mode_native")
-                obs_l = t("settings.mode_obs")
-                self.rec_mode_menu.configure(values=[native_l, obs_l])
-                self.rec_mode_menu.set(native_l if curr_mode == "native" else obs_l)
             if hasattr(self, "rec_scene_lbl"):
                 self.rec_scene_lbl.configure(text=self._get_engine_display_text())
 
-            if hasattr(self, "obs_title_lbl"):
-                self.obs_title_lbl.configure(text=t("settings.obs_title"))
-                self.obs_host_lbl.configure(text=t("settings.host"))
-                self.obs_port_lbl.configure(text=t("settings.port"))
-                self.obs_pw_lbl.configure(text=t("settings.password"))
-                self.show_pw_btn.configure(text=t("settings.show_pw"))
-                self.obs_scene_lbl.configure(text=t("settings.scene_name"))
-                self.test_obs_btn.configure(text=t("settings.test_obs"))
-                self.setup_obs_btn.configure(text=t("settings.auto_setup_obs"))
-
+            if hasattr(self, "dir_title_lbl"):
                 self.dir_title_lbl.configure(text=t("settings.paths_title"))
                 self.rec_folder_lbl.configure(text=t("settings.rec_folder"))
                 self.browse_rec_btn.configure(text=t("settings.browse"))
@@ -1313,29 +1204,19 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         threading.Thread(target=self._run_health_checks_worker, daemon=True).start()
 
     def _run_health_checks_worker(self):
-        # 1. Check Recording Engine (Discord / OBS)
-        obs_ok = False
-        curr_mode = self.config.get("recording_mode", "native")
-        if curr_mode == "native":
-            try:
-                from app.native_audio import find_discord_root_pid
-                obs_ok = find_discord_root_pid() is not None
-            except Exception:
-                obs_ok = False
-        else:
-            try:
-                import obsws_python as obs
-
-                client = obs.ReqClient(
-                    host=self.config.get("obs_host", "localhost"),
-                    port=int(self.config.get("obs_port", 4455)),
-                    password=self.config.get("obs_password", ""),
-                    timeout=2,
-                )
-                client.get_version()
-                obs_ok = True
-            except Exception:
-                obs_ok = False
+        # 1. Check Discord Process & Audio
+        discord_ok = False
+        try:
+            from app.native_audio import find_discord_active_pid
+            if find_discord_active_pid() is not None:
+                discord_ok = True
+            else:
+                for proc in psutil.process_iter(["name"]):
+                    if (proc.info.get("name") or "").lower() == "discord.exe":
+                        discord_ok = True
+                        break
+        except Exception:
+            discord_ok = False
 
         # 2. Check League of Legends Client
         lol_ok = False
@@ -1365,7 +1246,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             ffmpeg_ok = False
 
         # Store state and apply to UI badges safely via main thread
-        self.health_state = (obs_ok, lol_ok, vlc_ok, ffmpeg_ok)
+        self.health_state = (discord_ok, lol_ok, vlc_ok, ffmpeg_ok)
         if not getattr(self, "_is_destroyed", False):
             try:
                 self.after(0, self._apply_health_badges)
@@ -1375,40 +1256,24 @@ class LeagueVoiceRecorderApp(ctk.CTk):
     def _apply_health_badges(self):
         if getattr(self, "_is_destroyed", False):
             return
-        obs_ok, lol_ok, vlc_ok, ffmpeg_ok = self.health_state
+        discord_ok, lol_ok, vlc_ok, ffmpeg_ok = self.health_state
+        discord_prefix = t("health.discord")
         lol_prefix = t("health.league")
         vlc_prefix = t("health.vlc")
         ffmpeg_prefix = t("health.ffmpeg")
 
-        curr_mode = self.config.get("recording_mode", "native")
-        if curr_mode == "native":
-            badge_prefix = t("health.discord")
-            if obs_ok is True:
-                self.obs_badge.configure(
-                    text=f"{badge_prefix} {t('health.ready')}", text_color="#4ADE80"
-                )
-            elif obs_ok is False:
-                self.obs_badge.configure(
-                    text=f"{badge_prefix} {t('health.client_offline')}", text_color="#94A3B8"
-                )
-            else:
-                self.obs_badge.configure(
-                    text=f"{badge_prefix} {t('health.checking')}", text_color="#CBD5E1"
-                )
+        if discord_ok is True:
+            self.discord_badge.configure(
+                text=f"{discord_prefix} {t('health.ready')}", text_color="#4ADE80"
+            )
+        elif discord_ok is False:
+            self.discord_badge.configure(
+                text=f"{discord_prefix} {t('health.client_offline')}", text_color="#94A3B8"
+            )
         else:
-            badge_prefix = t("health.obs")
-            if obs_ok is True:
-                self.obs_badge.configure(
-                    text=f"{badge_prefix} {t('health.connected')}", text_color="#4ADE80"
-                )
-            elif obs_ok is False:
-                self.obs_badge.configure(
-                    text=f"{badge_prefix} {t('health.offline')}", text_color="#F87171"
-                )
-            else:
-                self.obs_badge.configure(
-                    text=f"{badge_prefix} {t('health.checking')}", text_color="#CBD5E1"
-                )
+            self.discord_badge.configure(
+                text=f"{discord_prefix} {t('health.checking')}", text_color="#CBD5E1"
+            )
 
         if lol_ok is True:
             self.lol_badge.configure(
@@ -1542,20 +1407,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
     # ==========================================
     # SETTINGS TAB FUNCTIONS
     # ==========================================
-    def _on_recording_mode_changed(self, selected):
-        is_native = ("WASAPI" in selected or "Direct" in selected or "Közvetlen" in selected)
-        new_mode = "native" if is_native else "obs"
-        self.config["recording_mode"] = new_mode
-        if hasattr(self, "rec_scene_lbl"):
-            self.rec_scene_lbl.configure(text=self._get_engine_display_text())
-        self._check_system_health()
-
-    def _toggle_password_visibility(self):
-        if self.show_pw_var.get():
-            self.obs_pw_entry.configure(show="")
-        else:
-            self.obs_pw_entry.configure(show="*")
-
     def _browse_rec_folder(self):
         curr = self.rec_folder_entry.get().strip() or os.path.abspath("recordings")
         selected = filedialog.askdirectory(initialdir=curr, title=t("settings.rec_folder"))
@@ -1570,71 +1421,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             self.vlc_dir_entry.delete(0, "end")
             self.vlc_dir_entry.insert(0, selected)
 
-    def _test_obs_connection(self):
-        host = self.obs_host_entry.get().strip()
-        port = int(self.obs_port_entry.get().strip() or 4455)
-        password = self.obs_pw_entry.get().strip()
-        scene = self.obs_scene_entry.get().strip()
-
-        try:
-            import obsws_python as obs
-
-            client = obs.ReqClient(host=host, port=port, password=password, timeout=3)
-            v = client.get_version()
-            curr_scene = client.get_current_program_scene().current_program_scene_name
-            messagebox.showinfo(
-                t("settings.obs_test_title"),
-                t(
-                    "settings.obs_test_success",
-                    obs_ver=v.obs_version,
-                    ws_ver=v.obs_web_socket_version,
-                    current=curr_scene,
-                    target=scene,
-                ),
-            )
-            self._check_system_health()
-        except Exception as e:
-            messagebox.showerror(
-                t("settings.obs_test_title"),
-                t("settings.obs_test_error", host=host, port=port, error=e),
-            )
-
-    def _auto_setup_obs_scene(self):
-        host = self.obs_host_entry.get().strip()
-        port = int(self.obs_port_entry.get().strip() or 4455)
-        password = self.obs_pw_entry.get().strip()
-        scene = self.obs_scene_entry.get().strip() or "Discord Only"
-
-        rec = LeagueRecorder(
-            config={
-                **self.config,
-                "obs_host": host,
-                "obs_port": port,
-                "obs_password": password,
-                "scene_name": scene,
-            },
-            log_callback=self.log_message,
-        )
-        if not rec.connect_obs():
-            messagebox.showerror(
-                t("settings.obs_setup_title"),
-                t("settings.obs_setup_error", host=host, port=port),
-            )
-            return
-
-        ok = rec.auto_configure_obs()
-        if ok:
-            messagebox.showinfo(
-                t("settings.obs_setup_title"),
-                t("settings.obs_setup_success", scene=scene),
-            )
-            self._check_system_health()
-        else:
-            messagebox.showerror(
-                t("settings.obs_setup_title"),
-                t("settings.obs_setup_partial", scene=scene),
-            )
-
     def _save_settings(self):
         try:
             vol_val = int(self.replay_vol_entry.get().strip() or 80)
@@ -1642,14 +1428,9 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             selected_lang_name = self.lang_menu.get()
             selected_lang_code = self.lang_name_to_code.get(selected_lang_name, "en")
 
-            rec_mode_selected = self.rec_mode_menu.get() if hasattr(self, "rec_mode_menu") else "native"
-            is_native = ("WASAPI" in rec_mode_selected or "Direct" in rec_mode_selected or "Közvetlen" in rec_mode_selected)
             new_config = {
-                "recording_mode": "native" if is_native else "obs",
-                "obs_host": self.obs_host_entry.get().strip(),
-                "obs_port": int(self.obs_port_entry.get().strip()),
-                "obs_password": self.obs_pw_entry.get().strip(),
-                "scene_name": self.obs_scene_entry.get().strip(),
+                **self.config,
+                "recording_mode": "native",
                 "record_folder": self.rec_folder_entry.get().strip(),
                 "vlc_dir": self.vlc_dir_entry.get().strip(),
                 "check_time": float(self.check_time_entry.get().strip()),
