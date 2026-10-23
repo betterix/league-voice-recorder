@@ -14,11 +14,8 @@ from app.config import (
 class TestConfigModule(unittest.TestCase):
     def test_default_config_fields(self):
         cfg = get_default_config()
-        self.assertIn("recording_mode", cfg)
-        self.assertIn("obs_host", cfg)
-        self.assertIn("obs_port", cfg)
-        self.assertIn("obs_password", cfg)
-        self.assertIn("scene_name", cfg)
+        self.assertIn("target_audio_pid", cfg)
+        self.assertIn("target_audio_name", cfg)
         self.assertIn("record_folder", cfg)
         self.assertIn("vlc_dir", cfg)
         self.assertIn("check_time", cfg)
@@ -48,8 +45,7 @@ class TestConfigModule(unittest.TestCase):
 
     def test_load_config_ensures_record_folder_exists(self):
         cfg = load_config()
-        rec_folder = cfg.get("record_folder")
-        self.assertTrue(os.path.isdir(rec_folder))
+        self.assertTrue(os.path.isdir(cfg["record_folder"]))
 
 
 if __name__ == "__main__":

@@ -1,9 +1,7 @@
 import base64
-import glob
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import threading
@@ -14,7 +12,6 @@ PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-import obsws_python as obs
 import psutil
 import requests
 import urllib3
@@ -97,23 +94,17 @@ class LeagueRecorder:
         self.status_callback = status_callback
 
         self.record_folder = self.config.get("record_folder", os.path.abspath("recordings"))
-        self.recording_mode = self.config.get("recording_mode", "native")
         self.native_recorder = NativeAudioRecorder(record_folder=self.record_folder, log_callback=self.log)
         self.native_recorder.set_target_process(
             pid=int(self.config.get("target_audio_pid", -1)),
             name=self.config.get("target_audio_name", "Discord"),
         )
-        self.obs_host = self.config.get("obs_host", "localhost")
-        self.obs_port = int(self.config.get("obs_port", 4455))
-        self.obs_password = self.config.get("obs_password", "")
-        self.scene_name = self.config.get("scene_name", "Discord Only")
         self.check_time = float(self.config.get("check_time", 0.2))
 
         os.makedirs(self.record_folder, exist_ok=True)
 
-        self.obs_client = None
         self.recording = False
-        self.obs_is_paused = False
+        self.is_paused = False
         self.real_game_id = None
         self.last_game_time = -1
         self.first_game_time = 0.0
@@ -141,185 +132,6 @@ class LeagueRecorder:
                 self.status_callback(status, detail)
             except Exception:
                 pass
-
-    def connect_obs(self):
-        try:
-            self.obs_client = obs.ReqClient(
-                host=self.obs_host, port=self.obs_port, password=self.obs_password
-            )
-            self.log(t("logs.obs_connected", host=self.obs_host, port=self.obs_port))
-            self.auto_configure_obs()
-            self.set_scene()
-            return True
-        except Exception as e:
-            self.log(
-                t(
-                    "logs.obs_connect_failed",
-                    host=self.obs_host,
-                    port=self.obs_port,
-                    error=e,
-                )
-            )
-            self.obs_client = None
-            return False
-
-    def auto_configure_obs(self):
-        """
-        Automatically sets up and configures the OBS scene ('Discord Only'):
-        - Creates the scene if it does not exist.
-        - Ensures Discord Audio capture is added with priority 'Window title must match'.
-        - Ensures Player Microphone is added to the scene and unmuted.
-        - Mutes global desktop audio so only Discord voice + player microphone are recorded.
-        """
-        if not self.obs_client:
-            return False
-
-        try:
-            # 1. Ensure target scene exists
-            scene_list_resp = self.obs_client.get_scene_list()
-            scenes = [s["sceneName"] for s in scene_list_resp.scenes]
-            if self.scene_name not in scenes:
-                self.obs_client.create_scene(self.scene_name)
-                self.log(t("logs.obs_scene_created", scene=self.scene_name))
-
-            # 2. Get existing items in the target scene
-            scene_items_resp = self.obs_client.get_scene_item_list(self.scene_name)
-            current_scene_sources = {
-                item["sourceName"]: item for item in scene_items_resp.scene_items
-            }
-
-            # 3. Categorize all OBS audio inputs
-            inputs_resp = self.obs_client.get_input_list()
-            discord_input = None
-            mic_input = None
-            desktop_inputs = []
-
-            for inp in inputs_resp.inputs:
-                kind = inp.get("inputKind")
-                name = inp.get("inputName")
-                if kind == "wasapi_process_output_capture":
-                    if "discord" in name.lower() or discord_input is None:
-                        discord_input = name
-                elif kind == "wasapi_input_capture":
-                    if "mic" in name.lower() or "mikrofon" in name.lower() or mic_input is None:
-                        mic_input = name
-                elif kind == "wasapi_output_capture":
-                    desktop_inputs.append(name)
-
-            # --- Configure Discord Audio ('Match title, otherwise find window of same executable') ---
-            if discord_input is None or "discord" not in discord_input.lower():
-                discord_input = "Discord Audio"
-                try:
-                    self.obs_client.create_input(
-                        self.scene_name,
-                        discord_input,
-                        "wasapi_process_output_capture",
-                        {"priority": 2, "window": ":Chrome_WidgetWin_1:Discord.exe"},
-                        True,
-                    )
-                    self.log(t("logs.obs_discord_added", source=discord_input))
-                except Exception:
-                    pass
-
-            if discord_input not in current_scene_sources:
-                try:
-                    self.obs_client.create_scene_item(self.scene_name, discord_input)
-                except Exception:
-                    pass
-
-            # Resolve Priority Value: 2 = "Match title, otherwise find window of same executable"
-            # This ensures Discord is ALWAYS captured even when switching channels, servers, or voice calls!
-            priority_val = 2
-            try:
-                p_items = self.obs_client.get_input_properties_list_property_items(
-                    discord_input, "priority"
-                )
-                for item in p_items.property_items:
-                    p_name = (item.get("itemName") or "").lower()
-                    if "executable" in p_name or "végrehajtható" in p_name:
-                        priority_val = item.get("itemValue")
-                        break
-            except Exception:
-                pass
-
-            # Resolve Active Discord Window from OBS window list
-            target_window = None
-            try:
-                w_items = self.obs_client.get_input_properties_list_property_items(
-                    discord_input, "window"
-                )
-                for item in w_items.property_items:
-                    val = item.get("itemValue") or ""
-                    w_name = item.get("itemName") or ""
-                    if "discord.exe" in val.lower() or "discord.exe" in w_name.lower():
-                        target_window = val
-                        break
-            except Exception:
-                pass
-
-            if not target_window:
-                target_window = ":Chrome_WidgetWin_1:Discord.exe"
-
-            # Apply settings (executable matching priority + active Discord window)
-            new_discord_settings = {
-                "priority": priority_val,
-                "window": target_window,
-            }
-            try:
-                self.obs_client.set_input_settings(
-                    discord_input, new_discord_settings, overlay=True
-                )
-            except Exception:
-                pass
-
-            try:
-                self.obs_client.set_input_mute(discord_input, False)
-            except Exception:
-                pass
-
-            # --- Configure Player Microphone ---
-            if mic_input is not None:
-                if mic_input not in current_scene_sources:
-                    try:
-                        self.obs_client.create_scene_item(self.scene_name, mic_input)
-                    except Exception:
-                        pass
-                try:
-                    self.obs_client.set_input_mute(mic_input, False)
-                except Exception:
-                    pass
-            else:
-                mic_name = "Microphone"
-                try:
-                    self.obs_client.create_input(
-                        self.scene_name,
-                        mic_name,
-                        "wasapi_input_capture",
-                        {"device_id": "default"},
-                        True,
-                    )
-                    self.obs_client.set_input_mute(mic_name, False)
-                except Exception:
-                    pass
-
-            # --- Mute Global Desktop Audio (No Game Audio Bleed) ---
-            for d_name in desktop_inputs:
-                try:
-                    self.obs_client.set_input_mute(d_name, True)
-                except Exception:
-                    pass
-
-            # --- Switch to Scene in OBS ---
-            try:
-                self.obs_client.set_current_program_scene(self.scene_name)
-            except Exception:
-                pass
-
-            self.log(t("logs.obs_scene_configured", scene=self.scene_name))
-            return True
-        except Exception as e:
-            self.log(t("logs.obs_config_failed", error=e))
-            return False
 
     def fetch_game_id_background(self):
         self.log(t("logs.query_game_id"))
@@ -359,15 +171,6 @@ class LeagueRecorder:
                 if not self.recording or self.stop_event.is_set() or self.real_game_id:
                     break
                 time.sleep(0.2)
-
-    def get_obs_status(self):
-        if not self.obs_client:
-            return False, False
-        try:
-            st = self.obs_client.get_record_status()
-            return st.output_active, st.output_paused
-        except Exception:
-            return False, False
 
     def check_if_game_is_replay(self):
         """Checks if the currently running game client is a replay (.rofl) rather than a live match."""
@@ -430,17 +233,10 @@ class LeagueRecorder:
         if not self.recording:
             return
         self.recording = False
-        if self.recording_mode == "native":
-            try:
-                self.native_recorder.stop_and_finalize("aborted")
-            except Exception:
-                pass
-        else:
-            if self.obs_client:
-                try:
-                    self.obs_client.stop_record()
-                except Exception:
-                    pass
+        try:
+            self.native_recorder.stop_and_finalize("aborted")
+        except Exception:
+            pass
         self.log(t("logs.replay_abort"))
 
     def close(self):
@@ -452,20 +248,10 @@ class LeagueRecorder:
             except Exception:
                 pass
 
-    def set_scene(self):
-        if not self.obs_client:
-            return
-        try:
-            self.obs_client.set_current_program_scene(self.scene_name)
-            self.log(t("logs.obs_scene_switched", scene=self.scene_name))
-        except Exception as e:
-            self.log(t("logs.obs_scene_switch_failed", error=e))
-
     def start_recording(self, initial_game_time=0.0, t_poll_start=None):
         """
-        Starts OBS recording immediately with zero latency.
-        Scene and inputs are already pre-configured to avoid delay.
-        Accurately accounts for OBS invocation latency to ensure sample-accurate alignment.
+        Starts audio recording immediately with zero latency.
+        Accurately accounts for invocation latency to ensure sample-accurate alignment.
         """
         if self.recording:
             return
@@ -476,59 +262,16 @@ class LeagueRecorder:
 
         t_start = time.perf_counter()
 
-        if self.recording_mode == "native":
-            session_id = str(int(time.time()))
-            self.native_recorder.start_recording(session_id)
-            self.recording = True
-            self.obs_is_paused = False
-
-            t_now = time.perf_counter()
-            ref_time = t_poll_start if t_poll_start is not None else t_start
-            delay = max(0.0, t_now - ref_time)
-            base_time = float(initial_game_time) if initial_game_time is not None else 0.0
-            self.first_game_time = base_time + delay
-            self.last_game_time = self.first_game_time
-            self.real_game_id = None
-            self.log(t("logs.match_detected", time=self.first_game_time))
-            init_time = max(0.0, self.first_game_time)
-            init_time_str = f"{int(init_time // 60):02d}:{int(init_time % 60):02d}"
-            self.update_status("RECORDING", t("record.live_match_time", time=init_time_str))
-            threading.Thread(target=self.fetch_game_id_background, daemon=True).start()
-            return
-
-        if not self.obs_client and not self.connect_obs():
-            self.log(
-                t(
-                    "logs.obs_connect_failed",
-                    host=self.obs_host,
-                    port=self.obs_port,
-                    error="Not connected",
-                )
-            )
-            return
-
-        try:
-            self.obs_client.start_record()
-            self.recording = True
-            self.obs_is_paused = False
-        except Exception as e:
-            err_msg = str(e)
-            # If OBS returned 500 (ResourceAlreadyExists / Output running), adopt active recording
-            if "500" in err_msg or "already" in err_msg.lower() or "running" in err_msg.lower():
-                self.recording = True
-                self.obs_is_paused = False
-            else:
-                self.log(t("logs.rec_start_error", error=e))
-                self.update_status("ERROR", f"{e}")
-                return
+        session_id = str(int(time.time()))
+        self.native_recorder.start_recording(session_id)
+        self.recording = True
+        self.is_paused = False
 
         t_now = time.perf_counter()
-        # Compensate for elapsed time between League polling and OBS record start acknowledgment
         ref_time = t_poll_start if t_poll_start is not None else t_start
-        obs_delay = max(0.0, t_now - ref_time)
-
+        delay = max(0.0, t_now - ref_time)
         base_time = float(initial_game_time) if initial_game_time is not None else 0.0
-        self.first_game_time = base_time + obs_delay
+        self.first_game_time = base_time + delay
         self.last_game_time = self.first_game_time
         self.real_game_id = None
         self.log(t("logs.match_detected", time=self.first_game_time))
@@ -539,11 +282,7 @@ class LeagueRecorder:
 
     def convert_to_mp3(self, video_path, base_name, initial_offset=0.0):
         """
-        Converts the OBS recording to high quality MP3.
-        Applies sample-accurate time alignment:
-        - If recording started after 0:00 (initial_offset > 0), prepends exact silence (adelay).
-        - If recording started before 0:00 (initial_offset < 0), trims pre-game countdown (-ss after -i).
-        This guarantees that 00:00:00 in the MP3 matches game_time = 0.000 in League.
+        Converts recording to high quality MP3 with sample-accurate alignment.
         """
         self.log(t("logs.converting_mp3", name=base_name))
         self.update_status("CONVERTING", f"{base_name}...")
@@ -557,11 +296,8 @@ class LeagueRecorder:
         ffmpeg_cmd = get_ffmpeg_path()
         try:
             cmd = [ffmpeg_cmd, "-y", "-i", video_path]
-            # If recording started before 0:00 (e.g. -5s), trim pre-game countdown using sample-accurate output seeking (-ss after -i)
             if initial_offset < -0.005:
                 cmd.extend(["-ss", f"{abs(initial_offset):.3f}"])
-
-            # If recording started after 0:00 (e.g. 0.8s), prepend silence so 00:00 aligns with match start
             elif initial_offset > 0.005:
                 delay_ms = int(initial_offset * 1000)
                 cmd.extend(["-af", f"adelay=delays={delay_ms}:all=1"])
@@ -602,57 +338,8 @@ class LeagueRecorder:
         self.log(t("logs.rec_stop"))
         self.update_status("SAVING", t("record.saving_audio"))
 
-        if self.recording_mode == "native":
-            self.recording = False
-            # Quick final attempt to retrieve real Game ID if not found yet
-            if not self.real_game_id:
-                try:
-                    install_dir = find_league_install_dir()
-                    if install_dir:
-                        lockfile_path = os.path.join(install_dir, "lockfile")
-                        if os.path.exists(lockfile_path):
-                            with open(lockfile_path, "r") as f:
-                                data = f.read().split(":")
-                            port = data[2]
-                            password = data[3]
-                            auth = base64.b64encode(f"riot:{password}".encode()).decode()
-                            r = requests.get(
-                                f"https://127.0.0.1:{port}/lol-gameflow/v1/session",
-                                headers={"Authorization": f"Basic {auth}"},
-                                verify=False,
-                                timeout=1.5,
-                            )
-                            gid = r.json().get("gameData", {}).get("gameId")
-                            if gid and gid > 0:
-                                self.real_game_id = str(gid)
-                                self.log(t("logs.game_id_found", game_id=self.real_game_id))
-                except Exception:
-                    pass
-
-            base_name = self.real_game_id if self.real_game_id else f"Scrim_{time.strftime('%Y%m%d_%H%M%S')}"
-            final_mp3 = self.native_recorder.stop_and_finalize(base_name, initial_offset=self.first_game_time)
-            if final_mp3:
-                self.log(t("logs.saved_mp3", path=final_mp3))
-                self.update_status("SAVED", f"{os.path.basename(final_mp3)}")
-            else:
-                self.update_status("WATCHING", t("record.waiting_for_match"))
-            self.first_game_time = 0.0
-            return
-
-        output_path = None
-
-        if self.obs_client:
-            try:
-                resp = self.obs_client.stop_record()
-                if hasattr(resp, "output_path"):
-                    output_path = resp.output_path
-            except Exception as e:
-                self.log(t("logs.rec_stop_error", error=e))
-
         self.recording = False
-        time.sleep(2)
-
-        # Quick final attempt to retrieve real Game ID if background thread hasn't caught it yet
+        # Quick final attempt to retrieve real Game ID if not found yet
         if not self.real_game_id:
             try:
                 install_dir = find_league_install_dir()
@@ -677,57 +364,19 @@ class LeagueRecorder:
             except Exception:
                 pass
 
-        if not output_path or not os.path.exists(output_path):
-            if self.obs_client:
-                try:
-                    obs_dir_resp = self.obs_client.get_record_directory()
-                    obs_dir = obs_dir_resp.record_directory
-                    files = glob.glob(os.path.join(obs_dir, "*.mkv")) + glob.glob(
-                        os.path.join(obs_dir, "*.mp4")
-                    )
-                    if files:
-                        output_path = max(files, key=os.path.getctime)
-                except Exception as e:
-                    self.log(t("logs.obs_dir_failed", error=e))
-
-        if output_path and os.path.exists(output_path):
-            final_name = (
-                self.real_game_id if self.real_game_id else f"game_unknown_{int(time.time())}"
-            )
-            ext = os.path.splitext(output_path)[1]
-            new_path = os.path.join(self.record_folder, f"{final_name}{ext}")
-
-            counter = 1
-            while os.path.exists(new_path):
-                new_path = os.path.join(self.record_folder, f"{final_name}_{counter}{ext}")
-                counter += 1
-
-            try:
-                shutil.move(output_path, new_path)
-                final_base_name = os.path.splitext(os.path.basename(new_path))[0]
-                self.convert_to_mp3(
-                    new_path, final_base_name, initial_offset=self.first_game_time
-                )
-            except Exception as e:
-                self.log(t("logs.move_error", error=e))
+        base_name = self.real_game_id if self.real_game_id else f"Scrim_{time.strftime('%Y%m%d_%H%M%S')}"
+        final_mp3 = self.native_recorder.stop_and_finalize(base_name, initial_offset=self.first_game_time)
+        if final_mp3:
+            self.log(t("logs.saved_mp3", path=final_mp3))
+            self.update_status("SAVED", f"{os.path.basename(final_mp3)}")
         else:
-            self.log(t("logs.obs_file_not_found"))
             self.update_status("WATCHING", t("record.waiting_for_match"))
-
         self.first_game_time = 0.0
 
     def run_loop(self):
         self.stop_event.clear()
         self.log(t("logs.recorder_started"))
         self.update_status("WATCHING", t("record.waiting_for_match"))
-
-        # Initial OBS connection & pre-configuration (only if using OBS mode)
-        if self.recording_mode == "obs":
-            if not self.obs_client:
-                self.connect_obs()
-            else:
-                self.auto_configure_obs()
-                self.set_scene()
 
         consecutive_misses = 0
         pause_tick_count = 0
@@ -789,32 +438,15 @@ class LeagueRecorder:
 
                     if self.recording:
                         # Debounce pause detection: require at least 5 consecutive polls (~100ms) with unchanged game_time
-                        # to avoid false pause triggers during normal 33ms game ticks
                         if game_time == self.last_game_time and game_time > 0:
                             pause_tick_count += 1
-                            if pause_tick_count >= 5 and not self.obs_is_paused:
-                                if self.recording_mode == "native":
-                                    self.native_recorder.pause()
-                                    self.obs_is_paused = True
-                                    self.log(t("logs.pause"))
-                                    p_time_val = max(0.0, game_time)
-                                    p_time_str = f"{int(p_time_val // 60):02d}:{int(p_time_val % 60):02d}"
-                                    self.update_status("PAUSED", t("record.paused_time", time=p_time_str))
-                                else:
-                                    try:
-                                        self.obs_client.pause_record()
-                                        self.obs_is_paused = True
-                                        self.log(t("logs.pause"))
-                                        p_time_val = max(0.0, game_time)
-                                        p_time_str = (
-                                            f"{int(p_time_val // 60):02d}:{int(p_time_val % 60):02d}"
-                                        )
-                                        self.update_status(
-                                            "PAUSED",
-                                            t("record.paused_time", time=p_time_str),
-                                        )
-                                    except Exception as e:
-                                        self.log(t("logs.pause_failed", error=e))
+                            if pause_tick_count >= 5 and not self.is_paused:
+                                self.native_recorder.pause()
+                                self.is_paused = True
+                                self.log(t("logs.pause"))
+                                p_time_val = max(0.0, game_time)
+                                p_time_str = f"{int(p_time_val // 60):02d}:{int(p_time_val % 60):02d}"
+                                self.update_status("PAUSED", t("record.paused_time", time=p_time_str))
 
                         elif game_time > self.last_game_time:
                             pause_tick_count = 0
@@ -829,20 +461,11 @@ class LeagueRecorder:
                             else:
                                 detail_text = t("record.live_match_time", time=time_str)
 
-                            if self.obs_is_paused:
-                                if self.recording_mode == "native":
-                                    self.native_recorder.resume()
-                                    self.obs_is_paused = False
-                                    self.log(t("logs.unpause"))
-                                    self.update_status("RECORDING", detail_text)
-                                else:
-                                    try:
-                                        self.obs_client.resume_record()
-                                        self.obs_is_paused = False
-                                        self.log(t("logs.unpause"))
-                                        self.update_status("RECORDING", detail_text)
-                                    except Exception as e:
-                                        self.log(t("logs.unpause_failed", error=e))
+                            if self.is_paused:
+                                self.native_recorder.resume()
+                                self.is_paused = False
+                                self.log(t("logs.unpause"))
+                                self.update_status("RECORDING", detail_text)
                             else:
                                 if int(game_time) != int(self.last_game_time):
                                     self.update_status("RECORDING", detail_text)
@@ -853,7 +476,6 @@ class LeagueRecorder:
                     # game_time is None (League API stopped responding or connection dropped)
                     if self.recording:
                         consecutive_misses += 1
-                        # If port 2999 is dead for 3 checks and process exited, or dead for 15 checks: match has ended!
                         if consecutive_misses >= 3:
                             league_alive = self.is_league_game_running()
                             if not league_alive or consecutive_misses >= 15:
@@ -869,9 +491,6 @@ class LeagueRecorder:
                 else:
                     self.update_status("WATCHING", t("record.waiting_for_match"))
 
-            # Dynamic polling interval:
-            # 20ms (0.02s) when recording or during pre-game countdown (< 0.0) so 00:00 is caught instantly.
-            # 100ms (0.1s) while idle waiting for match.
             is_high_frequency = self.recording or (game_time is not None and game_time < 0.0)
             poll_interval = 0.02 if is_high_frequency else min(0.1, self.check_time)
             slice_count = max(1, int(poll_interval / 0.02))
@@ -893,8 +512,6 @@ class LeagueRecorder:
 
 def main():
     rec = LeagueRecorder()
-    if not rec.connect_obs():
-        sys.exit(1)
     rec.run_loop()
 
 

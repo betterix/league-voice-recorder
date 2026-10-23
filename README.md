@@ -37,24 +37,24 @@ In competitive League of Legends scrimmages and tournament matches, reviewing ga
 
 **League Voice Recorder solves both ends of this workflow automatically:**
 
-- 🔴 **Live Scrim Watcher**: Connects to the local League Client API and OBS Studio. When a live match begins, it switches OBS to a designated voice-only scene (`"Discord Only"`) and triggers recording with **zero latency** (<10ms). It tracks pauses, extracts the official Riot Game ID, aligns the audio frame-by-frame with game time (`00:00:00`), and exports a compressed `<GameID>.mp3`.
+- 🔴 **Live Scrim Watcher**: Connects to the local League Client API. When a live match begins, it automatically records Discord voice chat and player microphone with zero latency (<1ms). It tracks pauses, extracts the official Riot Game ID, aligns the audio frame-by-frame with game time (`00:00:00`), and exports a compressed `<GameID>.mp3`.
 - ▶ **Replay Auto-Sync**: When you open any `.rofl` replay file in the League client, it detects the process, extracts the Game ID, loads `<GameID>.mp3` into VLC, and locks playback to the League replay clock. Scrubbing, pausing, rewinding, or changing speed (0.5x, 1x, 2x, 4x) keeps voice comms perfectly synchronized in real time.
 
 ---
 
 ## ✨ Key Features
 
-- ⚡ **Zero-Latency Match Start**: Pre-configures OBS scenes and audio sources on connection. When your game launches, recording starts in under 10 milliseconds.
+- ⚡ **Zero-Latency Match Start**: Attaches instantly to Discord and mic. When your game launches, recording starts in under 1 millisecond.
 - 🎯 **Sample-Accurate Audio Alignment**:
   - If recording begins after 00:00, exact silence is prepended via FFmpeg (`adelay`).
   - If recording begins before 00:00 during countdown, the pre-game buffer is trimmed (`-ss`).
   - Result: `00:00:00` in the exported MP3 matches game time `0.000` frame-by-frame.
 - 🛡️ **Replay Guard**: Inspects running processes to prevent live recording when you are merely inspecting or reviewing `.rofl` replays.
-- 🎙️ **Automated OBS Scene Management**: One-click auto-setup creates the `"Discord Only"` scene in OBS, isolates Discord audio capture with window matching priority (`"Window title must match"` / `"Az ablak címének egyeznie kell"`), adds the player's microphone, and mutes desktop clutter.
+- 🎙️ **Direct WASAPI Audio Capture**: Automatically captures team Discord voice chat (via WASAPI loopback) along with player microphone directly in Windows.
 - ⏩ **Real-Time Replay Speed & Position Sync**: Continuously polls the League Replay API (`:2999/replay/playback`) to synchronize playback speed (0.5x to 8x), pauses, and seeks.
 - 🔊 **Dynamic Replay Volume Slider**: Adjust replay voice volume (0–100%) on the fly with live libvlc volume updates and persistent configuration saving.
 - 🌐 **Extensible Internationalization (i18n)**: English (default) and Hungarian built-in. Community translations are purely drop-in JSON files—no Python code modifications required.
-- 🩺 **Real-Time System Health Diagnostics**: Instant status badges for OBS WebSocket, League Client process, 64-bit VLC engine, and FFmpeg binary.
+- 🩺 **Real-Time System Health Diagnostics**: Instant status badges for Discord voice capture, League Client process, 64-bit VLC engine, and FFmpeg binary.
 - 📂 **Integrated Scrim Manager**: In-app browser displaying recorded scrims, file sizes, creation dates, and instant "Play in VLC" or "Open in Explorer" buttons.
 
 ---
@@ -81,7 +81,7 @@ flowchart TD
         LeagueRec["LeagueRecorder"]
         LiveAPI["Live Client Data API (:2999)"]
         LCULockfile["LCU Lockfile & Gameflow API"]
-        OBSWS["OBS WebSocket (obsws-python)"]
+        NativeWASAPI["Native WASAPI Audio Capture"]
         FFmpegProc["FFmpeg Audio Converter & Offset Aligner"]
     end
 
@@ -103,7 +103,7 @@ flowchart TD
 
     LeagueRec --> LiveAPI
     LeagueRec --> LCULockfile
-    LeagueRec --> OBSWS
+    LeagueRec --> NativeWASAPI
     LeagueRec --> FFmpegProc
     FFmpegProc --> AudioFiles
 
@@ -125,13 +125,6 @@ winget install -e --id Gyan.FFmpeg
 
 # 2. VLC Media Player 64-bit (Replay synchronization)
 winget install -e --id VideoLAN.VLC
-
-# 3. OBS Studio (Match recording)
-winget install -e --id OBSProject.OBSStudio
-```
-
-> [!NOTE]
-> In OBS Studio, enable the WebSocket server via **Tools** ➔ **WebSocket Server Settings** ➔ check **Enable WebSocket server** (default port: `4455`).
 
 ### ⚙️ Enable League of Legends Replay API (Required for Replay Sync)
 
@@ -164,20 +157,14 @@ winget install -e --id OBSProject.OBSStudio
 
 ### Step-by-Step Setup & Usage Guide
 
-#### Step 1: Initial Health Check & OBS Connection
-1. Launch **League Voice Recorder**.
-2. Look at the top **System Diagnostics Bar**:
-   - `OBS`: Green indicates connected; Grey/Red indicates offline.
-   - `League`: Shows whether the League Client is running.
-   - `VLC`: Shows whether the 64-bit VLC engine is installed and ready.
-   - `FFmpeg`: Shows whether the audio encoder is available.
-3. Open the **Settings** tab:
-   - Enter your **OBS WebSocket Port** (`4455`) and **Password**.
-   - Click **Test OBS Connection** to verify.
-   - Click **Auto-Setup OBS Scene**. The application will automatically create the `"Discord Only"` scene in your OBS, add your microphone, add Discord audio capture with correct window matching priority, and mute desktop noise.
-   - Click **Save Settings**.
+#### Step 1: Initial Health Check & Recording
 
----
+1. Launch the application:
+   ```powershell
+   uv run main.py
+   ```
+2. Verify the **System Health** diagnostics in the top banner.
+3. Click **Start Recording Watcher**.
 
 #### Step 2: Automated Scrim Recording
 1. Before starting your scrim, click **🔴 Start Recording Watcher**.
@@ -186,7 +173,7 @@ winget install -e --id OBSProject.OBSStudio
 3. Start your match normally.
 4. **Hands-free Automation**:
    - As soon as the game loads, the status updates to `RECORDING: Live Match (MM:SS)`.
-   - If the game pauses, OBS recording automatically pauses.
+   - If the game pauses, recording automatically pauses.
    - When the nexus explodes or the game exits, the app automatically fetches the official Riot Game ID, aligns the audio to `00:00:00`, and saves `<GameID>.mp3` into your recordings folder.
 
 ---
@@ -303,7 +290,7 @@ League Voice Recorder/
 │   ├── __init__.py         # Package marker
 │   ├── config.py           # Configuration loader, saver, and path resolver
 │   ├── i18n.py             # Internationalization and community translation loader
-│   ├── record.py           # LeagueRecorder engine (OBS automation & FFmpeg alignment)
+│   ├── record.py           # LeagueRecorder engine (WASAPI capture & FFmpeg alignment)
 │   └── play_replay.py      # ReplaySynchronizer engine (process watcher & VLC sync)
 │
 ├── assets/                 # Visual branding assets (icons, logos)

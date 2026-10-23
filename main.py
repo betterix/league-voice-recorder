@@ -193,7 +193,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             text_color="#CBD5E1",
         )
         self.discord_badge.pack(side="left", padx=12, pady=6)
-        self.obs_badge = self.discord_badge
 
         self.lol_badge = ctk.CTkLabel(
             health_frame,
@@ -281,7 +280,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         )
         self.rec_btn.pack(fill="x", padx=16, pady=(0, 10))
 
-        # OBS Target Scene Pill
+        # Target Voice Capture Pill
         rec_scene_pill = ctk.CTkFrame(rec_card, fg_color="#0F172A", corner_radius=8)
         rec_scene_pill.pack(fill="x", padx=16, pady=(0, 10))
         self.rec_scene_lbl = ctk.CTkLabel(

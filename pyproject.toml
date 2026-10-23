@@ -20,7 +20,6 @@ classifiers = [
 ]
 dependencies = [
     "customtkinter>=6.0.0",
-    "obsws-python>=1.7.0",
     "proc-tap>=1.1.1",
     "psutil>=5.9.0",
     "pycaw>=20260927",

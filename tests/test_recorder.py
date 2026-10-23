@@ -12,12 +12,7 @@ class TestRecorderModule(unittest.TestCase):
         self.print_patch.start()
         self.temp_dir = tempfile.TemporaryDirectory()
         self.config = {
-            "recording_mode": "obs",
             "record_folder": self.temp_dir.name,
-            "obs_host": "localhost",
-            "obs_port": 4455,
-            "obs_password": "",
-            "scene_name": "Discord Only",
             "check_time": 0.2,
         }
         self.recorder = LeagueRecorder(self.config, log_callback=lambda msg: None)
@@ -30,7 +25,7 @@ class TestRecorderModule(unittest.TestCase):
     @patch("subprocess.run")
     def test_convert_to_mp3_positive_offset(self, mock_subproc):
         """When recording starts late (>0s), adelay filter should prepend silence."""
-        fake_video = os.path.join(self.temp_dir.name, "fake_recording.mkv")
+        fake_video = os.path.join(self.temp_dir.name, "fake_recording.wav")
         with open(fake_video, "w") as f:
             f.write("dummy")
 
@@ -46,7 +41,7 @@ class TestRecorderModule(unittest.TestCase):
     @patch("subprocess.run")
     def test_convert_to_mp3_negative_offset(self, mock_subproc):
         """When recording starts early (<0s), -ss should trim pre-game countdown."""
-        fake_video = os.path.join(self.temp_dir.name, "fake_recording.mkv")
+        fake_video = os.path.join(self.temp_dir.name, "fake_recording.wav")
         with open(fake_video, "w") as f:
             f.write("dummy")
 
@@ -64,7 +59,7 @@ class TestRecorderModule(unittest.TestCase):
     @patch("subprocess.run")
     def test_convert_to_mp3_zero_offset(self, mock_subproc):
         """When recording starts at 0.0s, neither -ss nor adelay should be present."""
-        fake_video = os.path.join(self.temp_dir.name, "fake_recording.mkv")
+        fake_video = os.path.join(self.temp_dir.name, "fake_recording.wav")
         with open(fake_video, "w") as f:
             f.write("dummy")
 
@@ -121,11 +116,10 @@ class TestRecorderModule(unittest.TestCase):
         self.assertFalse(is_replay)
 
     def test_start_recording_latency_compensation(self):
-        """start_recording must compensate for the time elapsed between polling and OBS start."""
+        """start_recording must compensate for the time elapsed between polling and record start."""
         import time
 
-        mock_obs = MagicMock()
-        self.recorder.obs_client = mock_obs
+        self.recorder.native_recorder.start_recording = MagicMock()
         self.recorder.check_if_game_is_replay = MagicMock(return_value=False)
 
         # Simulate 50ms polling delay
@@ -134,7 +128,7 @@ class TestRecorderModule(unittest.TestCase):
 
         self.assertTrue(self.recorder.recording)
         self.assertGreaterEqual(self.recorder.first_game_time, 10.045)
-        self.assertTrue(mock_obs.start_record.called)
+        self.assertTrue(self.recorder.native_recorder.start_recording.called)
 
     def test_is_league_game_running(self):
         """is_league_game_running should accurately detect League of Legends.exe."""
@@ -170,14 +164,9 @@ class TestRecorderModule(unittest.TestCase):
                 self.recorder.start_recording(initial_game_time=game_time)
         self.assertTrue(self.recorder.start_recording.called)
 
-
-    def test_native_mode_recording_lifecycle(self):
-        """Verify native recording mode starts and stops NativeAudioRecorder without OBS."""
-        native_cfg = {
-            "recording_mode": "native",
-            "record_folder": self.temp_dir.name,
-        }
-        rec = LeagueRecorder(native_cfg, log_callback=lambda msg: None)
+    def test_recording_lifecycle(self):
+        """Verify recording lifecycle starts and stops NativeAudioRecorder cleanly."""
+        rec = LeagueRecorder(self.config, log_callback=lambda msg: None)
         rec.check_if_game_is_replay = MagicMock(return_value=False)
         rec.native_recorder.start_recording = MagicMock()
         rec.native_recorder.stop_and_finalize = MagicMock(return_value=os.path.join(self.temp_dir.name, "123.mp3"))
@@ -185,12 +174,12 @@ class TestRecorderModule(unittest.TestCase):
         rec.start_recording(initial_game_time=5.0)
         self.assertTrue(rec.recording)
         self.assertTrue(rec.native_recorder.start_recording.called)
-        self.assertIsNone(rec.obs_client)
 
         rec.stop_recording_and_rename()
         self.assertFalse(rec.recording)
         self.assertTrue(rec.native_recorder.stop_and_finalize.called)
         rec.close()
+
 
 if __name__ == "__main__":
     unittest.main()

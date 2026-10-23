@@ -86,15 +86,10 @@ def resolve_path(path_str):
 
 
 def get_clean_default_config():
-    """Builds a clean, safe template config with BLANK password for distribution and new setups."""
+    """Builds a clean, safe template config for distribution and new setups."""
     return {
-        "recording_mode": "native",
         "target_audio_pid": -1,
         "target_audio_name": "Discord",
-        "obs_host": "localhost",
-        "obs_port": 4455,
-        "obs_password": "",
-        "scene_name": "Discord Only",
         "record_folder": get_current_user_documents_recordings_dir(),
         "vlc_dir": r"C:\Program Files\VideoLAN\VLC",
         "check_time": 0.2,
@@ -114,13 +109,8 @@ def get_default_config():
         rec_folder = default_rec_dir
 
     return {
-        "recording_mode": os.getenv("RECORDING_MODE", "native"),
         "target_audio_pid": int(os.getenv("TARGET_AUDIO_PID", "-1")),
         "target_audio_name": os.getenv("TARGET_AUDIO_NAME", "Discord"),
-        "obs_host": os.getenv("OBS_HOST", "localhost"),
-        "obs_port": int(os.getenv("OBS_PORT", "4455")),
-        "obs_password": os.getenv("OBS_PASSWORD", ""),
-        "scene_name": os.getenv("OBS_SCENE_NAME", "Discord Only"),
         "record_folder": rec_folder,
         "vlc_dir": resolve_path(os.getenv("VLC_DIR", r"C:\Program Files\VideoLAN\VLC")),
         "check_time": float(os.getenv("CHECK_TIME", "0.2")),
@@ -170,10 +160,6 @@ def save_config(config_data):
     if os.path.exists(DOTENV_PATH):
         try:
             key_mappings = {
-                "obs_host": "OBS_HOST",
-                "obs_port": "OBS_PORT",
-                "obs_password": "OBS_PASSWORD",
-                "scene_name": "OBS_SCENE_NAME",
                 "record_folder": "RECORD_FOLDER",
                 "vlc_dir": "VLC_DIR",
                 "check_time": "CHECK_TIME",

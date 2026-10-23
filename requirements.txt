@@ -26,8 +26,6 @@ numpy==2.5.4 ; python_full_version >= '3.12'
     # via
     #   proc-tap
     #   scipy
-obsws-python==1.8.0
-    # via league-scrim-recorder
 packaging==26.3
     # via customtkinter
 proc-tap==1.1.1
@@ -67,11 +65,7 @@ scipy==1.18.1 ; python_full_version >= '3.12'
     # via proc-tap
 sounddevice==0.5.6
     # via league-scrim-recorder
-tomli==2.5.0 ; python_full_version < '3.11'
-    # via obsws-python
 urllib3==2.8.0
     # via
     #   league-scrim-recorder
     #   requests
-websocket-client==1.9.2
-    # via obsws-python

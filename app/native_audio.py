@@ -1,7 +1,7 @@
 """
 Native WASAPI Audio Recorder module for Discord and Player Microphone.
 Captures Discord audio directly from the Discord process tree via Windows WASAPI
-Process Loopback (no OBS Studio required) and combines it with the player's microphone.
+Process Loopback and combines it with the player's microphone.
 Includes real-time VU audio meter monitoring and application/process selection.
 """
 
@@ -21,7 +21,7 @@ from app.config import get_ffmpeg_path
 def scale_vu(peak):
     """
     Transforms linear peak amplitude (0.0 to 1.0) into a perceived loudness
-    VU meter value (0.0 to 1.0) using logarithmic/power curve matching OBS.
+    VU meter value (0.0 to 1.0) using logarithmic/power curve.
     """
     if peak <= 0.00005:
         return 0.0

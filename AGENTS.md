@@ -9,7 +9,7 @@ Welcome to the **League Voice Recorder** project documentation. This document is
 In competitive League of Legends scrimmages and team matches, reviewing gameplay with synchronized team communications is critical. 
 
 This project solves two primary problems:
-1. **Automated Scrim Voice Recording (`record.py`)**: Monitors the active League of Legends client. When a match starts, it automatically captures team Discord voice chat (via WASAPI loopback) along with the player's microphone and records them without requiring OBS Studio. It dynamically pauses/unpauses recording if the game pauses, stops when the game ends, extracts the official Riot Game ID, and converts the recording into a compressed `.mp3` file named `<GameID>.mp3`.
+1. **Automated Scrim Voice Recording (`record.py`)**: Monitors the active League of Legends client. When a match starts, it automatically captures team Discord voice chat (via WASAPI loopback) along with the player's microphone and records them directly via native WASAPI loopback. It dynamically pauses/unpauses recording if the game pauses, stops when the game ends, extracts the official Riot Game ID, and converts the recording into a compressed `.mp3` file named `<GameID>.mp3`.
 2. **Automated Replay Audio Synchronization (`play_replay.py`)**: When the user opens any `.rofl` replay in the League client, it detects the running replay, parses the Game ID from the file name, locates the matching `<GameID>.mp3`, and plays the audio in VLC while continuously synchronizing playback time and playback speed (0.5x, 1x, 2x, 4x, etc.) with the League replay playback API.
 
 The project provides both:
@@ -132,35 +132,27 @@ The desktop GUI application built using `customtkinter`.
   - **Settings**: Configuration editor for recording folder, VLC directory, polling intervals, replay volume, and interface language.
 
 ### 3.2 `record.py` (`LeagueRecorder`)
-Responsible for live match detection, OBS recording lifecycle, and audio export.
+Responsible for live match detection, native WASAPI voice capture, and audio export.
 - **League Match Detection & Zero-Latency Start**:
   - Uses a persistent HTTP keep-alive session (`requests.Session()`) polling `https://127.0.0.1:2999/liveclientdata/allgamedata`.
-  - **Zero-Latency Start**: OBS scene pre-configuration (`auto_configure_obs()`) is completed in advance when the recorder connects to OBS. When a live match begins, `start_recording(initial_game_time)` triggers OBS `start_record()` directly in under 10 milliseconds without blocking roundtrips.
+  - **Zero-Latency Start**: When a live match begins, `start_recording(initial_game_time)` triggers Native WASAPI recording directly in under 1 millisecond.
   - **Sample-Accurate Audio Alignment**:
     - Stores `first_game_time` at the exact moment recording begins.
     - If recording starts after 00:00 (`first_game_time > 0`), FFmpeg automatically prepends exact silence using `-af adelay=delays={delay_ms}:all=1`.
     - If recording starts before 00:00 during countdown (`first_game_time < 0`), FFmpeg automatically trims the pre-game countdown using `-ss {abs(offset):.3f}`.
     - This guarantees that 00:00:00 in the MP3 file is aligned frame-by-frame with League match time `game_time = 0.000`.
   - **Replay Protection (`check_if_game_is_replay`)**: Checks process command-line arguments and cached PID for `.rofl` files. If a replay is active, live match recording is aborted/prevented.
-  - Pause detection: If `gameTime == last_game_time` (and `gameTime > 0`), calls `obs_client.pause_record()`.
-  - Resume detection: If `gameTime > last_game_time` while paused, calls `obs_client.resume_record()`.
+  - Pause detection: If `gameTime == last_game_time` (and `gameTime > 0`), pauses native recording.
+  - Resume detection: If `gameTime > last_game_time` while paused, resumes native recording.
   - Match end: When the game client closes, the request raises `RequestException`, which triggers `stop_recording_and_rename()`.
 - **Game ID Extraction**:
   - Uses `find_league_install_dir()` (prioritizing fast `psutil` lookup of `LeagueClientUx`, falling back to PowerShell and common drive paths).
   - Reads `lockfile` (`<name>:<pid>:<port>:<password>:<protocol>`).
   - Authenticates with Basic Auth `riot:<password>` to query `https://127.0.0.1:{port}/lol-gameflow/v1/session` to obtain `gameData.gameId`.
-- **OBS Control & Scene Automation (`obsws-python`)**:
-  - Automatically verifies and configures the `"Discord Only"` scene (`auto_configure_obs()`):
-    - Creates `"Discord Only"` scene if it does not exist.
-    - Adds/configures Discord Audio Capture (`wasapi_process_output_capture`) with priority `"Window title must match"`.
-    - Adds/unmutes Player Microphone (`wasapi_input_capture`) inside the scene.
-    - Mutes Desktop Audio (`wasapi_output_capture`) so only voice communications (Discord + mic) are captured.
-  - Sets active program scene to `Discord Only` (`set_current_program_scene`).
-  - Starts record (`start_record`) and stops record (`stop_record`).
-  - Fetches the recorded video (`.mkv` / `.mp4`) from the OBS output directory.
-- **Audio Conversion & Alignment**:
-  - Calls `ffmpeg` with `-q:a 0 -map a` along with `-af adelay` or `-ss` alignment to produce sample-accurate `<GameID>.mp3`.
-  - Deletes intermediate video file to conserve disk space.
+- **Native WASAPI Capture (`native_audio.py`)**:
+  - Captures Discord voice chat directly via Windows WASAPI Process Loopback.
+  - Captures player microphone via sounddevice.
+  - Automatically mixes and normalizes both streams into sample-accurate <GameID>.mp3.
 
 ### 3.3 `play_replay.py` (`ReplaySynchronizer`)
 Responsible for detecting opened `.rofl` replays and synchronizing audio playback in VLC.
@@ -189,7 +181,7 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
 
 ### 3.4 Configuration & Secrets (`config.py`, `.env`, `.env.example`, `.gitignore`)
 - **Environment & Secrets (`.env` and `.env.example`)**:
-  - Sensitive information such as `OBS_PASSWORD` is isolated in `.env`.
+  - Configuration values are safely stored in `.env` and `config.json`.
   - `.env.example` provides a tracked template for new setups with placeholder values.
   - `.env` and `config.json` are both excluded in `.gitignore` to prevent credential exposure.
 - **Config Manager (`config.py`)**:
@@ -258,7 +250,6 @@ uv export --no-dev --no-hashes -o requirements.txt
 
 Core libraries:
 - `customtkinter`: Modern dark-themed UI components.
-- `obsws-python`: Official OBS Studio WebSocket 5.x client.
 - `psutil`: High-performance cross-platform process management.
 - `python-vlc`: libvlc bindings for audio playback and rate synchronization.
 - `requests` & `urllib3`: HTTPS communication with League local APIs.
@@ -292,6 +283,7 @@ The application is compiled into a standalone Windows binary distribution using 
 
 1. **Thread Safety**: Never call Tkinter/CustomTkinter widget manipulation methods directly from background worker threads. Always post updates through `self.msg_queue` and consume them in `_process_queue` on the main GUI thread.
 2. **CLI Executability**: `app/record.py` and `app/play_replay.py` remain directly executable from the command line (`if __name__ == "__main__":` via `python -m app.record` and `python -m app.play_replay`). Never remove standalone support when adding UI capabilities.
-3. **OBS Recording Safety**: When stopping the recorder (either via the UI button or on application close), if an active recording is in progress, `stop_recording_and_rename()` must be called to ensure the video file is finalized and converted to MP3.
+3. **Recording Safety**: When stopping the recorder (either via the UI button or on application close), if an active recording is in progress, `stop_recording_and_rename()` must be called to ensure the recording is finalized and converted to MP3.
 4. **VLC Initialization**: On 64-bit Windows, VLC requires explicit DLL directory registration before importing `vlc`. Always configure `os.add_dll_directory(VLC_DIR)` and ensure fallback audio output drivers (`--quiet`, `--quiet --aout=mmdevice`, `--quiet --aout=directsound`) are handled.
 5. **Fast Process Lookup**: Always use `psutil` before falling back to PowerShell subprocess calls for detecting `LeagueClientUx.exe` and `League of Legends.exe`. `psutil` executes in single-digit milliseconds without spawning console windows.
+
