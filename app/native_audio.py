@@ -231,7 +231,7 @@ class NativeAudioRecorder:
 
     def _start_mic_monitor(self):
         """Runs a persistent lightweight microphone input stream for the live VU meter."""
-        if self._monitor_stream is not None:
+        if self._monitor_stream is not None or self.is_recording:
             return
         try:
             import sounddevice as sd
@@ -268,6 +268,7 @@ class NativeAudioRecorder:
                 pass
             finally:
                 self._monitor_stream = None
+                time.sleep(0.05)
 
     def close(self):
         self._stop_mic_monitor()
@@ -492,9 +493,7 @@ class NativeAudioRecorder:
             except Exception:
                 pass
             self._mic_stream = None
-
-        # Restart microphone monitor stream for VU meter
-        self._start_mic_monitor()
+            time.sleep(0.05)
 
         # Wait for threads to finish writing headers
         if self._discord_thread and self._discord_thread.is_alive():

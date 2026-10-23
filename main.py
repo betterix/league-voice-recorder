@@ -541,7 +541,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             native_rec = None
             if hasattr(self, "recorder_worker") and self.recorder_worker and hasattr(self.recorder_worker, "native_recorder"):
                 native_rec = self.recorder_worker.native_recorder
-            elif not hasattr(self, "_preview_native_recorder"):
+            elif not hasattr(self, "_preview_native_recorder") or self._preview_native_recorder is None:
                 from app.native_audio import NativeAudioRecorder
                 self._preview_native_recorder = NativeAudioRecorder(
                     record_folder=self.config.get("record_folder"),
@@ -1070,6 +1070,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 text_color="#A855F7",
                 fg_color="#3B0764",
             )
+        elif status == "SAVED":
+            self.rec_status_pill.configure(
+                text=f"● SAVED: {detail}" if detail else "● SAVED",
+                text_color="#22C55E",
+                fg_color="#052E16",
+            )
+            self._refresh_recordings_list()
         elif status in ("STOPPED", "IDLE"):
             self.rec_status_pill.configure(
                 text=t("record.status_stopped", detail=detail).strip()
@@ -1078,7 +1085,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 text_color="#94A3B8",
                 fg_color="#0F172A",
             )
-            self._reset_rec_button_state()
+            if not self.recorder_worker or getattr(self.recorder_worker, "stop_event", None) is None or self.recorder_worker.stop_event.is_set():
+                self._reset_rec_button_state()
             self._refresh_recordings_list()
         elif status == "ERROR":
             self.rec_status_pill.configure(
@@ -1148,6 +1156,14 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             self._stop_recording()
 
     def _start_recording(self):
+        # Cleanly stop any idle preview stream to ensure single-stream audio safety
+        if hasattr(self, "_preview_native_recorder") and self._preview_native_recorder:
+            try:
+                self._preview_native_recorder._stop_mic_monitor()
+            except Exception:
+                pass
+            self._preview_native_recorder = None
+
         self.log_message(t("logs.ui_rec_start"))
         self.rec_btn.configure(
             text=t("record.stop_btn"),

@@ -42,6 +42,8 @@ uv run --python 3.14.8 --with nuitka python -m nuitka ^
     --enable-plugin=tk-inter ^
     --include-package=proctap ^
     --include-package=sounddevice ^
+    --include-package=pycaw ^
+    --include-package=comtypes ^
     --tcl-library-dir="%TCL_DIR%" ^
     --tk-library-dir="%TK_DIR%" ^
     --include-data-dir=locales=locales ^

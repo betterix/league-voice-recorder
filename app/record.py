@@ -585,11 +585,11 @@ class LeagueRecorder:
                 self.log(
                     f"⚠️ Discarded tiny stub recording (<10KB): {os.path.basename(mp3_path)}"
                 )
-                self.update_status("IDLE", "")
+                self.update_status("WATCHING", t("record.waiting_for_match"))
                 return
 
             self.log(t("logs.saved_mp3", path=mp3_path))
-            self.update_status("IDLE", f"{os.path.basename(mp3_path)}")
+            self.update_status("SAVED", f"{os.path.basename(mp3_path)}")
         except FileNotFoundError:
             self.log(t("logs.ffmpeg_missing", path=video_path))
         except Exception as e:
@@ -633,9 +633,9 @@ class LeagueRecorder:
             final_mp3 = self.native_recorder.stop_and_finalize(base_name, initial_offset=self.first_game_time)
             if final_mp3:
                 self.log(t("logs.saved_mp3", path=final_mp3))
-                self.update_status("IDLE", f"{os.path.basename(final_mp3)}")
+                self.update_status("SAVED", f"{os.path.basename(final_mp3)}")
             else:
-                self.update_status("IDLE", "")
+                self.update_status("WATCHING", t("record.waiting_for_match"))
             self.first_game_time = 0.0
             return
 
