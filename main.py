@@ -519,13 +519,15 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             if t_item["display"] == chosen_display:
                 pid = t_item["pid"]
                 name = t_item["name"]
+                prev_pid = self.config.get("target_audio_pid")
                 self.config["target_audio_pid"] = pid
                 self.config["target_audio_name"] = name
                 if hasattr(self, "recorder_worker") and self.recorder_worker and hasattr(self.recorder_worker, "native_recorder"):
                     self.recorder_worker.native_recorder.set_target_process(pid, name)
                 if hasattr(self, "_preview_native_recorder") and self._preview_native_recorder:
                     self._preview_native_recorder.set_target_process(pid, name)
-                save_config(self.config)
+                if prev_pid != pid:
+                    save_config(self.config)
                 break
 
     def _start_audio_meter_loop(self):
@@ -554,17 +556,21 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             if native_rec:
                 app_l, mic_l = native_rec.poll_audio_levels()
 
-                # Dynamic color based on amplitude
+                # Dynamic color based on amplitude, only reconfigure when changed
                 app_color = "#22C55E" if app_l < 0.65 else ("#EAB308" if app_l < 0.85 else "#EF4444")
-                self.app_meter_bar.configure(progress_color=app_color)
+                if getattr(self, "_last_app_color", None) != app_color:
+                    self.app_meter_bar.configure(progress_color=app_color)
+                    self._last_app_color = app_color
                 self.app_meter_bar.set(app_l)
 
                 mic_color = "#0284C7" if mic_l < 0.65 else ("#EAB308" if mic_l < 0.85 else "#EF4444")
-                self.mic_meter_bar.configure(progress_color=mic_color)
+                if getattr(self, "_last_mic_color", None) != mic_color:
+                    self.mic_meter_bar.configure(progress_color=mic_color)
+                    self._last_mic_color = mic_color
                 self.mic_meter_bar.set(mic_l)
         except Exception:
             pass
-        self._meter_timer = self.after(50, self._update_audio_meters)
+        self._meter_timer = self.after(60, self._update_audio_meters)
 
     def _setup_tab_log(self, parent):
         parent.grid_columnconfigure(0, weight=1)
@@ -1050,7 +1056,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         # Cleanly stop any idle preview stream to ensure single-stream audio safety
         if hasattr(self, "_preview_native_recorder") and self._preview_native_recorder:
             try:
-                self._preview_native_recorder._stop_mic_monitor()
+                self._preview_native_recorder.close()
             except Exception:
                 pass
             self._preview_native_recorder = None
@@ -1498,7 +1504,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self._is_destroyed = True
         if hasattr(self, "_preview_native_recorder") and self._preview_native_recorder:
             try:
-                self._preview_native_recorder._stop_mic_monitor()
+                self._preview_native_recorder.close()
             except Exception:
                 pass
         remove_language_change_listener(self._update_ui_texts)

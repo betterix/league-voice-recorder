@@ -218,8 +218,12 @@ class NativeAudioRecorder:
         self.current_app_level = 0.0
         self.current_mic_level = 0.0
 
-        # Background microphone monitoring stream for VU meter (started lazily on demand)
+        # Background monitoring for VU meters (runs non-blocking in background thread)
+        self._cached_resolved_pid = None
+        self._last_resolved_time = 0.0
         self._monitor_stream = None
+        self._idle_monitor_thread = None
+        self._stop_idle_monitor_event = threading.Event()
 
     def log(self, message):
         print(f"[NativeRecorder] {message}")
@@ -268,10 +272,67 @@ class NativeAudioRecorder:
                 pass
             finally:
                 self._monitor_stream = None
-                time.sleep(0.05)
+
+    def _start_idle_monitor(self):
+        """Starts background idle monitoring of target audio levels and mic."""
+        if self.is_recording:
+            return
+        self._start_mic_monitor()
+        if self._idle_monitor_thread is None or not self._idle_monitor_thread.is_alive():
+            self._stop_idle_monitor_event.clear()
+            self._idle_monitor_thread = threading.Thread(
+                target=self._idle_app_monitor_loop, daemon=True, name="AudioMeterIdleWorker"
+            )
+            self._idle_monitor_thread.start()
+
+    def _stop_idle_monitor(self):
+        """Stops background idle audio monitoring."""
+        self._stop_idle_monitor_event.set()
+        self._stop_mic_monitor()
+        self._idle_monitor_thread = None
+
+    def _idle_app_monitor_loop(self):
+        """Background worker that samples audio peaks from target process without blocking the GUI."""
+        try:
+            import comtypes
+            comtypes.CoInitialize()
+        except Exception:
+            pass
+
+        try:
+            from pycaw.pycaw import AudioUtilities, IAudioMeterInformation
+
+            while not self._stop_idle_monitor_event.is_set() and not self.is_recording:
+                resolved_pid = self.resolve_target_pid()
+                if resolved_pid and resolved_pid > 0:
+                    found = False
+                    try:
+                        for s in AudioUtilities.GetAllSessions():
+                            if s.Process and s.ProcessId == resolved_pid:
+                                meter = s._ctl.QueryInterface(IAudioMeterInformation)
+                                peak = float(meter.GetPeakValue())
+                                self.current_app_level = max(peak, self.current_app_level * 0.85)
+                                found = True
+                                break
+                    except Exception:
+                        pass
+                    if not found:
+                        self.current_app_level *= 0.85
+                else:
+                    self.current_app_level *= 0.85
+
+                time.sleep(0.04)
+        except Exception:
+            pass
+        finally:
+            try:
+                import comtypes
+                comtypes.CoUninitialize()
+            except Exception:
+                pass
 
     def close(self):
-        self._stop_mic_monitor()
+        self._stop_idle_monitor()
         if self.is_recording:
             try:
                 self.stop_and_finalize("closed")
@@ -280,7 +341,7 @@ class NativeAudioRecorder:
 
     def __del__(self):
         try:
-            self._stop_mic_monitor()
+            self._stop_idle_monitor()
         except Exception:
             pass
 
@@ -288,52 +349,48 @@ class NativeAudioRecorder:
         """
         Returns (app_level, mic_level) as floats between 0.0 and 1.0.
         Uses smooth decay for visual VU meter animations.
+        Completely non-blocking (runs in 0.001ms on GUI thread).
         """
-        if not self.is_recording and self._monitor_stream is None:
-            self._start_mic_monitor()
-
-        # When idle, poll target process audio peak via pycaw
         if not self.is_recording:
-            resolved_pid = self.resolve_target_pid()
-            if resolved_pid and resolved_pid > 0:
-                try:
-                    from pycaw.pycaw import AudioUtilities, IAudioMeterInformation
-
-                    found = False
-                    for s in AudioUtilities.GetAllSessions():
-                        if s.Process and s.ProcessId == resolved_pid:
-                            meter = s._ctl.QueryInterface(IAudioMeterInformation)
-                            peak = float(meter.GetPeakValue())
-                            self.current_app_level = max(peak, self.current_app_level * 0.85)
-                            found = True
-                            break
-                    if not found:
-                        self.current_app_level *= 0.85
-                except Exception:
-                    self.current_app_level *= 0.85
-            else:
-                self.current_app_level *= 0.85
+            if self._idle_monitor_thread is None or not self._idle_monitor_thread.is_alive():
+                self._start_idle_monitor()
 
         scaled_app = scale_vu(self.current_app_level)
         scaled_mic = scale_vu(self.current_mic_level)
-        self.current_mic_level *= 0.85
+        self.current_app_level *= 0.88
+        self.current_mic_level *= 0.88
 
         return scaled_app, scaled_mic
 
     def resolve_target_pid(self):
-        """Resolves target_pid to an actual running Windows process ID."""
+        """Resolves target_pid to an actual running Windows process ID with caching."""
+        now = time.monotonic()
+        if (
+            self._cached_resolved_pid is not None
+            and (now - self._last_resolved_time) < 2.0
+            and psutil.pid_exists(self._cached_resolved_pid)
+        ):
+            return self._cached_resolved_pid
+
         if self.target_pid and self.target_pid > 0:
             if psutil.pid_exists(self.target_pid):
+                self._cached_resolved_pid = self.target_pid
+                self._last_resolved_time = now
                 return self.target_pid
 
         # Auto-detect Discord
-        return find_discord_active_pid()
+        pid = find_discord_active_pid()
+        self._cached_resolved_pid = pid
+        self._last_resolved_time = now
+        return pid
 
     def set_target_process(self, pid, name=None):
         """Updates the target application/process to record."""
         self.target_pid = pid
         if name:
             self.target_name = name
+        self._cached_resolved_pid = None
+        self._last_resolved_time = 0.0
         self.log(f"Target process set to: PID {pid} ({name or 'Auto'})")
 
     def start_recording(self, session_id):
@@ -341,7 +398,7 @@ class NativeAudioRecorder:
         if self.is_recording:
             return
 
-        self._stop_mic_monitor()
+        self._stop_idle_monitor()
         self.stop_event.clear()
         self.is_paused = False
 
