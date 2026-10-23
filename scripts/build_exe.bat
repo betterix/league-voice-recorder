@@ -44,6 +44,10 @@ uv run --python 3.14.8 --with nuitka python -m nuitka ^
     --include-package=sounddevice ^
     --include-package=pycaw ^
     --include-package=comtypes ^
+    --nofollow-import-to=scipy ^
+    --nofollow-import-to=unittest ^
+    --nofollow-import-to=doctest ^
+    --nofollow-import-to=comtypes.test ^
     --tcl-library-dir="%TCL_DIR%" ^
     --tk-library-dir="%TK_DIR%" ^
     --include-data-dir=locales=locales ^

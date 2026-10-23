@@ -64,6 +64,10 @@ jobs:
             --include-package=sounddevice `
             --include-package=pycaw `
             --include-package=comtypes `
+            --nofollow-import-to=scipy `
+            --nofollow-import-to=unittest `
+            --nofollow-import-to=doctest `
+            --nofollow-import-to=comtypes.test `
             --tcl-library-dir="$tcl_dir" `
             --tk-library-dir="$tk_dir" `
             --include-data-dir=locales=locales `
