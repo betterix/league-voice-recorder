@@ -536,6 +536,12 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             # We can use recorder_worker's native_recorder if active, or inspect via NativeAudioRecorder directly
             native_rec = None
             if hasattr(self, "recorder_worker") and self.recorder_worker and hasattr(self.recorder_worker, "native_recorder"):
+                if hasattr(self, "_preview_native_recorder") and self._preview_native_recorder:
+                    try:
+                        self._preview_native_recorder.close()
+                    except Exception:
+                        pass
+                    self._preview_native_recorder = None
                 native_rec = self.recorder_worker.native_recorder
             elif not hasattr(self, "_preview_native_recorder") or self._preview_native_recorder is None:
                 from app.native_audio import NativeAudioRecorder
@@ -1077,6 +1083,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             fg_color="#0C4A6E",
         )
 
+        if hasattr(self, "_preview_native_recorder") and self._preview_native_recorder:
+            try:
+                self._preview_native_recorder.close()
+            except Exception:
+                pass
+            self._preview_native_recorder = None
+
         self.recorder_worker = LeagueRecorder(
             config=self.config,
             log_callback=self.log_message,
@@ -1497,6 +1510,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
     # CLEAN SHUTDOWN
     # ==========================================
     def _on_close(self):
+        if hasattr(self, "_preview_native_recorder") and self._preview_native_recorder:
+            try:
+                self._preview_native_recorder.close()
+            except Exception:
+                pass
+            self._preview_native_recorder = None
+
         if self.recorder_worker and self.recorder_worker.recording:
             if not messagebox.askyesno(
                 t("record.title"),

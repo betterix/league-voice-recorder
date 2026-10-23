@@ -280,7 +280,7 @@ class ReplaySynchronizer:
                             # Already playing: check for timeline jump / scrub or drift
                             time_jump = abs(game_time - last_game_time) > 0.5
                             drift = abs(vlc_time - target_time) if vlc_time >= 0 else 0
-                            if time_jump or drift > 0.12:
+                            if time_jump or drift > 1.0:
                                 player.set_time(int(target_time * 1000))
                                 player.set_rate(replay_speed)
                                 if time_jump:

@@ -489,7 +489,10 @@ class NativeAudioRecorder:
 
                 while not self.stop_event.is_set():
                     d = loop.read()
-                    if d:
+                    if not d:
+                        time.sleep(0.002)
+                        continue
+                    while d:
                         if not self.is_paused:
                             floats = np.frombuffer(d, dtype=np.float32)
                             if len(floats) > 0:
@@ -497,8 +500,7 @@ class NativeAudioRecorder:
                                 self.current_app_level = max(peak, self.current_app_level * 0.85)
                             ints = np.clip(floats * 32767.0, -32768, 32767).astype(np.int16)
                             wf.writeframes(ints.tobytes())
-                    else:
-                        time.sleep(0.002)
+                        d = loop.read()
 
             loop.stop()
         except Exception as e:
@@ -539,10 +541,9 @@ class NativeAudioRecorder:
         if not self.is_recording:
             return None
 
-        self.is_recording = False
         self.stop_event.set()
 
-        # Stop microphone stream
+        # Stop microphone stream first so callback cleanly stops queueing
         if self._mic_stream:
             try:
                 self._mic_stream.stop()
@@ -550,7 +551,8 @@ class NativeAudioRecorder:
             except Exception:
                 pass
             self._mic_stream = None
-            time.sleep(0.05)
+
+        self.is_recording = False
 
         # Wait for threads to finish writing headers
         if self._discord_thread and self._discord_thread.is_alive():
