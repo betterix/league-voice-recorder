@@ -60,7 +60,7 @@ def find_league_install_dir():
                 parsed = [parsed]
 
             parsed.sort(
-                key=lambda x: (0 if x.get("Name") and "LeagueClientUx" in x.get("Name") else 1)
+                key=lambda x: 0 if x.get("Name") and "LeagueClientUx" in x.get("Name") else 1
             )
 
             for proc in parsed:
@@ -94,7 +94,9 @@ class LeagueRecorder:
         self.status_callback = status_callback
 
         self.record_folder = self.config.get("record_folder", os.path.abspath("recordings"))
-        self.native_recorder = NativeAudioRecorder(record_folder=self.record_folder, log_callback=self.log)
+        self.native_recorder = NativeAudioRecorder(
+            record_folder=self.record_folder, log_callback=self.log
+        )
         self.native_recorder.set_target_process(
             pid=int(self.config.get("target_audio_pid", -1)),
             name=self.config.get("target_audio_name", "Discord"),
@@ -220,7 +222,7 @@ class LeagueRecorder:
         try:
             for proc in psutil.process_iter(["name"]):
                 try:
-                    if "League of Legends.exe" in (proc.info.get("name") or ""):
+                    if "League of Legends.exe" in (proc.info["name"] or ""):
                         return True
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
@@ -323,9 +325,7 @@ class LeagueRecorder:
                     os.remove(mp3_path)
                 except Exception:
                     pass
-                self.log(
-                    f"⚠️ Discarded tiny stub recording (<10KB): {os.path.basename(mp3_path)}"
-                )
+                self.log(f"⚠️ Discarded tiny stub recording (<10KB): {os.path.basename(mp3_path)}")
                 self.update_status("WATCHING", t("record.waiting_for_match"))
                 return
 
@@ -369,8 +369,12 @@ class LeagueRecorder:
             except Exception:
                 pass
 
-        base_name = self.real_game_id if self.real_game_id else f"Scrim_{time.strftime('%Y%m%d_%H%M%S')}"
-        final_mp3 = self.native_recorder.stop_and_finalize(base_name, initial_offset=self.first_game_time)
+        base_name = (
+            self.real_game_id if self.real_game_id else f"Scrim_{time.strftime('%Y%m%d_%H%M%S')}"
+        )
+        final_mp3 = self.native_recorder.stop_and_finalize(
+            base_name, initial_offset=self.first_game_time
+        )
         if final_mp3:
             self.log(t("logs.saved_mp3", path=final_mp3))
             self.update_status("SAVED", f"{os.path.basename(final_mp3)}")
@@ -437,7 +441,9 @@ class LeagueRecorder:
                     # Do NOT start recording during loading screen (game_time == 0.0) or countdown (< 0.0).
                     if not self.recording:
                         if game_time > 0.0:
-                            self.start_recording(initial_game_time=game_time, t_poll_start=t_poll_start)
+                            self.start_recording(
+                                initial_game_time=game_time, t_poll_start=t_poll_start
+                            )
                         elif game_time == 0.0:
                             self.update_status("WATCHING", t("record.waiting_for_match"))
                         else:
@@ -455,8 +461,12 @@ class LeagueRecorder:
                                 self.is_paused = True
                                 self.log(t("logs.pause"))
                                 p_time_val = max(0.0, game_time)
-                                p_time_str = f"{int(p_time_val // 60):02d}:{int(p_time_val % 60):02d}"
-                                self.update_status("PAUSED", t("record.paused_time", time=p_time_str))
+                                p_time_str = (
+                                    f"{int(p_time_val // 60):02d}:{int(p_time_val % 60):02d}"
+                                )
+                                self.update_status(
+                                    "PAUSED", t("record.paused_time", time=p_time_str)
+                                )
 
                         elif game_time > self.last_game_time:
                             pause_tick_count = 0
