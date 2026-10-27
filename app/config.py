@@ -6,12 +6,23 @@ import shutil
 from dotenv import load_dotenv, set_key
 import sys
 
+_KEY_MAPPINGS = (
+    ("record_folder", "RECORD_FOLDER"),
+    ("vlc_dir", "VLC_DIR"),
+    ("check_time", "CHECK_TIME"),
+    ("replay_volume", "REPLAY_VOLUME"),
+    ("sync_offset_ms", "SYNC_OFFSET_MS"),
+    ("language", "LANGUAGE"),
+)
+
+
 def _detect_project_root():
     """Detects the real application directory whether running from source or compiled binary."""
     # 1. Nuitka compiled information (item 4 / containing_dir is the real exe folder)
     compiled_info = getattr(sys.modules.get("__main__", None), "__compiled__", None)
     if compiled_info is None:
         import builtins
+
         compiled_info = getattr(builtins, "__compiled__", None)
     if compiled_info is not None:
         containing_dir = getattr(compiled_info, "containing_dir", None)
@@ -27,11 +38,20 @@ def _detect_project_root():
             return os.path.dirname(os.path.abspath(val))
 
     # 3. sys.argv[0] if invoked as standalone .exe
-    if sys.argv and sys.argv[0] and sys.argv[0].lower().endswith(".exe") and os.path.exists(sys.argv[0]):
+    if (
+        sys.argv
+        and sys.argv[0]
+        and sys.argv[0].lower().endswith(".exe")
+        and os.path.exists(sys.argv[0])
+    ):
         return os.path.dirname(os.path.abspath(sys.argv[0]))
 
     # 4. Standard frozen executable (PyInstaller, etc.)
-    if getattr(sys, "frozen", False) or (sys.executable and sys.executable.lower().endswith(".exe") and "python" not in os.path.basename(sys.executable).lower()):
+    if getattr(sys, "frozen", False) or (
+        sys.executable
+        and sys.executable.lower().endswith(".exe")
+        and "python" not in os.path.basename(sys.executable).lower()
+    ):
         return os.path.dirname(os.path.abspath(sys.executable))
 
     # 5. Development mode: parent directory of app package
@@ -153,7 +173,7 @@ def save_config(config_data):
     success = True
     try:
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(config_data, f, indent=4, ensure_ascii=False)
+            f.write(json.dumps(config_data, indent=4, ensure_ascii=False))
     except Exception as e:
         print(f"❌ Error saving config.json: {e}")
         success = False
@@ -161,15 +181,7 @@ def save_config(config_data):
     # Also update .env file if it exists
     if os.path.exists(DOTENV_PATH):
         try:
-            key_mappings = {
-                "record_folder": "RECORD_FOLDER",
-                "vlc_dir": "VLC_DIR",
-                "check_time": "CHECK_TIME",
-                "replay_volume": "REPLAY_VOLUME",
-                "sync_offset_ms": "SYNC_OFFSET_MS",
-                "language": "LANGUAGE",
-            }
-            for cfg_key, env_key in key_mappings.items():
+            for cfg_key, env_key in _KEY_MAPPINGS:
                 if cfg_key in config_data:
                     set_key(DOTENV_PATH, env_key, str(config_data[cfg_key]))
         except Exception as e:
@@ -192,6 +204,7 @@ def get_ffmpeg_path():
 
     # Fallback for WinGet if terminal hasn't refreshed PATH yet
     import glob
+
     winget_matches = glob.glob(
         os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages\*FFmpeg*\**\bin\ffmpeg.exe"),
         recursive=True,
