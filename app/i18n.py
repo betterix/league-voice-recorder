@@ -62,9 +62,9 @@ def _get_locales_search_dirs() -> list[str]:
 def _resolve_key(d: dict, keys: list[str]) -> str | None:
     curr = d
     for k in keys:
-        if isinstance(curr, dict) and k in curr:
+        try:
             curr = curr[k]
-        else:
+        except (KeyError, TypeError):
             return None
     return curr if isinstance(curr, str) else None
 
