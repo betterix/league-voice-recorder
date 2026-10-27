@@ -334,6 +334,7 @@ League Voice Recorder/
 │
 ├── .github/
 │   └── workflows/
+│       ├── codeflash.yaml  # Codeflash AI performance optimization workflow
 │       └── release.yml     # Automated GitHub Actions release compilation
 │
 ├── .gitattributes          # Cross-platform LF/CRLF normalization
