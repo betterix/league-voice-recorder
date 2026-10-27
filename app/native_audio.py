@@ -27,7 +27,7 @@ def scale_vu(peak):
     if peak <= 0.00005:
         return 0.0
     val = peak ** 0.28
-    return max(0.0, min(1.0, val))
+    return 1.0 if val >= 1.0 else val
 
 
 def get_available_audio_targets():
