@@ -3,6 +3,10 @@ import json
 import os
 import sys
 
+_MODULE_FILE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+_PARENT_DIR = os.path.dirname(_MODULE_FILE_DIR)
+
 if getattr(sys, "frozen", False):
     PROJECT_ROOT = os.path.dirname(sys.executable)
     BUNDLE_DIR = getattr(sys, "_MEIPASS", PROJECT_ROOT)
@@ -28,7 +32,11 @@ def _get_locales_search_dirs() -> list[str]:
     dirs = []
     # 1. External locales folder next to executable (for community drop-in translations)
     nuitka_bin = os.environ.get("NUITKA_ONEFILE_BINARY")
-    exe_dir = os.path.dirname(os.path.abspath(nuitka_bin)) if nuitka_bin else os.path.dirname(sys.executable)
+    exe_dir = (
+        os.path.dirname(os.path.abspath(nuitka_bin))
+        if nuitka_bin
+        else os.path.dirname(sys.executable)
+    )
     exe_locales = os.path.join(exe_dir, "locales")
     if os.path.isdir(exe_locales):
         dirs.append(exe_locales)
@@ -42,8 +50,8 @@ def _get_locales_search_dirs() -> list[str]:
 
     for candidate in [
         LOCALES_DIR,
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "locales"),
-        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "locales"),
+        os.path.join(_MODULE_FILE_DIR, "locales"),
+        os.path.join(_PARENT_DIR, "locales"),
         os.path.join(getattr(sys, "_MEIPASS", ""), "locales"),
     ]:
         if candidate and os.path.isdir(candidate) and candidate not in dirs:
