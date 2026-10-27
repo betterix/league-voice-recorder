@@ -60,7 +60,7 @@ def detect_running_rofl_process():
             if "League of Legends.exe" in name:
                 cmdline = proc.info.get("cmdline") or []
                 for raw_arg in cmdline:
-                    arg = str(raw_arg).strip('\'"')
+                    arg = str(raw_arg).strip("'\"")
                     if arg.lower().endswith(".rofl"):
                         return arg, proc.info.get("pid")
         except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -119,11 +119,11 @@ def create_vlc_instance():
     if vlc is None:
         raise RuntimeError("VLC (64-bit) is not installed or libvlc.dll was not found.")
 
-    candidates = [
+    candidates = (
         "--quiet",
         "--quiet --aout=mmdevice",
         "--quiet --aout=directsound",
-    ]
+    )
     for opts in candidates:
         try:
             instance = vlc.Instance(opts)
@@ -239,9 +239,7 @@ class ReplaySynchronizer:
                             self.log(t("logs.vlc_end_reload"))
 
                         vlc_time = (
-                            (player.get_time() / 1000.0)
-                            if hasattr(player, "get_time")
-                            else -1.0
+                            (player.get_time() / 1000.0) if hasattr(player, "get_time") else -1.0
                         )
 
                         target_time = max(0.0, game_time + self.sync_offset)
@@ -385,9 +383,7 @@ class ReplaySynchronizer:
                     matched_file = find_matching_audio_file(self.audio_directory, game_id)
 
                     if matched_file:
-                        self.log(
-                            t("logs.audio_found", file=os.path.basename(matched_file))
-                        )
+                        self.log(t("logs.audio_found", file=os.path.basename(matched_file)))
                         last_handled_path = rofl_path
                         self.run_sync_loop(matched_file, replay_pid=rofl_pid)
                         self.update_status("WATCHING", t("replay.waiting_for_replay"))
