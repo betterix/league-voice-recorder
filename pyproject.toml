@@ -60,4 +60,5 @@ formatter-cmds = ["ruff check --exit-zero --fix $file", "ruff format $file"]
 dev = [
     "codeflash>=0.20.6",
     "nuitka>=4.3.1",
+    "ruff>=0.17.3",
 ]
