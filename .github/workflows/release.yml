@@ -21,13 +21,13 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          python-version: "3.14.8"
+          python-version: "3.14.10"
 
       - name: Set up Python
-        run: uv python install 3.14.8
+        run: uv python install 3.14.10
 
       - name: Install dependencies
-        run: uv sync --dev --python 3.14.8
+        run: uv sync --dev --python 3.14.10
 
       - name: Install VLC Media Player
         shell: pwsh
@@ -40,14 +40,14 @@ jobs:
       - name: Compile Windows executable with Nuitka
         shell: pwsh
         run: |
-          $base = uv run --python 3.14.8 python -c "import sys; print(sys.base_prefix)"
+          $base = uv run --python 3.14.10 python -c "import sys; print(sys.base_prefix)"
           $tcl_dir = Join-Path $base "tcl"
           $tk_dir = Join-Path $base "tcl\tk9.0"
           if (-not (Test-Path $tk_dir)) { $tk_dir = $tcl_dir }
           if (Test-Path "dist\LeagueVoiceRecorder") { Remove-Item -Path "dist\LeagueVoiceRecorder" -Recurse -Force }
           if (Test-Path "dist\LeagueVoiceRecorder.dist") { Remove-Item -Path "dist\LeagueVoiceRecorder.dist" -Recurse -Force }
           if (Test-Path "dist\main.dist") { Remove-Item -Path "dist\main.dist" -Recurse -Force }
-          uv run --python 3.14.8 python -m nuitka `
+          uv run --python 3.14.10 python -m nuitka `
             --standalone `
             --msvc=latest `
             --windows-console-mode=disable `

@@ -2,7 +2,7 @@
 cd /d "%~dp0\.."
 title Build League Voice Recorder with Nuitka
 echo ========================================================
-echo Building League Voice Recorder with Nuitka (Python 3.14.8 - Standalone)...
+echo Building League Voice Recorder with Nuitka (Python 3.14.10 - Standalone)...
 echo ========================================================
 
 rem Clean previous dist and build folders to prevent file mixing
@@ -20,15 +20,15 @@ if exist "dist\build" (
     rd /s /q "dist\build"
 )
 
-rem Resolve Tcl and Tk library directories for Python 3.14.8
-for /f "tokens=*" %%i in ('uv run --python 3.14.8 python -c "import sys, os; print(os.path.join(sys.base_prefix, 'tcl'))"') do set "TCL_DIR=%%i"
-for /f "tokens=*" %%i in ('uv run --python 3.14.8 python -c "import sys, os; tcl = os.path.join(sys.base_prefix, 'tcl'); tk9 = os.path.join(tcl, 'tk9.0'); tk8 = os.path.join(tcl, 'tk8.6'); print(tk9 if os.path.exists(tk9) else (tk8 if os.path.exists(tk8) else tcl))"') do set "TK_DIR=%%i"
+rem Resolve Tcl and Tk library directories for Python 3.14.10
+for /f "tokens=*" %%i in ('uv run --python 3.14.10 python -c "import sys, os; print(os.path.join(sys.base_prefix, 'tcl'))"') do set "TCL_DIR=%%i"
+for /f "tokens=*" %%i in ('uv run --python 3.14.10 python -c "import sys, os; tcl = os.path.join(sys.base_prefix, 'tcl'); tk9 = os.path.join(tcl, 'tk9.0'); tk8 = os.path.join(tcl, 'tk8.6'); print(tk9 if os.path.exists(tk9) else (tk8 if os.path.exists(tk8) else tcl))"') do set "TK_DIR=%%i"
 
 echo Tcl directory: %TCL_DIR%
 echo Tk directory:  %TK_DIR%
 
 rem Compile with Nuitka native C compiler (Standalone mode)
-uv run --python 3.14.8 python -m nuitka ^
+uv run --python 3.14.10 python -m nuitka ^
     --standalone ^
     --windows-console-mode=disable ^
     --assume-yes-for-downloads ^
