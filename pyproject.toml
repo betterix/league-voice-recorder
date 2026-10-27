@@ -1,6 +1,6 @@
 [project]
 name = "league-scrim-recorder"
-version = "0.2.3"
+version = "0.2.4"
 description = "Record League of Legends scrim voice audio and synchronize it with replay playback."
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -21,17 +21,18 @@ classifiers = [
 dependencies = [
     "customtkinter>=6.0.0",
     "proc-tap>=1.1.1",
-    "psutil>=5.9.0",
+    "psutil>=7.2.2",
     "pycaw>=20260927",
     "python-dotenv>=1.2.4",
-    "python-vlc>=3.0.0",
-    "requests>=2.31.0",
+    "python-vlc>=3.0.21203",
+    "requests>=2.34.2",
     "sounddevice>=0.5.6",
-    "urllib3>=2.0.0",
+    "urllib3>=2.8.0",
 ]
 
 [tool.uv]
 package = false
+upgrade = true
 
 [tool.ruff]
 line-length = 100
@@ -47,7 +48,16 @@ ignore = [
     "SIM102",   # Use a single `if` statement instead of nested `if` statements
 ]
 
+[tool.codeflash]
+# All paths are relative to this pyproject.toml's directory.
+module-root = "app"
+tests-root = "tests"
+ignore-paths = []
+disable-telemetry = true
+formatter-cmds = ["ruff check --exit-zero --fix $file", "ruff format $file"]
+
 [dependency-groups]
 dev = [
-    "nuitka>=4.3.0",
+    "codeflash>=0.20.6",
+    "nuitka>=4.3.1",
 ]

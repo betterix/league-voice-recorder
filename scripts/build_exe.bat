@@ -28,7 +28,7 @@ echo Tcl directory: %TCL_DIR%
 echo Tk directory:  %TK_DIR%
 
 rem Compile with Nuitka native C compiler (Standalone mode)
-uv run --python 3.14.8 --with nuitka python -m nuitka ^
+uv run --python 3.14.8 python -m nuitka ^
     --standalone ^
     --windows-console-mode=disable ^
     --assume-yes-for-downloads ^
@@ -71,11 +71,6 @@ if exist "dist\LeagueVoiceRecorder.dist" (
 )
 
 echo.
-echo Copying ffmpeg.exe to output directory if present...
-if exist "ffmpeg.exe" (
-    copy /y "ffmpeg.exe" "dist\LeagueVoiceRecorder\" >nul
-)
-
 echo Copying locales to output directory...
 if exist "locales" (
     xcopy /y /s /i "locales" "dist\LeagueVoiceRecorder\locales" >nul
@@ -86,9 +81,6 @@ if exist "assets" (
     xcopy /y /s /i "assets" "dist\LeagueVoiceRecorder\assets" >nul
 )
 
-echo Generating default config.json in output directory...
-uv run --python 3.14.8 python -c "import sys, json; sys.path.insert(0, '.'); from app.config import get_clean_default_config; json.dump(get_clean_default_config(), open(r'dist\LeagueVoiceRecorder\config.json', 'w', encoding='utf-8'), indent=4, ensure_ascii=False)"
-
 echo Copying LICENSE to output directory...
 if exist "LICENSE" (
     copy /y "LICENSE" "dist\LeagueVoiceRecorder\LICENSE" >nul
@@ -97,6 +89,11 @@ if exist "LICENSE" (
 echo Copying README.md to output directory...
 if exist "README.md" (
     copy /y "README.md" "dist\LeagueVoiceRecorder\README.md" >nul
+)
+
+echo Cleaning up temporary build artifacts...
+if exist "dist\main.build" (
+    rd /s /q "dist\main.build"
 )
 
 echo.

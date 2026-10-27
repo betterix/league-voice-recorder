@@ -24,9 +24,10 @@ The project provides both:
 League Voice Recorder/
 │
 ├── main.py                 # Primary Desktop GUI application entrypoint
-├── start_ui.bat            # Windows quick-launcher for the GUI
-├── run_tests.bat           # Automated test suite runner batch script
-├── build_exe.bat           # Standalone Windows .exe compiler batch script
+├── scripts/                # Windows automation & build scripts
+│   ├── start_ui.bat        # Windows quick-launcher for the GUI
+│   ├── run_tests.bat       # Automated test suite runner batch script
+│   └── build_exe.bat       # Standalone Windows .exe compiler batch script
 │
 ├── app/                    # Core Python application package
 │   ├── __init__.py         # Package marker
@@ -46,7 +47,7 @@ League Voice Recorder/
 │   ├── en.json             # English (default fallback)
 │   └── hu.json             # Hungarian
 │
-├── tests/                  # Automated test suite (40 unittests)
+├── tests/                  # Automated test suite (42 unittests)
 │   ├── __init__.py
 │   ├── test_config.py      # Config defaults, path resolution, and directory creation
 │   ├── test_discord_ipc.py # Discord Local IPC & mute silence injection
@@ -55,6 +56,11 @@ League Voice Recorder/
 │   ├── test_replay_sync.py # ROFL Game ID extraction & volume clamping
 │   └── test_ui.py          # CustomTkinter headless UI & live language switching
 │
+├── .github/
+│   └── workflows/
+│       └── release.yml     # Automated GitHub Actions release compilation
+│
+├── .gitattributes          # Cross-platform LF/CRLF normalization
 ├── .env.example            # Environment variables template
 ├── pyproject.toml          # Project dependencies and tool configurations
 ├── ruff.toml               # Linter rules and exclusions
@@ -85,6 +91,7 @@ flowchart TD
         LeagueRec["LeagueRecorder"]
         LiveAPI["Live Client Data (:2999)"]
         LCULockfile["LCU Lockfile / Gameflow API"]
+        DiscordIPC["Discord Local IPC (Live Mute/Deafen Sync)"]
         NativeWASAPI["Native WASAPI (Discord Loopback + Mic)"]
         FFmpegProc["FFmpeg MP3 Converter"]
     end
@@ -107,6 +114,7 @@ flowchart TD
 
     LeagueRec --> LiveAPI
     LeagueRec --> LCULockfile
+    DiscordIPC --> NativeWASAPI
     LeagueRec --> NativeWASAPI
     LeagueRec --> FFmpegProc
     FFmpegProc --> AudioFiles
@@ -147,6 +155,7 @@ Responsible for live match detection, native WASAPI voice capture, and audio exp
   - Pause detection: If `gameTime == last_game_time` (and `gameTime > 0`), pauses native recording.
   - Resume detection: If `gameTime > last_game_time` while paused, resumes native recording.
   - Match end: When the game client closes, the request raises `RequestException`, which triggers `stop_recording_and_rename()`.
+  - **Hands-Free Match Auto-Stop**: When the scrim finishes and `<GameID>.mp3` is saved, the watcher automatically signals completion, exits the listening loop, and resets the UI button back to `Start Recording Watcher` without requiring manual intervention.
 - **Game ID Extraction**:
   - Uses `find_league_install_dir()` (prioritizing fast `psutil` lookup of `LeagueClientUx`, falling back to PowerShell and common drive paths).
   - Reads `lockfile` (`<name>:<pid>:<port>:<password>:<protocol>`).
@@ -258,7 +267,7 @@ Core libraries:
 - `requests` & `urllib3`: HTTPS communication with League local APIs.
 
 ### 5.3 Automated Testing & Code Quality
-The project includes a comprehensive suite of 26 unit tests covering configuration, i18n key parity and translations, recorder sample-accurate audio alignment and replay protection, replay synchronizer game ID parsing and volume clamping, and headless CustomTkinter UI rendering.
+The project includes a comprehensive suite of 42 unit tests covering configuration, Discord Local IPC mute/deafen sync (auto-skipped when Discord is offline), i18n key parity and translations, recorder sample-accurate audio alignment and replay protection, replay synchronizer game ID parsing and volume clamping, and headless CustomTkinter UI rendering.
 
 ```powershell
 # Run the test suite via the Windows batch launcher
@@ -278,6 +287,7 @@ The application is compiled into a standalone Windows binary distribution using 
   - `LeagueVoiceRecorder.exe`: Standalone binary with instant startup (<100ms) and zero runtime extraction overhead.
   - Python runtime DLL, dependency libraries, and Tkinter assets.
   - `locales/` directory for built-in and community translation JSON files.
+- Automatically cleans up `dist/main.build` after compilation to conserve disk space.
 - Automatically creates `config.json` next to the binary on first run.
 
 ---

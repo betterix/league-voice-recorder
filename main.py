@@ -50,8 +50,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         on_language_change(self._update_ui_texts)
 
         self.title(f"{t('app.window_title')} v{__version__}")
-        self.geometry("900x740")
-        self.minsize(720, 520)
+        self.geometry("1020x850")
+        self.minsize(850, 650)
 
         # Set Window & Taskbar Icon
         self._apply_window_icon()

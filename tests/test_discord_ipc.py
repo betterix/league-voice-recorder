@@ -7,16 +7,32 @@ import unittest
 from unittest.mock import patch
 
 import numpy as np
+import psutil
 
 from app.discord_ipc import (
     DiscordMuteWatcher,
     delete_persisted_token,
+    find_discord_ipc_pipe,
     load_persisted_token,
     save_persisted_token,
 )
 from app.native_audio import NativeAudioRecorder
 
 
+def is_discord_running():
+    """Returns True only if Discord desktop client process or IPC pipe is active."""
+    try:
+        if find_discord_ipc_pipe() is not None:
+            return True
+        for p in psutil.process_iter(["name"]):
+            if "discord" in (p.info.get("name") or "").lower():
+                return True
+    except Exception:
+        pass
+    return False
+
+
+@unittest.skipUnless(is_discord_running(), "Discord is not up and running")
 class TestDiscordIpcModule(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()

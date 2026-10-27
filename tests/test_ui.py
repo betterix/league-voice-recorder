@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from app import __version__
 from app.i18n import reset_listeners, set_language, t
@@ -11,7 +11,12 @@ class TestUIApp(unittest.TestCase):
         # Ensure default English for predictable baseline
         reset_listeners()
         set_language("en")
-        self.app = LeagueVoiceRecorderApp()
+        with (
+            patch("main.LeagueVoiceRecorderApp._check_system_health"),
+            patch("main.LeagueVoiceRecorderApp._refresh_audio_targets"),
+            patch("main.LeagueVoiceRecorderApp._start_audio_meter_loop"),
+        ):
+            self.app = LeagueVoiceRecorderApp()
         self.app.withdraw()  # Prevent window flashing during automated tests
 
     def tearDown(self):

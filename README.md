@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.2.3-blue?logo=github" alt="Release Version" /></a>
+  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.2.4-blue?logo=github" alt="Release Version" /></a>
   <img src="https://img.shields.io/badge/python-3.14.8-blue?logo=python&logoColor=white" alt="Python Version" />
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%2064--bit-0078D6?logo=windows&logoColor=white" alt="Platform" />
   <img src="https://img.shields.io/badge/build-passing-brightgreen?logo=githubactions&logoColor=white" alt="Build Status" />
@@ -79,10 +79,11 @@ flowchart TD
         FFmpegHelper["FFmpeg Path Resolver"]
     end
 
-    subgraph Recorder_Engine ["Recorder Engine (app/record.py)"]
+    subgraph Recorder_Engine ["Recorder Engine (app/record.py & app/native_audio.py)"]
         LeagueRec["LeagueRecorder"]
         LiveAPI["Live Client Data API (:2999)"]
         LCULockfile["LCU Lockfile & Gameflow API"]
+        DiscordIPC["Discord Local IPC (Live Mute/Deafen Sync)"]
         NativeWASAPI["Native WASAPI Audio Capture"]
         FFmpegProc["FFmpeg Audio Converter & Offset Aligner"]
     end
@@ -105,6 +106,7 @@ flowchart TD
 
     LeagueRec --> LiveAPI
     LeagueRec --> LCULockfile
+    DiscordIPC --> NativeWASAPI
     LeagueRec --> NativeWASAPI
     LeagueRec --> FFmpegProc
     FFmpegProc --> AudioFiles
@@ -256,7 +258,7 @@ uv run python -m app.play_replay
 
 ### Running the Automated Test Suite
 
-The project includes an automated test suite with 26 unit tests covering configuration, internationalization, sample-accurate recorder alignment, replay parsing, and headless UI rendering:
+The project includes an automated test suite with 42 unit tests covering configuration, Discord Local IPC mute/deafen synchronization, internationalization, sample-accurate recorder alignment, replay parsing, and headless UI rendering:
 
 ```powershell
 # Run tests with the Windows launcher script
@@ -284,7 +286,7 @@ Every time a new GitHub Release is published or a tag matching `v*` (e.g., `v1.0
 
 1. Spins up a clean `windows-latest` virtual environment.
 2. Installs Python 3.14.8 and dependencies via `uv`.
-3. Provisions VLC Media Player and runs the complete 26-test suite.
+3. Provisions VLC Media Player and runs the complete 42-test suite.
 4. Compiles the standalone distribution with Nuitka in standalone mode.
 5. Bundles `LeagueVoiceRecorder.exe` (automatically creates `config.json` on first run).
 6. Packages and uploads `LeagueVoiceRecorder-Windows-x64.zip` directly to the GitHub Release.
@@ -297,15 +299,14 @@ Every time a new GitHub Release is published or a tag matching `v*` (e.g., `v1.0
 League Voice Recorder/
 │
 ├── main.py                 # Primary Desktop GUI application entrypoint
-├── start_ui.bat            # Windows quick-launcher for the GUI
-├── run_tests.bat           # Automated test suite runner batch script
-├── build_exe.bat           # Standalone Windows .exe compiler batch script
 │
 ├── app/                    # Application package
 │   ├── __init__.py         # Package marker
 │   ├── config.py           # Configuration loader, saver, and path resolver
+│   ├── discord_ipc.py      # Discord Local IPC client (live mute/deafen tracking)
 │   ├── i18n.py             # Internationalization and community translation loader
 │   ├── record.py           # LeagueRecorder engine (WASAPI capture & FFmpeg alignment)
+│   ├── native_audio.py     # Native WASAPI audio capture (Discord loopback & mic)
 │   └── play_replay.py      # ReplaySynchronizer engine (process watcher & VLC sync)
 │
 ├── assets/                 # Visual branding assets (icons, logos)
@@ -317,9 +318,15 @@ League Voice Recorder/
 │   ├── en.json             # English (default fallback)
 │   └── hu.json             # Hungarian
 │
-├── tests/                  # Automated test suite (33 unit tests)
+├── scripts/                # Windows automation & build scripts
+│   ├── start_ui.bat        # Windows quick-launcher for the GUI
+│   ├── run_tests.bat       # Automated test suite runner batch script
+│   └── build_exe.bat       # Standalone Windows .exe compiler batch script
+│
+├── tests/                  # Automated test suite (42 unit tests)
 │   ├── __init__.py
 │   ├── test_config.py      # Config defaults, path resolution, and directory creation
+│   ├── test_discord_ipc.py # Discord Local IPC & mute silence injection
 │   ├── test_i18n.py        # Locale discovery, translation lookup, and key parity
 │   ├── test_recorder.py    # FFmpeg sample-accurate offset alignment & replay guard
 │   ├── test_replay_sync.py # ROFL Game ID extraction & volume clamping
@@ -329,6 +336,7 @@ League Voice Recorder/
 │   └── workflows/
 │       └── release.yml     # Automated GitHub Actions release compilation
 │
+├── .gitattributes          # Cross-platform LF/CRLF normalization
 ├── .env.example            # Environment variables template
 ├── pyproject.toml          # Project dependencies and tool configurations
 ├── ruff.toml               # Linter rules and exclusions
