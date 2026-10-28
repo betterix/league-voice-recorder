@@ -14,11 +14,7 @@ darkdetect==0.8.0
     # via customtkinter
 idna==3.20
     # via requests
-numpy==2.2.6 ; python_full_version < '3.11'
-    # via
-    #   proc-tap
-    #   scipy
-numpy==2.4.6 ; python_full_version == '3.11.*'
+numpy==2.4.6 ; python_full_version < '3.12'
     # via
     #   proc-tap
     #   scipy
@@ -38,9 +34,7 @@ pulsectl==24.12.0 ; sys_platform == 'linux'
     # via proc-tap
 pycaw==20260927
     # via league-scrim-recorder
-pycparser==3.11 ; python_full_version < '3.11' and implementation_name != 'PyPy'
-    # via cffi
-pycparser==3.12 ; python_full_version >= '3.11' and implementation_name != 'PyPy'
+pycparser==3.12 ; implementation_name != 'PyPy'
     # via cffi
 pyobjc-core==12.2.2 ; sys_platform == 'darwin'
     # via
@@ -57,9 +51,7 @@ python-vlc==3.0.21203
     # via league-scrim-recorder
 requests==2.34.2
     # via league-scrim-recorder
-scipy==1.15.3 ; python_full_version < '3.11'
-    # via proc-tap
-scipy==1.17.1 ; python_full_version == '3.11.*'
+scipy==1.17.1 ; python_full_version < '3.12'
     # via proc-tap
 scipy==1.18.1 ; python_full_version >= '3.12'
     # via proc-tap
