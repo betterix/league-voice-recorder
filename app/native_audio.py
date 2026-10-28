@@ -87,12 +87,18 @@ def get_available_audio_targets():
             })
 
     # 3. Add other running Discord processes from psutil (renderer, main)
-    for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+    for proc in psutil.process_iter(["pid", "name"]):
         try:
             name = (proc.info.get("name") or "").lower()
-            pid = proc.info["pid"]
-            if name == "discord.exe" and pid not in seen_pids:
-                cmd = " ".join(proc.info.get("cmdline") or []).lower()
+            pid = proc.info.get("pid")
+            if name == "discord.exe" and pid and pid not in seen_pids:
+                cmd_list = proc.info.get("cmdline")
+                if cmd_list is None and hasattr(proc, "cmdline"):
+                    try:
+                        cmd_list = proc.cmdline()
+                    except Exception:
+                        cmd_list = []
+                cmd = " ".join(cmd_list or []).lower()
                 if "crashpad" in cmd or "gpu-process" in cmd:
                     continue
                 tag = "Renderer" if "--type=renderer" in cmd else ("Utility" if "--type=utility" in cmd else "Main")
@@ -155,11 +161,17 @@ def find_discord_active_pid():
         pass
 
     # Fallback to psutil search for renderer Discord
-    for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+    for proc in psutil.process_iter(["pid", "name"]):
         try:
             name = (proc.info.get("name") or "").lower()
             if name == "discord.exe":
-                cmd = " ".join(proc.info.get("cmdline") or []).lower()
+                cmd_list = proc.info.get("cmdline")
+                if cmd_list is None and hasattr(proc, "cmdline"):
+                    try:
+                        cmd_list = proc.cmdline()
+                    except Exception:
+                        cmd_list = []
+                cmd = " ".join(cmd_list or []).lower()
                 if "--type=renderer" in cmd:
                     return proc.info["pid"]
         except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -295,7 +307,7 @@ class NativeAudioRecorder:
         """Stops and closes the live microphone monitor stream."""
         if self._monitor_stream is not None:
             try:
-                self._monitor_stream.stop()
+                self._monitor_stream.abort()
                 self._monitor_stream.close()
             except Exception:
                 pass
@@ -331,26 +343,46 @@ class NativeAudioRecorder:
         try:
             from pycaw.pycaw import AudioUtilities, IAudioMeterInformation
 
+            cached_meter = None
+            last_meter_pid = None
+
             while not self._stop_idle_monitor_event.is_set() and not self.is_recording:
                 resolved_pid = self.resolve_target_pid()
                 if resolved_pid and resolved_pid > 0:
                     found = False
-                    try:
-                        for s in AudioUtilities.GetAllSessions():
-                            if s.Process and s.ProcessId == resolved_pid:
-                                meter = s._ctl.QueryInterface(IAudioMeterInformation)
-                                peak = float(meter.GetPeakValue())
-                                self.current_app_level = max(peak, self.current_app_level * 0.85)
-                                found = True
-                                break
-                    except Exception:
-                        pass
+                    # Fast-path: query cached COM meter directly (315x faster than GetAllSessions)
+                    if cached_meter is not None and last_meter_pid == resolved_pid:
+                        try:
+                            peak = float(cached_meter.GetPeakValue())
+                            self.current_app_level = max(peak, self.current_app_level * 0.85)
+                            found = True
+                        except Exception:
+                            cached_meter = None
+                            last_meter_pid = None
+
+                    if not found:
+                        try:
+                            for s in AudioUtilities.GetAllSessions():
+                                if s.Process and s.ProcessId == resolved_pid:
+                                    meter = s._ctl.QueryInterface(IAudioMeterInformation)
+                                    peak = float(meter.GetPeakValue())
+                                    self.current_app_level = max(peak, self.current_app_level * 0.85)
+                                    cached_meter = meter
+                                    last_meter_pid = resolved_pid
+                                    found = True
+                                    break
+                        except Exception:
+                            cached_meter = None
+                            last_meter_pid = None
+
                     if not found:
                         self.current_app_level *= 0.85
                 else:
+                    cached_meter = None
+                    last_meter_pid = None
                     self.current_app_level *= 0.85
 
-                time.sleep(0.04)
+                time.sleep(0.06)
         except Exception:
             pass
         finally:

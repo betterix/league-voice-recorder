@@ -87,6 +87,54 @@ def find_league_install_dir():
     return None
 
 
+_CACHED_LEAGUE_INSTALL_DIR = None
+_LCU_SESSION = None
+
+
+def get_lcu_gameflow_phase():
+    """
+    Queries League Client Update (LCU) API to get the current gameflow phase.
+    Returns: string (e.g. 'ChampSelect', 'Lobby', 'InProgress', 'None') or None if client offline.
+    """
+    global _CACHED_LEAGUE_INSTALL_DIR, _LCU_SESSION
+
+    if not _CACHED_LEAGUE_INSTALL_DIR or not os.path.exists(os.path.join(_CACHED_LEAGUE_INSTALL_DIR, "lockfile")):
+        _CACHED_LEAGUE_INSTALL_DIR = find_league_install_dir()
+        if not _CACHED_LEAGUE_INSTALL_DIR:
+            return None
+
+    lockfile_path = os.path.join(_CACHED_LEAGUE_INSTALL_DIR, "lockfile")
+    if not os.path.exists(lockfile_path):
+        _CACHED_LEAGUE_INSTALL_DIR = None
+        return None
+
+    try:
+        with open(lockfile_path, "r", encoding="utf-8") as f:
+            data = f.read().split(":")
+        if len(data) < 4:
+            return None
+        port = data[2]
+        password = data[3]
+        auth = base64.b64encode(f"riot:{password}".encode()).decode()
+
+        if _LCU_SESSION is None:
+            _LCU_SESSION = requests.Session()
+            _LCU_SESSION.verify = False
+
+        r = _LCU_SESSION.get(
+            f"https://127.0.0.1:{port}/lol-gameflow/v1/gameflow-phase",
+            headers={"Authorization": f"Basic {auth}"},
+            timeout=1.0,
+        )
+        if r.status_code == 200:
+            val = r.json()
+            return val if isinstance(val, str) else str(val)
+    except Exception:
+        pass
+
+    return None
+
+
 class LeagueRecorder:
     def __init__(self, config=None, log_callback=None, status_callback=None):
         self.config = config or load_config()
@@ -188,11 +236,17 @@ class LeagueRecorder:
 
         # 1. Fast process inspection for .rofl in League command-line arguments
         try:
-            for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+            for proc in psutil.process_iter(["pid", "name"]):
                 name = proc.info.get("name") or ""
                 if "League of Legends.exe" in name:
                     pid = proc.info.get("pid")
-                    cmdline = proc.info.get("cmdline") or []
+                    cmdline = proc.info.get("cmdline")
+                    if cmdline is None and hasattr(proc, "cmdline"):
+                        try:
+                            cmdline = proc.cmdline()
+                        except Exception:
+                            cmdline = []
+                    cmdline = cmdline or []
                     is_rofl = any(arg.lower().endswith(".rofl") for arg in cmdline)
                     self._cached_game_pid = pid
                     self._cached_is_replay = is_rofl

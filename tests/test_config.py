@@ -22,6 +22,8 @@ class TestConfigModule(unittest.TestCase):
         self.assertIn("replay_volume", cfg)
         self.assertIn("sync_offset_ms", cfg)
         self.assertIn("language", cfg)
+        self.assertIn("auto_start_champ_select", cfg)
+        self.assertIn("auto_start_replay", cfg)
 
     def test_recordings_dir_in_user_documents(self):
         rec_dir = get_current_user_documents_recordings_dir()

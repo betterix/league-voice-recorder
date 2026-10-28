@@ -80,6 +80,16 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.after(200, self._refresh_audio_targets)
         self._start_audio_meter_loop()
 
+        # Automatic Champion Select & Replay match detection monitor
+        self._last_auto_started_phase = None
+        self._last_auto_started_rofl = None
+        self.after(1000, self._start_auto_detect_monitor)
+
+        # Replay mute state & hotkeys
+        self._replay_muted = False
+        self.bind("<Key-m>", self._on_key_m)
+        self.bind("<Key-M>", self._on_key_m)
+
         # Handle window close
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -433,8 +443,10 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             text=f"{vol_icon} {self.current_vol}%",
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color="#38BDF8",
-            width=65,
+            width=75,
+            cursor="hand2",
         )
+        self.vol_label.bind("<Button-1>", lambda e: self._toggle_replay_mute())
         self.vol_label.grid(row=0, column=0, padx=(10, 4), pady=6, sticky="w")
 
         self.vol_slider = ctk.CTkSlider(
@@ -453,7 +465,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
         self.rep_info_lbl = ctk.CTkLabel(
             rep_card,
-            text=t("replay.info"),
+            text=f"{t('replay.info')}\n• {t('replay.hotkey_hint')}",
             font=ctk.CTkFont(size=11),
             text_color="#94A3B8",
             justify="left",
@@ -559,12 +571,15 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 app_l, mic_l = native_rec.poll_audio_levels()
                 is_discord_muted = getattr(native_rec, "is_discord_muted", lambda: False)()
 
-                # Dynamic color based on amplitude, only reconfigure when changed
-                app_color = "#22C55E" if app_l < 0.65 else ("#EAB308" if app_l < 0.85 else "#EF4444")
-                if getattr(self, "_last_app_color", None) != app_color:
-                    self.app_meter_bar.configure(progress_color=app_color)
-                    self._last_app_color = app_color
-                self.app_meter_bar.set(app_l)
+                # Throttled redraw: only redraw app meter if level changed significantly
+                last_app_l = getattr(self, "_last_rendered_app_l", -1.0)
+                if abs(app_l - last_app_l) > 0.015 or (app_l == 0.0 and last_app_l > 0.0):
+                    app_color = "#22C55E" if app_l < 0.65 else ("#EAB308" if app_l < 0.85 else "#EF4444")
+                    if getattr(self, "_last_app_color", None) != app_color:
+                        self.app_meter_bar.configure(progress_color=app_color)
+                        self._last_app_color = app_color
+                    self.app_meter_bar.set(app_l)
+                    self._last_rendered_app_l = app_l
 
                 if is_discord_muted:
                     if getattr(self, "_last_mic_muted_state", None) is not True:
@@ -575,7 +590,9 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                         )
                         self.mic_meter_bar.configure(progress_color="#EF4444")
                         self._last_mic_color = "#EF4444"
-                    self.mic_meter_bar.set(0.0)
+                    if getattr(self, "_last_rendered_mic_l", -1.0) != 0.0:
+                        self.mic_meter_bar.set(0.0)
+                        self._last_rendered_mic_l = 0.0
                 else:
                     if getattr(self, "_last_mic_muted_state", None) is not False:
                         self._last_mic_muted_state = False
@@ -583,14 +600,18 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                             text=f"🎤 {t('record.microphone')}:",
                             text_color="#94A3B8",
                         )
-                    mic_color = "#0284C7" if mic_l < 0.65 else ("#EAB308" if mic_l < 0.85 else "#EF4444")
-                    if getattr(self, "_last_mic_color", None) != mic_color:
-                        self.mic_meter_bar.configure(progress_color=mic_color)
-                        self._last_mic_color = mic_color
-                    self.mic_meter_bar.set(mic_l)
+                    # Throttled redraw: only redraw mic meter if level changed significantly
+                    last_mic_l = getattr(self, "_last_rendered_mic_l", -1.0)
+                    if abs(mic_l - last_mic_l) > 0.015 or (mic_l == 0.0 and last_mic_l > 0.0):
+                        mic_color = "#0284C7" if mic_l < 0.65 else ("#EAB308" if mic_l < 0.85 else "#EF4444")
+                        if getattr(self, "_last_mic_color", None) != mic_color:
+                            self.mic_meter_bar.configure(progress_color=mic_color)
+                            self._last_mic_color = mic_color
+                        self.mic_meter_bar.set(mic_l)
+                        self._last_rendered_mic_l = mic_l
         except Exception:
             pass
-        self._meter_timer = self.after(60, self._update_audio_meters)
+        self._meter_timer = self.after(75, self._update_audio_meters)
 
     def _setup_tab_log(self, parent):
         parent.grid_columnconfigure(0, weight=1)
@@ -800,6 +821,38 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.lang_menu.set(current_display)
         self.lang_menu.grid(row=6, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
 
+        # Auto-Start in Champion Select
+        self.auto_champ_select_lbl = ctk.CTkLabel(scroll, text=t("settings.auto_start_champ_select"))
+        self.auto_champ_select_lbl.grid(row=7, column=0, padx=10, pady=6, sticky="w")
+        self.auto_champ_select_var = ctk.BooleanVar(
+            value=bool(self.config.get("auto_start_champ_select", True))
+        )
+        self.auto_champ_select_switch = ctk.CTkSwitch(
+            scroll,
+            text=t("settings.auto_start_champ_select_info"),
+            variable=self.auto_champ_select_var,
+            onvalue=True,
+            offvalue=False,
+            progress_color="#0284C7",
+        )
+        self.auto_champ_select_switch.grid(row=7, column=1, columnspan=2, padx=10, pady=6, sticky="w")
+
+        # Auto-Start Replay Sync
+        self.auto_replay_lbl = ctk.CTkLabel(scroll, text=t("settings.auto_start_replay"))
+        self.auto_replay_lbl.grid(row=8, column=0, padx=10, pady=6, sticky="w")
+        self.auto_replay_var = ctk.BooleanVar(
+            value=bool(self.config.get("auto_start_replay", True))
+        )
+        self.auto_replay_switch = ctk.CTkSwitch(
+            scroll,
+            text=t("settings.auto_start_replay_info"),
+            variable=self.auto_replay_var,
+            onvalue=True,
+            offvalue=False,
+            progress_color="#0284C7",
+        )
+        self.auto_replay_switch.grid(row=8, column=1, columnspan=2, padx=10, pady=6, sticky="w")
+
         # Save Button
         self.save_btn = ctk.CTkButton(
             scroll,
@@ -810,7 +863,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             hover_color="#0369A1",
             command=self._save_settings,
         )
-        self.save_btn.grid(row=6, column=0, columnspan=3, padx=10, pady=(20, 10), sticky="ew")
+        self.save_btn.grid(row=9, column=0, columnspan=3, padx=10, pady=(20, 10), sticky="ew")
 
     # ==========================================
     # I18N DYNAMIC TEXT REFRESH
@@ -853,7 +906,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.rep_btn.configure(text=t("replay.stop_btn"))
             else:
                 self.rep_btn.configure(text=t("replay.start_btn"))
-            self.rep_info_lbl.configure(text=t("replay.info"))
+            self.rep_info_lbl.configure(text=f"{t('replay.info')}\n• {t('replay.hotkey_hint')}")
+            self._update_volume_display()
             self._render_replay_status(*self.last_replay_status)
 
             # Tabs
@@ -892,6 +946,12 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.replay_vol_lbl.configure(text=t("settings.replay_volume"))
                 self.sync_offset_lbl.configure(text=t("settings.sync_offset"))
                 self.lang_lbl.configure(text=t("settings.language"))
+                if hasattr(self, "auto_champ_select_lbl"):
+                    self.auto_champ_select_lbl.configure(text=t("settings.auto_start_champ_select"))
+                    self.auto_champ_select_switch.configure(text=t("settings.auto_start_champ_select_info"))
+                if hasattr(self, "auto_replay_lbl"):
+                    self.auto_replay_lbl.configure(text=t("settings.auto_start_replay"))
+                    self.auto_replay_switch.configure(text=t("settings.auto_start_replay_info"))
                 self.save_btn.configure(text=t("settings.save_btn"))
 
                 curr_code = get_language()
@@ -914,6 +974,10 @@ class LeagueVoiceRecorderApp(ctk.CTk):
     def set_replay_status(self, status, detail=""):
         """Thread-safe status update for replay."""
         self.msg_queue.put(("STATUS_REPLAY", status, detail))
+
+    def set_replay_mute_state(self, is_muted):
+        """Thread-safe mute update for replay."""
+        self.msg_queue.put(("REPLAY_MUTE", is_muted))
 
     def _process_queue(self):
         """Processes pending UI updates on the main thread."""
@@ -940,6 +1004,20 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 elif action == "STATUS_REPLAY":
                     status, detail = item[1], item[2]
                     self._render_replay_status(status, detail)
+
+                elif action == "REPLAY_MUTE":
+                    self._replay_muted = bool(item[1])
+                    self._update_volume_display()
+
+                elif action == "AUTO_START_REC":
+                    if not self.recorder_worker:
+                        self.log_message(t("logs.champ_select_detected"))
+                        self._start_recording()
+
+                elif action == "AUTO_START_REPLAY":
+                    if not self.replay_worker:
+                        self.log_message(t("logs.replay_detected_autostart"))
+                        self._start_replay()
 
         except Exception:
             pass
@@ -1148,6 +1226,49 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.recorder_worker = None
         self.recorder_thread = None
 
+    def _start_auto_detect_monitor(self):
+        self._auto_detect_thread = threading.Thread(
+            target=self._auto_detect_monitor_loop,
+            daemon=True,
+            name="AutoDetectMonitor",
+        )
+        self._auto_detect_thread.start()
+
+    def _auto_detect_monitor_loop(self):
+        """Continuously monitors LCU gameflow and running replay processes to auto-start watchers."""
+        import time
+        from app.record import get_lcu_gameflow_phase
+        from app.play_replay import detect_running_rofl_process
+
+        while not getattr(self, "_is_destroyed", False):
+            # 1. Champion Select Live Match Watcher Auto-Start
+            if self.config.get("auto_start_champ_select", True) and not self.recorder_worker:
+                try:
+                    phase = get_lcu_gameflow_phase()
+                    if phase == "ChampSelect":
+                        if getattr(self, "_last_auto_started_phase", None) != "ChampSelect":
+                            self._last_auto_started_phase = "ChampSelect"
+                            self.msg_queue.put(("AUTO_START_REC",))
+                    elif phase in ("None", "Lobby", "EndOfGame", "WaitingForStats", None):
+                        self._last_auto_started_phase = None
+                except Exception:
+                    pass
+
+            # 2. Replay Match Auto-Sync Auto-Start
+            if self.config.get("auto_start_replay", True) and not self.replay_worker:
+                try:
+                    rofl_path, _ = detect_running_rofl_process()
+                    if rofl_path:
+                        if getattr(self, "_last_auto_started_rofl", None) != rofl_path:
+                            self._last_auto_started_rofl = rofl_path
+                            self.msg_queue.put(("AUTO_START_REPLAY",))
+                    else:
+                        self._last_auto_started_rofl = None
+                except Exception:
+                    pass
+
+            time.sleep(1.2)
+
     # ==========================================
     # REPLAY CONTROL
     # ==========================================
@@ -1174,8 +1295,12 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             config=self.config,
             log_callback=self.log_message,
             status_callback=self.set_replay_status,
+            mute_callback=self.set_replay_mute_state,
         )
-        self.replay_worker.set_volume(int(self.vol_slider.get()))
+        if getattr(self, "_replay_muted", False):
+            self.replay_worker.set_mute(True)
+        else:
+            self.replay_worker.set_volume(int(self.vol_slider.get()))
 
         self.replay_thread = threading.Thread(
             target=self.replay_worker.run_loop,
@@ -1183,17 +1308,53 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         )
         self.replay_thread.start()
 
+    def _update_volume_display(self, current_vol=None):
+        vol = int(current_vol if current_vol is not None else self.vol_slider.get())
+        if getattr(self, "_replay_muted", False):
+            self.vol_label.configure(
+                text=f"🔇 {t('replay.muted_label')}",
+                text_color="#EF4444",
+            )
+        else:
+            if vol == 0:
+                icon = "🔇"
+            elif vol < 35:
+                icon = "🔈"
+            elif vol < 70:
+                icon = "🔉"
+            else:
+                icon = "🔊"
+            self.vol_label.configure(
+                text=f"{icon} {vol}%",
+                text_color="#38BDF8",
+            )
+
+    def _on_key_m(self, event=None):
+        focus_widget = self.focus_get()
+        if focus_widget:
+            from tkinter import Entry, Text
+
+            if isinstance(focus_widget, (Entry, Text)):
+                return
+            if hasattr(focus_widget, "_entry") or "entry" in str(type(focus_widget)).lower():
+                return
+        self._toggle_replay_mute()
+
+    def _toggle_replay_mute(self):
+        if self.replay_worker:
+            self.replay_worker.toggle_mute()
+        else:
+            self._replay_muted = not getattr(self, "_replay_muted", False)
+            self._update_volume_display()
+
     def _on_replay_volume_slider_changed(self, value):
         vol = int(value)
-        if vol == 0:
-            icon = "🔇"
-        elif vol < 35:
-            icon = "🔈"
-        elif vol < 70:
-            icon = "🔉"
-        else:
-            icon = "🔊"
-        self.vol_label.configure(text=f"{icon} {vol}%")
+        if getattr(self, "_replay_muted", False):
+            self._replay_muted = False
+            if self.replay_worker:
+                self.replay_worker.set_mute(False)
+
+        self._update_volume_display(current_vol=vol)
 
         if self.replay_worker:
             self.replay_worker.set_volume(vol)
@@ -1485,6 +1646,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 "replay_volume": vol_val,
                 "sync_offset_ms": sync_offset_val,
                 "language": selected_lang_code,
+                "auto_start_champ_select": bool(self.auto_champ_select_var.get()),
+                "auto_start_replay": bool(self.auto_replay_var.get()),
             }
             if save_config(new_config):
                 self.config = new_config
@@ -1531,6 +1694,34 @@ class LeagueVoiceRecorderApp(ctk.CTk):
     # CLEAN SHUTDOWN
     # ==========================================
     def _on_close(self):
+        # 1. Warn if active match recording is in progress
+        if self.recorder_worker and self.recorder_worker.recording:
+            if not messagebox.askyesno(
+                t("record.title"),
+                t("app.active_rec_warning"),
+            ):
+                return
+            try:
+                self.recorder_worker.stop()
+                if self.recorder_thread:
+                    self.recorder_thread.join(timeout=4)
+            except Exception:
+                pass
+        else:
+            if self.recorder_worker:
+                self.recorder_worker.stop()
+
+        if self.replay_worker:
+            self.replay_worker.stop()
+
+        # 2. Instant visual responsiveness: hide window and taskbar icon immediately (< 1ms)
+        try:
+            self.withdraw()
+            self.update_idletasks()
+        except Exception:
+            pass
+
+        # 3. Clean up preview audio monitor
         if hasattr(self, "_preview_native_recorder") and self._preview_native_recorder:
             try:
                 self._preview_native_recorder.close()
@@ -1538,19 +1729,14 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 pass
             self._preview_native_recorder = None
 
-        if self.recorder_worker and self.recorder_worker.recording:
-            if not messagebox.askyesno(
-                t("record.title"),
-                t("app.active_rec_warning"),
-            ):
-                return
-
-        if self.recorder_worker:
-            self.recorder_worker.stop()
-        if self.replay_worker:
-            self.replay_worker.stop()
-
         self.destroy()
+
+        # 4. Fast exit: terminate process immediately to bypass C extension teardown hangs
+        if not getattr(self, "_in_test_suite", False):
+            try:
+                os._exit(0)
+            except Exception:
+                pass
 
     def destroy(self):
         self._is_destroyed = True
@@ -1559,6 +1745,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self._preview_native_recorder.close()
             except Exception:
                 pass
+            self._preview_native_recorder = None
         remove_language_change_listener(self._update_ui_texts)
         if hasattr(self, "_queue_timer") and self._queue_timer:
             try:
@@ -1576,6 +1763,10 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 def main():
     app = LeagueVoiceRecorderApp()
     app.mainloop()
+    try:
+        os._exit(0)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

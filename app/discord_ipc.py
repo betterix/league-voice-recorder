@@ -27,7 +27,7 @@ TOKEN_URL = "https://streamkit.discord.com/overlay/token"
 
 
 def get_token_file_path():
-    """Returns the path to the persisted Discord IPC token file."""
+    """Returns the legacy path to the .discord_token file for migration/cleanup."""
     try:
         from app.config import PROJECT_ROOT
 
@@ -37,26 +37,34 @@ def get_token_file_path():
 
 
 def load_persisted_token():
-    """Loads saved Discord IPC access token from disk or config."""
-    # 1. Try dedicated .discord_token file
-    path = get_token_file_path()
-    try:
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                tok = f.read().strip()
-                if tok:
-                    return tok
-    except Exception:
-        pass
-
-    # 2. Try config.json
+    """Loads saved Discord IPC access token from config.json (cleaning up legacy .discord_token if found)."""
+    # 1. Primary: load from config.json
     try:
         from app.config import load_config
 
         cfg = load_config()
         tok = cfg.get("discord_ipc_token")
         if tok and str(tok).strip():
+            # Clean up legacy .discord_token file if still present
+            legacy_path = get_token_file_path()
+            if os.path.exists(legacy_path):
+                try:
+                    os.remove(legacy_path)
+                except Exception:
+                    pass
             return str(tok).strip()
+    except Exception:
+        pass
+
+    # 2. Legacy fallback: check .discord_token, migrate into config.json, and delete file
+    legacy_path = get_token_file_path()
+    try:
+        if os.path.exists(legacy_path):
+            with open(legacy_path, "r", encoding="utf-8") as f:
+                tok = f.read().strip()
+            if tok:
+                save_persisted_token(tok)
+                return tok
     except Exception:
         pass
 
@@ -64,20 +72,20 @@ def load_persisted_token():
 
 
 def save_persisted_token(token):
-    """Saves Discord IPC access token to disk so Discord never prompts for authorization again."""
+    """Saves Discord IPC access token directly into config.json and removes legacy .discord_token."""
     if not token or not str(token).strip():
         return
     clean_token = str(token).strip()
 
-    # 1. Save to .discord_token
-    path = get_token_file_path()
+    # 1. Clean up legacy .discord_token file if present
+    legacy_path = get_token_file_path()
     try:
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(clean_token)
+        if os.path.exists(legacy_path):
+            os.remove(legacy_path)
     except Exception:
         pass
 
-    # 2. Save to config.json
+    # 2. Save directly to config.json
     try:
         from app.config import load_config, save_config
 
@@ -89,11 +97,11 @@ def save_persisted_token(token):
 
 
 def delete_persisted_token():
-    """Removes invalid or expired token file."""
-    path = get_token_file_path()
+    """Removes token from config.json and deletes any legacy .discord_token file."""
+    legacy_path = get_token_file_path()
     try:
-        if os.path.exists(path):
-            os.remove(path)
+        if os.path.exists(legacy_path):
+            os.remove(legacy_path)
     except Exception:
         pass
     try:
@@ -165,7 +173,7 @@ class DiscordMuteWatcher:
                     pass
                 self._pipe = None
         if self._thread and threading.current_thread() != self._thread:
-            self._thread.join(timeout=1.0)
+            self._thread.join(timeout=0.1)
             self._thread = None
 
     def _peek_bytes(self, pipe):

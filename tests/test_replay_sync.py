@@ -102,6 +102,61 @@ class TestReplaySyncModule(unittest.TestCase):
         self.assertTrue(player.play.called)
         self.assertTrue(player.set_time.called)
 
+    def test_replay_sync_mute_and_toggle(self):
+        from unittest.mock import MagicMock
+
+        mute_callback = MagicMock()
+        sync = ReplaySynchronizer(mute_callback=mute_callback)
+        self.assertFalse(sync.is_muted)
+
+        player = MagicMock()
+        sync.current_player = player
+
+        # Toggle mute ON
+        sync.toggle_mute()
+        self.assertTrue(sync.is_muted)
+        player.audio_set_mute.assert_called_with(True)
+        player.audio_set_volume.assert_called_with(0)
+        mute_callback.assert_called_with(True)
+
+        # Bypass 0.25s debounce
+        sync.last_mute_toggle_time = 0
+
+        # Toggle mute OFF
+        sync.toggle_mute()
+        self.assertFalse(sync.is_muted)
+        player.audio_set_mute.assert_called_with(False)
+        player.audio_set_volume.assert_called_with(sync.volume)
+        mute_callback.assert_called_with(False)
+
+    def test_set_volume_while_muted_preserves_mute(self):
+        from unittest.mock import MagicMock
+
+        sync = ReplaySynchronizer()
+        player = MagicMock()
+        sync.current_player = player
+
+        sync.set_mute(True)
+        self.assertTrue(sync.is_muted)
+        player.audio_set_volume.reset_mock()
+
+        # Changing volume while muted should update preference but keep VLC muted
+        sync.set_volume(95)
+        self.assertEqual(sync.volume, 95)
+        self.assertFalse(player.audio_set_volume.called)
+
+    def test_mute_debounce_prevents_rapid_oscillation(self):
+        sync = ReplaySynchronizer()
+        self.assertFalse(sync.is_muted)
+
+        # First toggle should succeed
+        sync.toggle_mute()
+        self.assertTrue(sync.is_muted)
+
+        # Immediate second toggle within debounce window (<0.25s) should be ignored
+        sync.toggle_mute()
+        self.assertTrue(sync.is_muted)
+
 
 if __name__ == "__main__":
     unittest.main()

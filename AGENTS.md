@@ -47,7 +47,7 @@ League Voice Recorder/
 │   ├── en.json             # English (default fallback)
 │   └── hu.json             # Hungarian
 │
-├── tests/                  # Automated test suite (42 unittests)
+├── tests/                  # Automated test suite (49 unittests)
 │   ├── __init__.py
 │   ├── test_config.py      # Config defaults, path resolution, and directory creation
 │   ├── test_discord_ipc.py # Discord Local IPC & mute silence injection
@@ -175,10 +175,11 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
 - **Game ID Parsing (`parse_rofl_game_id`)**:
   - Parses replay filenames such as `EUW1-8018190134.rofl` or `8018190134.rofl` to extract `8018190134`.
   - Matches the file directly to `recordings/8018190134.mp3`.
-- **Volume Control (`set_volume`)**:
+- **Volume Control & Mute Hotkey (`set_volume`, `set_mute`, `toggle_mute`)**:
   - Exposes dynamic volume control (0% to 100%) controllable via the UI slider.
   - Automatically updates VLC player volume in real-time (`player.audio_set_volume(self.volume)`).
   - Preserves user preference in `REPLAY_VOLUME` (`.env` & `config.json`).
+  - **Press `M` Hotkey**: Allows toggling replay voice mute directly by pressing `M` (both within the League replay client and in the desktop app), debounced and foreground-window guarded to prevent interfering with typing in external apps.
 - **Replay Playback API Polling (`run_sync_loop`)**:
   - Polls `https://127.0.0.1:2999/replay/playback` every 50ms.
   - JSON payload fields:
@@ -268,7 +269,7 @@ Core libraries:
 - `requests` & `urllib3`: HTTPS communication with League local APIs.
 
 ### 5.3 Automated Testing & Code Quality
-The project includes a comprehensive suite of 42 unit tests covering configuration, Discord Local IPC mute/deafen sync (auto-skipped when Discord is offline), i18n key parity and translations, recorder sample-accurate audio alignment and replay protection, replay synchronizer game ID parsing and volume clamping, and headless CustomTkinter UI rendering.
+The project includes a comprehensive suite of 49 unit tests covering configuration, Discord Local IPC mute/deafen sync (auto-skipped when Discord is offline), i18n key parity and translations, recorder sample-accurate audio alignment and replay protection, replay synchronizer game ID parsing, volume clamping and hotkey mute, and headless CustomTkinter UI rendering.
 
 ```powershell
 # Run the test suite via the Windows batch launcher

@@ -244,6 +244,33 @@ class TestRecorderModule(unittest.TestCase):
         nr.resume()
         self.assertFalse(nr.is_paused)
 
+    def test_get_lcu_gameflow_phase(self):
+        """Verify get_lcu_gameflow_phase correctly queries phase from LCU API."""
+        from app.record import get_lcu_gameflow_phase
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            lockfile_path = os.path.join(tmp_dir, "lockfile")
+            with open(lockfile_path, "w", encoding="utf-8") as f:
+                f.write("LeagueClient:1234:2999:secretpw:https")
+
+            with (
+                patch("app.record.find_league_install_dir", return_value=tmp_dir),
+                patch("requests.Session.get") as mock_get,
+            ):
+                mock_resp = MagicMock()
+                mock_resp.status_code = 200
+                mock_resp.json.return_value = "ChampSelect"
+                mock_get.return_value = mock_resp
+
+                phase = get_lcu_gameflow_phase()
+                self.assertEqual(phase, "ChampSelect")
+
+                # Test offline / failed call
+                mock_resp.status_code = 500
+                phase_offline = get_lcu_gameflow_phase()
+                self.assertIsNone(phase_offline)
+
 
 if __name__ == "__main__":
     unittest.main()

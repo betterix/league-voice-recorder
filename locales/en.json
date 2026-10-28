@@ -65,6 +65,8 @@
         "stop_btn": "⏹ Stop Replay Auto-Sync",
         "stopping_btn": "Stopping...",
         "volume": "Volume",
+        "muted_label": "MUTED (M)",
+        "hotkey_hint": "Press M to Mute/Unmute replay voice",
         "info": "• Auto-detects opened .rofl replay in League\n• Matches Game ID & syncs voice in VLC with replay time"
     },
     "tabs": {
@@ -96,12 +98,18 @@
         "replay_volume": "Replay Volume (%):",
         "sync_offset": "Audio Sync Offset (ms):",
         "language": "Interface Language:",
+        "auto_start_champ_select": "Auto-Start in Champ Select:",
+        "auto_start_champ_select_info": "Automatically starts recording watcher when entering Champion Select",
+        "auto_start_replay": "Auto-Start Replay Sync:",
+        "auto_start_replay_info": "Automatically starts Replay Auto-Sync when a .rofl replay is opened in League",
         "save_btn": "💾 Save Settings",
         "saved_success": "✅ Settings saved successfully to config.json!",
         "saved_error": "❌ Failed to write config.json!",
         "invalid_input": "❌ Invalid settings input: {error}"
     },
     "logs": {
+        "champ_select_detected": "🎯 Champion Select detected! Auto-starting recording watcher...",
+        "replay_detected_autostart": "🎬 Replay match detected! Auto-starting Replay Auto-Sync...",
         "query_game_id": "🔍 Querying real Game ID in background...",
         "game_id_found": "✅ Game ID identified: {game_id}",
         "match_detected": "🔴 Match started (GameTime: {time:.1f}s) — recording started.",
@@ -135,6 +143,8 @@
         "replay_speed": "⏩ Playback speed: {old}x -> {new}x",
         "replay_playing": "▶️ Playing (time={time:.1f}s, speed={speed}x, vol={volume}%)",
         "replay_paused": "⏸️ Paused (time={time:.1f}s)",
+        "replay_muted": "🔇 Replay audio muted (press M to unmute).",
+        "replay_unmuted": "🔊 Replay audio unmuted.",
         "replay_closed": "⏹️ Replay closed in League. Stopping playback...",
         "replay_watcher_stopped": "🛑 Replay Auto-Sync stopped.",
         "vlc_end_reload": "ℹ️ Audio reached end, reloaded for seeking.",

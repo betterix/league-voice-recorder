@@ -15,8 +15,10 @@ class TestUIApp(unittest.TestCase):
             patch("main.LeagueVoiceRecorderApp._check_system_health"),
             patch("main.LeagueVoiceRecorderApp._refresh_audio_targets"),
             patch("main.LeagueVoiceRecorderApp._start_audio_meter_loop"),
+            patch("main.LeagueVoiceRecorderApp._start_auto_detect_monitor"),
         ):
             self.app = LeagueVoiceRecorderApp()
+        self.app._in_test_suite = True
         self.app.withdraw()  # Prevent window flashing during automated tests
 
     def tearDown(self):
@@ -127,6 +129,47 @@ class TestUIApp(unittest.TestCase):
         self.app.msg_queue.put(("STATUS_REC", "STOPPED", ""))
         self.app._process_queue()
         self.assertIn("SAVED: 8018190134.mp3", self.app.rec_status_pill.cget("text"))
+
+    def test_ui_replay_mute_toggle_and_display(self):
+        """Toggling mute in UI updates volume label and state."""
+        self.assertFalse(self.app._replay_muted)
+
+        # Toggle mute ON
+        self.app._toggle_replay_mute()
+        self.assertTrue(self.app._replay_muted)
+        self.assertIn(t("replay.muted_label"), self.app.vol_label.cget("text"))
+
+        # Toggle mute OFF
+        self.app._toggle_replay_mute()
+        self.assertFalse(self.app._replay_muted)
+        self.assertIn("%", self.app.vol_label.cget("text"))
+
+    def test_ui_volume_slider_unmutes(self):
+        """Adjusting volume slider while muted automatically unmutes."""
+        self.app._toggle_replay_mute()
+        self.assertTrue(self.app._replay_muted)
+
+        # Adjust volume slider
+        self.app.vol_slider.set(75)
+        self.app._on_replay_volume_slider_changed(75)
+        self.assertFalse(self.app._replay_muted)
+        self.assertIn("75%", self.app.vol_label.cget("text"))
+
+    def test_ui_key_m_handler(self):
+        """Pressing M key toggles mute unless an entry field is focused."""
+        self.assertFalse(self.app._replay_muted)
+
+        # Normal key press
+        self.app._on_key_m()
+        self.assertTrue(self.app._replay_muted)
+
+        # When an Entry has focus, typing 'm' must not toggle mute
+        from tkinter import Entry
+        mock_entry = MagicMock(spec=Entry)
+        with patch.object(self.app, "focus_get", return_value=mock_entry):
+            self.app._on_key_m()
+            # Still True (no toggle)
+            self.assertTrue(self.app._replay_muted)
 
 
 if __name__ == "__main__":

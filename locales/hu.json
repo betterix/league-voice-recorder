@@ -65,6 +65,8 @@
         "stop_btn": "⏹ Replay Auto-Sync leállítása",
         "stopping_btn": "Leállítás folyamatban...",
         "volume": "Hangerő",
+        "muted_label": "NÉMÍTVA (M)",
+        "hotkey_hint": "M billentyű: Replay hang némítása / visszakapcsolása",
         "info": "• Automatikusan felismeri a megnyitott .rofl visszajátszást\n• Game ID alapján társítja és VLC-ben szinkronizálja a hangot"
     },
     "tabs": {
@@ -96,12 +98,18 @@
         "replay_volume": "Visszajátszási hangerő (%):",
         "sync_offset": "Hang szinkron eltolás (ms):",
         "language": "Kezelőfelület nyelve:",
+        "auto_start_champ_select": "Figyelő indítása Hős Választáskor:",
+        "auto_start_champ_select_info": "Automatikusan elindítja a felvétel figyelőt, amint belépsz a hős választásba",
+        "auto_start_replay": "Replay szinkron automatikus indítása:",
+        "auto_start_replay_info": "Automatikusan elindítja a replay szinkront, amint megnyitsz egy .rofl visszajátszást",
         "save_btn": "💾 Beállítások mentése",
         "saved_success": "✅ A beállítások sikeresen mentve a config.json fájlba!",
         "saved_error": "❌ Nem sikerült írni a config.json fájlt!",
         "invalid_input": "❌ Érvénytelen beállítás: {error}"
     },
     "logs": {
+        "champ_select_detected": "🎯 Hős választás (Champ Select) észlelve! Felvétel figyelő automatikus indítása...",
+        "replay_detected_autostart": "🎬 Replay észlelve! Replay Auto-Sync automatikus indítása...",
         "query_game_id": "🔍 [Háttér] Valódi Game ID lekérdezése elindult...",
         "game_id_found": "✅ [Háttér] Valódi Game ID sikeresen megtalálva: {game_id}",
         "match_detected": "🔴 FELVÉTEL INDÍTÁSA (Meccs elkezdődött, Játékidő: {time:.1f}s)",
@@ -135,6 +143,8 @@
         "replay_speed": "⏩ [SPEED] {old}x -> {new}x",
         "replay_playing": "▶️ [PLAY] time={time:.1f}s speed={speed}x vol={volume}%",
         "replay_paused": "⏸️ [PAUSE] Hang azonnal megállítva ({time:.1f}s)",
+        "replay_muted": "🔇 Replay hang elnémítva (nyomd meg az M-et a visszahangosításhoz).",
+        "replay_unmuted": "🔊 Replay hang visszakapcsolva.",
         "replay_closed": "⏹️ A replay bezárult (API tartósan nem válaszol). VLC leállítása...",
         "replay_watcher_stopped": "🛑 Replay Auto-Sync leállítva.",
         "vlc_end_reload": "ℹ️ A lejátszó a fájl végén volt, újratöltve a visszatekeréshez.",

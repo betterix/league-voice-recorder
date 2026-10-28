@@ -54,11 +54,17 @@ def parse_rofl_game_id(rofl_path):
 
 def detect_running_rofl_process():
     """Finds the running League replay process and returns (rofl_path, pid)."""
-    for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+    for proc in psutil.process_iter(["pid", "name"]):
         try:
             name = proc.info.get("name") or ""
             if "League of Legends.exe" in name:
-                cmdline = proc.info.get("cmdline") or []
+                cmdline = proc.info.get("cmdline")
+                if cmdline is None and hasattr(proc, "cmdline"):
+                    try:
+                        cmdline = proc.cmdline()
+                    except Exception:
+                        cmdline = []
+                cmdline = cmdline or []
                 for raw_arg in cmdline:
                     arg = str(raw_arg).strip("'\"")
                     if arg.lower().endswith(".rofl"):
@@ -134,16 +140,56 @@ def create_vlc_instance():
     raise RuntimeError("None of the VLC audio output drivers succeeded!")
 
 
+def is_replay_or_app_focused(replay_pid=None):
+    """Checks if foreground window belongs to League replay or our process."""
+    if not sys.platform.startswith("win"):
+        return True
+    try:
+        import ctypes
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        if not hwnd:
+            return False
+        fg_pid = ctypes.c_ulong()
+        ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(fg_pid))
+        target_pid = fg_pid.value
+        if not target_pid:
+            return False
+        if target_pid == os.getpid():
+            return True
+        if replay_pid and target_pid == replay_pid:
+            return True
+        try:
+            proc = psutil.Process(target_pid)
+            if "League of Legends" in (proc.name() or ""):
+                return True
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+        return False
+    except Exception:
+        return False
+
+
 class ReplaySynchronizer:
-    def __init__(self, config=None, log_callback=None, status_callback=None):
+    def __init__(
+        self,
+        config=None,
+        log_callback=None,
+        status_callback=None,
+        mute_callback=None,
+    ):
         self.config = config or load_config()
         self.log_callback = log_callback
         self.status_callback = status_callback
+        self.mute_callback = mute_callback
         self.audio_directory = self.config.get("record_folder", DEFAULT_AUDIO_DIRECTORY)
         self.volume = int(self.config.get("replay_volume", 80))
         self.sync_offset = float(self.config.get("sync_offset_ms", 0)) / 1000.0
         self.current_player = None
         self.running = False
+        self.is_muted = False
+        self.last_mute_toggle_time = 0.0
+        self.current_replay_pid = None
+        self._hotkey_thread = None
         import threading
 
         self.stop_event = threading.Event()
@@ -151,14 +197,71 @@ class ReplaySynchronizer:
     def set_volume(self, volume):
         """Dynamically update playback volume (0 - 100)."""
         self.volume = max(0, min(100, int(volume)))
-        if self.current_player:
+        if self.current_player and not self.is_muted:
             try:
                 self.current_player.audio_set_volume(self.volume)
             except Exception:
                 pass
 
+    def set_mute(self, muted):
+        """Sets audio mute state."""
+        self.is_muted = bool(muted)
+        if self.current_player:
+            try:
+                if self.is_muted:
+                    self.current_player.audio_set_mute(True)
+                    self.current_player.audio_set_volume(0)
+                else:
+                    self.current_player.audio_set_mute(False)
+                    self.current_player.audio_set_volume(self.volume)
+            except Exception:
+                pass
+        if self.is_muted:
+            self.log(t("logs.replay_muted"))
+        else:
+            self.log(t("logs.replay_unmuted"))
+        if self.mute_callback:
+            try:
+                self.mute_callback(self.is_muted)
+            except Exception:
+                pass
+        return self.is_muted
+
+    def toggle_mute(self):
+        """Toggles audio mute state with debouncing."""
+        now = time.time()
+        if now - self.last_mute_toggle_time < 0.25:
+            return self.is_muted
+        self.last_mute_toggle_time = now
+        return self.set_mute(not self.is_muted)
+
+    def _hotkey_listener_loop(self):
+        """Background listener for M hotkey (VK_M = 0x4D) to mute/unmute replay audio."""
+        if not sys.platform.startswith("win"):
+            return
+        import ctypes
+
+        m_was_down = False
+        while not self.stop_event.is_set():
+            try:
+                m_down = bool(ctypes.windll.user32.GetAsyncKeyState(0x4D) & 0x8000)
+                if m_down and not m_was_down:
+                    if is_replay_or_app_focused(self.current_replay_pid):
+                        self.toggle_mute()
+                m_was_down = m_down
+            except Exception:
+                pass
+            time.sleep(0.03)
+
     def log(self, message):
-        print(message)
+        try:
+            print(message)
+        except UnicodeEncodeError:
+            try:
+                encoding = sys.stdout.encoding or "utf-8"
+                print(str(message).encode(encoding, errors="replace").decode(encoding))
+            except Exception:
+                pass
         if self.log_callback:
             try:
                 self.log_callback(message)
@@ -174,13 +277,19 @@ class ReplaySynchronizer:
 
     def run_sync_loop(self, audio_path, replay_pid=None):
         abs_path = os.path.abspath(audio_path)
+        self.current_replay_pid = replay_pid
 
         try:
             instance = create_vlc_instance()
             player = instance.media_player_new()
             media = instance.media_new(abs_path)
             player.set_media(media)
-            player.audio_set_volume(self.volume)
+            if self.is_muted:
+                player.audio_set_mute(True)
+                player.audio_set_volume(0)
+            else:
+                player.audio_set_mute(False)
+                player.audio_set_volume(self.volume)
             self.current_player = player
         except Exception as e:
             self.log(t("logs.vlc_init_error", error=e))
@@ -256,15 +365,25 @@ class ReplaySynchronizer:
                                 # Avoid set_time() which flushes audio pipeline and introduces a ~0.1s lag!
                                 player.play()
                                 player.set_rate(replay_speed)
-                                player.audio_set_volume(self.volume)
+                                if self.is_muted:
+                                    player.audio_set_mute(True)
+                                    player.audio_set_volume(0)
+                                else:
+                                    player.audio_set_mute(False)
+                                    player.audio_set_volume(self.volume)
                             else:
                                 # Timeline jump or first start
                                 player.play()
                                 player.set_time(int(target_time * 1000))
                                 player.set_rate(replay_speed)
-                                player.audio_set_volume(self.volume)
+                                if self.is_muted:
+                                    player.audio_set_mute(True)
+                                    player.audio_set_volume(0)
+                                else:
+                                    player.audio_set_mute(False)
+                                    player.audio_set_volume(self.volume)
 
-                            volume = player.audio_get_volume()
+                            volume = 0 if self.is_muted else player.audio_get_volume()
                             self.log(
                                 t(
                                     "logs.replay_playing",
@@ -282,7 +401,7 @@ class ReplaySynchronizer:
                                 player.set_time(int(target_time * 1000))
                                 player.set_rate(replay_speed)
                                 if time_jump:
-                                    volume = player.audio_get_volume()
+                                    volume = 0 if self.is_muted else player.audio_get_volume()
                                     self.log(
                                         t(
                                             "logs.replay_playing",
@@ -367,6 +486,14 @@ class ReplaySynchronizer:
         self.log(t("logs.replay_watching_dir", dir=self.audio_directory))
         self.update_status("WATCHING", t("replay.waiting_for_replay"))
 
+        import threading
+
+        if sys.platform.startswith("win"):
+            self._hotkey_thread = threading.Thread(
+                target=self._hotkey_listener_loop, daemon=True
+            )
+            self._hotkey_thread.start()
+
         last_handled_path = None
 
         while not self.stop_event.is_set():
@@ -386,9 +513,9 @@ class ReplaySynchronizer:
                         self.log(t("logs.audio_found", file=os.path.basename(matched_file)))
                         last_handled_path = rofl_path
                         self.run_sync_loop(matched_file, replay_pid=rofl_pid)
-                        self.update_status("WATCHING", t("replay.waiting_for_replay"))
                         if not is_process_running(rofl_pid):
-                            last_handled_path = None
+                            break
+                        self.update_status("WATCHING", t("replay.waiting_for_replay"))
                     else:
                         self.log(
                             t(
@@ -406,6 +533,13 @@ class ReplaySynchronizer:
                     break
                 time.sleep(0.1)
 
+        if self._hotkey_thread and self._hotkey_thread.is_alive():
+            try:
+                self._hotkey_thread.join(timeout=0.1)
+            except Exception:
+                pass
+            self._hotkey_thread = None
+
         if self.current_player:
             try:
                 self.current_player.stop()
@@ -419,6 +553,12 @@ class ReplaySynchronizer:
 
     def stop(self):
         self.stop_event.set()
+        if self._hotkey_thread and self._hotkey_thread.is_alive():
+            try:
+                self._hotkey_thread.join(timeout=0.1)
+            except Exception:
+                pass
+            self._hotkey_thread = None
         if self.current_player:
             try:
                 self.current_player.stop()
