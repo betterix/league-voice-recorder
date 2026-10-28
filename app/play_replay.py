@@ -300,9 +300,12 @@ class ReplaySynchronizer:
 
         API_URL = "https://127.0.0.1:2999/replay/playback"
         is_playing = False
-        last_game_time = -1
+        last_game_time = -1.0
+        last_poll_wall_time = time.time()
+        last_seek_wall_time = 0.0
         paused_game_time = -1.0
         last_speed = 1.0
+        current_adjusted_rate = 1.0
         has_connected = False
         consecutive_failures = 0
         last_waiting_log = 0.0
@@ -328,15 +331,10 @@ class ReplaySynchronizer:
                     has_connected = True
                     consecutive_failures = 0
 
-                    game_time = data.get("time", 0)
-                    replay_paused = data.get("paused", False)
-                    replay_speed = data.get("speed", 1.0)
-
-                    # Update playback speed if changed
-                    if replay_speed != last_speed and replay_speed > 0:
-                        player.set_rate(replay_speed)
-                        self.log(t("logs.replay_speed", old=last_speed, new=replay_speed))
-                        last_speed = replay_speed
+                    game_time = float(data.get("time", 0))
+                    replay_paused = bool(data.get("paused", False))
+                    replay_speed = float(data.get("speed", 1.0))
+                    now_wall = time.time()
 
                     # 1. Match playing and not paused (game_time > 0.5s)
                     if game_time > 0.5 and not replay_paused:
@@ -355,33 +353,24 @@ class ReplaySynchronizer:
 
                         if not is_playing:
                             # Resuming from pause or starting
-                            time_diff = (
-                                abs(game_time - paused_game_time)
-                                if paused_game_time >= 0
-                                else 999.0
-                            )
-                            if paused_game_time >= 0 and time_diff < 0.25:
-                                # Replay was unpaused at the same spot — RESUME PLAYBACK INSTANTLY!
-                                # Avoid set_time() which flushes audio pipeline and introduces a ~0.1s lag!
-                                player.play()
+                            time_error = abs(vlc_time - target_time) if vlc_time >= 0 else 999.0
+                            if time_error <= 0.15:
+                                # VLC is already in sync at the unpause spot — resume immediately!
+                                player.set_pause(0)
                                 player.set_rate(replay_speed)
-                                if self.is_muted:
-                                    player.audio_set_mute(True)
-                                    player.audio_set_volume(0)
-                                else:
-                                    player.audio_set_mute(False)
-                                    player.audio_set_volume(self.volume)
                             else:
-                                # Timeline jump or first start
-                                player.play()
+                                # Timeline jump, initial start, or drift while paused
                                 player.set_time(int(target_time * 1000))
+                                player.set_pause(0)
                                 player.set_rate(replay_speed)
-                                if self.is_muted:
-                                    player.audio_set_mute(True)
-                                    player.audio_set_volume(0)
-                                else:
-                                    player.audio_set_mute(False)
-                                    player.audio_set_volume(self.volume)
+                                last_seek_wall_time = now_wall
+
+                            if self.is_muted:
+                                player.audio_set_mute(True)
+                                player.audio_set_volume(0)
+                            else:
+                                player.audio_set_mute(False)
+                                player.audio_set_volume(self.volume)
 
                             volume = 0 if self.is_muted else player.audio_get_volume()
                             self.log(
@@ -393,14 +382,34 @@ class ReplaySynchronizer:
                                 )
                             )
                             is_playing = True
+                            last_speed = replay_speed
+                            current_adjusted_rate = replay_speed
                         else:
-                            # Already playing: check for timeline jump / scrub or drift
-                            time_jump = abs(game_time - last_game_time) > 0.5
-                            drift = abs(vlc_time - target_time) if vlc_time >= 0 else 0
-                            if time_jump or drift > 1.0:
+                            # Already playing: check for playback speed change
+                            if replay_speed != last_speed and replay_speed > 0:
+                                player.set_rate(replay_speed)
+                                self.log(t("logs.replay_speed", old=last_speed, new=replay_speed))
+                                last_speed = replay_speed
+                                current_adjusted_rate = replay_speed
+
+                            # Check for user timeline scrubbing (>1.5s delta from expected advance)
+                            dt_wall = max(0.001, now_wall - last_poll_wall_time)
+                            expected_game_dt = dt_wall * replay_speed
+                            actual_game_dt = game_time - last_game_time
+                            is_scrub_jump = abs(actual_game_dt - expected_game_dt) > 1.5
+
+                            # Drift tracking (seconds)
+                            drift = (vlc_time - target_time) if vlc_time >= 0 else 0.0
+                            abs_drift = abs(drift)
+                            time_since_last_seek = now_wall - last_seek_wall_time
+
+                            if is_scrub_jump or (time_since_last_seek >= 0.8 and abs_drift >= 1.5):
+                                # Significant timeline jump or large drift: seek once with cooldown protection
                                 player.set_time(int(target_time * 1000))
                                 player.set_rate(replay_speed)
-                                if time_jump:
+                                last_seek_wall_time = now_wall
+                                current_adjusted_rate = replay_speed
+                                if is_scrub_jump:
                                     volume = 0 if self.is_muted else player.audio_get_volume()
                                     self.log(
                                         t(
@@ -410,6 +419,21 @@ class ReplaySynchronizer:
                                             volume=volume,
                                         )
                                     )
+                            elif time_since_last_seek >= 0.5 and vlc_time >= 0:
+                                # Smooth rate-based micro-drift correction: adjust by ±5% to lock time
+                                # without any audio dropouts, clicks, or seeking pauses!
+                                if abs_drift < 0.06:
+                                    desired_rate = replay_speed
+                                elif drift < 0:
+                                    # VLC behind League -> gently speed up to catch up
+                                    desired_rate = min(8.0, round(replay_speed * 1.05, 4))
+                                else:
+                                    # VLC ahead of League -> gently slow down to align
+                                    desired_rate = max(0.25, round(replay_speed * 0.95, 4))
+
+                                if abs(desired_rate - current_adjusted_rate) > 0.01:
+                                    player.set_rate(desired_rate)
+                                    current_adjusted_rate = desired_rate
 
                         time_min = int(game_time // 60)
                         time_sec = int(game_time % 60)
@@ -418,18 +442,21 @@ class ReplaySynchronizer:
                             f"{os.path.basename(audio_path)} [{time_min:02d}:{time_sec:02d} @ {replay_speed}x]",
                         )
                         last_game_time = game_time
+                        last_poll_wall_time = now_wall
 
                     # 2. Replay paused or stopped
                     else:
                         if is_playing:
-                            player.pause()
+                            player.set_pause(1)
                             is_playing = False
                             paused_game_time = game_time
                             self.log(t("logs.replay_paused", time=game_time))
                             self.update_status("PAUSED", f"{game_time:.1f}s")
                         elif paused_game_time >= 0 and abs(game_time - paused_game_time) > 0.5:
                             # User scrubbed while paused in League replay
-                            player.set_time(int(game_time * 1000))
+                            target_time = max(0.0, game_time + self.sync_offset)
+                            player.set_time(int(target_time * 1000))
+                            last_seek_wall_time = now_wall
                             paused_game_time = game_time
 
                 else:

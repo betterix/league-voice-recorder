@@ -47,7 +47,7 @@ League Voice Recorder/
 │   ├── en.json             # English (default fallback)
 │   └── hu.json             # Hungarian
 │
-├── tests/                  # Automated test suite (49 unittests)
+├── tests/                  # Automated test suite (51 unittests)
 │   ├── __init__.py
 │   ├── test_config.py      # Config defaults, path resolution, and directory creation
 │   ├── test_discord_ipc.py # Discord Local IPC & mute silence injection
@@ -189,9 +189,11 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
     - `speed`: Playback rate multiplier (e.g. 0.5, 1.0, 2.0, 4.0).
   - Sync actions:
     - Rate change: Calls `player.set_rate(replay_speed)`.
-    - Time seek / drift: If `abs(game_time - last_game_time) > 2.0`, calls `player.set_time(int(game_time * 1000))`.
+    - Zero-Latency Unpause: Evaluates actual VLC time-error against target time. If within 150ms (`time_error <= 0.15`), resumes immediately with `player.set_pause(0)` without issuing a pipeline-flushing `set_time()` seek.
+    - Rate-Based Micro-Drift Correction: When drift is between 0.06s and 1.5s, adjusts playback rate by ±5% to pull audio into sync without hard seeking, dropouts, or clicks.
+    - Large Drift & Scrub Seeking: For jumps >1.5s, seeks with a strict 800ms cooldown to permanently eliminate seek storms caused by VLC asynchronous time reporting.
     - Rewind handling: If `player.get_state() == vlc.State.Ended`, automatically reloads media before seeking.
-    - Pause: If `paused == True` or `game_time <= 0.5`, calls `player.pause()`.
+    - Pause: If `paused == True` or `game_time <= 0.5`, calls `player.set_pause(1)`.
   - Auto-exit: If the Replay API fails 8 consecutive times (replay closed), it stops VLC and returns to the watcher loop.
 
 ### 3.4 Configuration & Secrets (`config.py`, `.env`, `.env.example`, `.gitignore`)
@@ -270,7 +272,7 @@ Core libraries:
 - `requests` & `urllib3`: HTTPS communication with League local APIs.
 
 ### 5.3 Automated Testing & Code Quality
-The project includes a comprehensive suite of 49 unit tests covering configuration, Discord Local IPC mute/deafen sync (auto-skipped when Discord is offline), i18n key parity and translations, recorder sample-accurate audio alignment and replay protection, replay synchronizer game ID parsing, volume clamping and hotkey mute, and headless CustomTkinter UI rendering.
+The project includes a comprehensive suite of 51 unit tests covering configuration, Discord Local IPC mute/deafen sync (auto-skipped when Discord is offline), i18n key parity and translations, recorder sample-accurate audio alignment and replay protection, replay synchronizer zero-latency unpausing, rate-based micro-drift nudging, seek cooldown protection, game ID parsing, volume clamping and hotkey mute, and headless CustomTkinter UI rendering.
 
 ```powershell
 # Run the test suite via the Windows batch launcher
