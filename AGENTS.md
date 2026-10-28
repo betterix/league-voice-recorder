@@ -63,6 +63,7 @@ League Voice Recorder/
 │
 ├── .gitattributes          # Cross-platform LF/CRLF normalization
 ├── .env.example            # Environment variables template
+├── SECURITY.md             # Security policy & private vulnerability reporting
 ├── pyproject.toml          # Project dependencies and tool configurations
 ├── ruff.toml               # Linter rules and exclusions
 └── requirements.txt        # Frozen dependencies export

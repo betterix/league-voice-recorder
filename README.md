@@ -12,6 +12,7 @@
   <img src="https://img.shields.io/badge/code%20style-ruff-000000.svg" alt="Code Style" />
   <img src="https://img.shields.io/badge/i18n-English%20%7C%20Magyar-success" alt="i18n" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License" /></a>
+  <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-brightgreen" alt="Security Policy" /></a>
 </p>
 
 <p align="center">
@@ -339,6 +340,7 @@ League Voice Recorder/
 │
 ├── .gitattributes          # Cross-platform LF/CRLF normalization
 ├── .env.example            # Environment variables template
+├── SECURITY.md             # Security policy & private vulnerability reporting
 ├── pyproject.toml          # Project dependencies and tool configurations
 ├── ruff.toml               # Linter rules and exclusions
 └── requirements.txt        # Frozen dependencies export
