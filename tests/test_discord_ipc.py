@@ -164,5 +164,126 @@ class TestDiscordIpcModule(unittest.TestCase):
             self.assertNotIn("discord_ipc_token", mock_cfg)
 
 
+class TestDiscordAuthGuards(unittest.TestCase):
+    def setUp(self):
+        DiscordMuteWatcher.reset_startup_auth()
+
+    def tearDown(self):
+        DiscordMuteWatcher.reset_startup_auth()
+
+    def test_no_authorize_prompt_when_token_exists(self):
+        """When token exists, never prompt for AUTHORIZE even if AUTHENTICATE times out or fails."""
+        sent_commands = []
+        watcher = DiscordMuteWatcher(allow_interactive_auth=None)
+        watcher._access_token = "valid_cached_token_xyz"
+
+        def fake_send(pipe, op, payload):
+            sent_commands.append(payload.get("cmd"))
+            return True
+
+        def fake_read(pipe, timeout_sec=2.0):
+            if "AUTHENTICATE" in sent_commands:
+                # Simulate timeout or unacknowledged response for AUTHENTICATE
+                return 1, None
+            return 0, {"evt": "READY"}
+
+        with (
+            patch.object(watcher, "_send_frame", side_effect=fake_send),
+            patch.object(watcher, "_read_frame", side_effect=fake_read),
+        ):
+            res = watcher._authenticate_and_subscribe(None)
+            self.assertFalse(res)
+            self.assertIn("AUTHENTICATE", sent_commands)
+            self.assertNotIn("AUTHORIZE", sent_commands, "Must NEVER request AUTHORIZE if token exists")
+
+    def test_no_authorize_prompt_while_recording(self):
+        """While recording is active, never prompt for AUTHORIZE under any circumstances."""
+        sent_commands = []
+        watcher = DiscordMuteWatcher(allow_interactive_auth=None)
+        watcher._access_token = None
+        watcher.is_recording = True
+
+        def fake_send(pipe, op, payload):
+            sent_commands.append(payload.get("cmd"))
+            return True
+
+        def fake_read(pipe, timeout_sec=2.0):
+            return 0, {"evt": "READY"}
+
+        with (
+            patch.object(watcher, "_send_frame", side_effect=fake_send),
+            patch.object(watcher, "_read_frame", side_effect=fake_read),
+            patch("app.discord_ipc.load_persisted_token", return_value=None),
+        ):
+            res = watcher._authenticate_and_subscribe(None)
+            self.assertFalse(res)
+            self.assertNotIn("AUTHORIZE", sent_commands, "Must NEVER request AUTHORIZE while recording")
+
+    def test_startup_auth_only_when_no_token(self):
+        """Only prompt on app startup when token is absent, and never prompt a second time."""
+        sent_commands = []
+        watcher = DiscordMuteWatcher(allow_interactive_auth=None)
+        watcher._access_token = None
+
+        def fake_send(pipe, op, payload):
+            sent_commands.append(payload.get("cmd"))
+            return True
+
+        def fake_read(pipe, timeout_sec=2.0):
+            if "AUTHORIZE" in sent_commands:
+                return 1, None  # User declined or timed out
+            return 0, {"evt": "READY"}
+
+        with (
+            patch.object(watcher, "_send_frame", side_effect=fake_send),
+            patch.object(watcher, "_read_frame", side_effect=fake_read),
+            patch("app.discord_ipc.load_persisted_token", return_value=None),
+        ):
+            # First attempt on startup
+            res1 = watcher._authenticate_and_subscribe(None)
+            self.assertFalse(res1)
+            self.assertIn("AUTHORIZE", sent_commands)
+            self.assertTrue(DiscordMuteWatcher._startup_auth_done)
+
+            # Second attempt (subsequent reconnect) - must NOT prompt AUTHORIZE again!
+            sent_commands.clear()
+            res2 = watcher._authenticate_and_subscribe(None)
+            self.assertFalse(res2)
+            self.assertNotIn("AUTHORIZE", sent_commands, "Must not prompt AUTHORIZE again after startup attempt")
+
+    def test_startup_auth_when_token_is_non_functional(self):
+        """On startup, if existing token returns ERROR (non-functional), delete token and request AUTHORIZE."""
+        sent_commands = []
+        watcher = DiscordMuteWatcher(allow_interactive_auth=None)
+        watcher._access_token = "invalid_expired_token"
+
+        def fake_send(pipe, op, payload):
+            sent_commands.append(payload.get("cmd"))
+            return True
+
+        def fake_read(pipe, timeout_sec=2.0):
+            if "AUTHENTICATE" in sent_commands and "AUTHORIZE" not in sent_commands:
+                # Discord returns explicit error for invalid token
+                return 1, {"evt": "ERROR", "data": {"message": "Invalid token", "code": 4000}}
+            if "AUTHORIZE" in sent_commands:
+                return 1, None  # Stop here
+            return 0, {"evt": "READY"}
+
+        with (
+            patch.object(watcher, "_send_frame", side_effect=fake_send),
+            patch.object(watcher, "_read_frame", side_effect=fake_read),
+            patch("app.discord_ipc.delete_persisted_token") as mock_delete,
+        ):
+            res = watcher._authenticate_and_subscribe(None)
+            self.assertFalse(res)
+            self.assertIn("AUTHENTICATE", sent_commands)
+            self.assertIn(
+                "AUTHORIZE",
+                sent_commands,
+                "Must request AUTHORIZE when token is proven non-functional on startup",
+            )
+            mock_delete.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

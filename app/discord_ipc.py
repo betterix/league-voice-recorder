@@ -130,12 +130,21 @@ class DiscordMuteWatcher:
     whether the local user is muted or deafened in Discord.
     """
 
-    def __init__(self, on_mute_change=None, log_callback=None):
+    _startup_auth_done = False
+
+    @classmethod
+    def reset_startup_auth(cls):
+        """Resets the process-wide startup authorization flag (primarily for tests)."""
+        cls._startup_auth_done = False
+
+    def __init__(self, on_mute_change=None, log_callback=None, allow_interactive_auth=None):
         self.on_mute_change = on_mute_change
         self.log_callback = log_callback
+        self.allow_interactive_auth = allow_interactive_auth
         self.is_muted = False
         self.is_deaf = False
         self.is_connected = False
+        self.is_recording = False
 
         self._lock = threading.Lock()
         self._pipe = None
@@ -256,10 +265,12 @@ class DiscordMuteWatcher:
 
         # 2. Try authentication with cached token if available
         authed = False
+        token_is_non_functional = False
         if not self._access_token:
             self._access_token = load_persisted_token()
 
-        if self._access_token:
+        had_token = bool(self._access_token)
+        if had_token:
             if self._send_frame(
                 pipe,
                 1,
@@ -277,17 +288,50 @@ class DiscordMuteWatcher:
                 ):
                     authed = True
                 else:
-                    self._access_token = None
-                    delete_persisted_token()
+                    if auth_res and auth_res.get("evt") == "ERROR":
+                        token_is_non_functional = True
+                        self.log("Existing Discord token was rejected (non-functional).")
+                    else:
+                        self.log("Discord authentication unacknowledged or timed out.")
 
-        # 3. If not authenticated, request authorization code & exchange token
+        # 3. Only ask for permission if:
+        # - NOT authenticated
+        # - NOT currently recording (never interrupt gameplay/recording with popups)
+        # - Only on app startup (or when allow_interactive_auth is True)
+        # - AND token is not present OR existing token was proven non-functional
+        can_prompt = (
+            not authed
+            and not self.is_recording
+            and (
+                self.allow_interactive_auth is True
+                or (
+                    self.allow_interactive_auth is None
+                    and not DiscordMuteWatcher._startup_auth_done
+                )
+            )
+            and (not had_token or token_is_non_functional)
+        )
+
         if not authed:
+            if not can_prompt:
+                # Do not prompt user for authorization permission
+                return False
+
+            # Mark startup auth as attempted so we never prompt again during this application session
+            DiscordMuteWatcher._startup_auth_done = True
+
+            # If existing token was non-functional, delete it before requesting a fresh one
+            if token_is_non_functional:
+                self._access_token = None
+                delete_persisted_token()
+
             # Throttle authorization prompts to avoid spamming the user if rejected
             now = time.monotonic()
             if (now - self._last_auth_attempt) < 15.0:
                 return False
             self._last_auth_attempt = now
 
+            self.log("Requesting Discord IPC authorization on startup...")
             if not self._send_frame(
                 pipe,
                 1,
@@ -305,6 +349,7 @@ class DiscordMuteWatcher:
             _op, auth_resp = self._read_frame(pipe, timeout_sec=5.0)
             code = (auth_resp or {}).get("data", {}).get("code")
             if not code:
+                self.log("Discord authorization declined or timed out.")
                 return False
 
             try:
@@ -314,13 +359,15 @@ class DiscordMuteWatcher:
                     if token:
                         self._access_token = token
                         save_persisted_token(token)
-            except Exception:
+                        self.log("Discord authorization successful, token saved.")
+            except Exception as e:
+                self.log(f"Error exchanging Discord auth code: {e}")
                 return False
 
             if not self._access_token:
                 return False
 
-            # Authenticate with new token
+            # Authenticate with newly obtained token
             if not self._send_frame(
                 pipe,
                 1,
@@ -337,6 +384,10 @@ class DiscordMuteWatcher:
                 self._access_token = None
                 delete_persisted_token()
                 return False
+            authed = True
+
+        if not authed:
+            return False
 
         # 4. Query current voice settings (initial mute/deaf state)
         if self._send_frame(

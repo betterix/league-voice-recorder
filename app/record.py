@@ -22,6 +22,14 @@ from app.native_audio import NativeAudioRecorder
 
 urllib3.disable_warnings()
 
+if sys.platform.startswith("win"):
+    try:
+        import ctypes
+
+        ctypes.windll.winmm.timeBeginPeriod(1)
+    except Exception:
+        pass
+
 
 def find_league_install_dir():
     """Finds the League of Legends installation directory containing lockfile."""
@@ -318,11 +326,6 @@ class LeagueRecorder:
 
         t_start = time.perf_counter()
 
-        session_id = str(int(time.time()))
-        self.native_recorder.start_recording(session_id)
-        self.recording = True
-        self.is_paused = False
-
         t_now = time.perf_counter()
         base_time = float(initial_game_time) if initial_game_time is not None else 0.0
         # If match just started (<= 2.0s), 0:00 alignment is exactly 0.0 (NO silence prepended!)
@@ -333,7 +336,14 @@ class LeagueRecorder:
             ref_time = t_poll_start if t_poll_start is not None else t_start
             delay = max(0.0, t_now - ref_time)
             self.first_game_time = base_time + delay
-            self.last_game_time = self.first_game_time
+            self.last_game_time = base_time
+
+        session_id = str(int(time.time()))
+        self.native_recorder.start_recording(session_id, initial_game_time=self.first_game_time)
+        self.recording = True
+        self.is_paused = False
+        self.last_advance_time = time.monotonic()
+        self.pause_tick_count = 0
         self.real_game_id = None
         self.log(t("logs.match_detected", time=self.first_game_time))
         init_time = max(0.0, self.first_game_time)
@@ -444,7 +454,8 @@ class LeagueRecorder:
         self.update_status("WATCHING", t("record.waiting_for_match"))
 
         consecutive_misses = 0
-        pause_tick_count = 0
+        self.pause_tick_count = 0
+        self.last_advance_time = time.monotonic()
 
         while not self.stop_event.is_set():
             t_poll_start = time.perf_counter()
@@ -506,13 +517,19 @@ class LeagueRecorder:
                             self.update_status("WATCHING", t("record.match_countdown", time=cd_str))
 
                     if self.recording:
-                        # Fast pause detection: require ~140ms (7 polls @ 20ms) of unchanged game_time.
-                        # Matches the 0.14s staging buffer in NativeAudioRecorder.
-                        # When confirmed, pause() cleanly purges the 140ms detection window so 0ms
-                        # of pause audio is written to disk, preventing any post-pause desync.
+                        # Synchronize audio timeline directly to in-game clock.
+                        # Overwrites at game_time if recording rushed ahead during a pause.
+                        self.native_recorder.update_game_time(game_time)
+
+                        # Ultra-fast inhuman pause detection (<= 10ms)
                         if game_time == self.last_game_time and game_time > 0:
-                            pause_tick_count += 1
-                            if pause_tick_count >= 7 and not self.is_paused:
+                            self.pause_tick_count += 1
+                            elapsed_unchanged = time.monotonic() - getattr(
+                                self, "last_advance_time", time.monotonic()
+                            )
+                            if (
+                                self.pause_tick_count >= 1 or elapsed_unchanged >= 0.010
+                            ) and not self.is_paused:
                                 self.native_recorder.pause()
                                 self.is_paused = True
                                 self.log(t("logs.pause"))
@@ -525,7 +542,8 @@ class LeagueRecorder:
                                 )
 
                         elif game_time > self.last_game_time:
-                            pause_tick_count = 0
+                            self.pause_tick_count = 0
+                            self.last_advance_time = time.monotonic()
                             time_val = max(0.0, game_time)
                             time_str = f"{int(time_val // 60):02d}:{int(time_val % 60):02d}"
                             if self.real_game_id:
@@ -569,12 +587,12 @@ class LeagueRecorder:
                     self.update_status("WATCHING", t("record.waiting_for_match"))
 
             is_high_frequency = self.recording or (game_time is not None and game_time < 0.0)
-            poll_interval = 0.02 if is_high_frequency else min(0.1, self.check_time)
-            slice_count = max(1, int(poll_interval / 0.02))
+            poll_interval = 0.005 if is_high_frequency else min(0.05, self.check_time)
+            slice_count = max(1, int(poll_interval / 0.005))
             for _ in range(slice_count):
                 if self.stop_event.is_set():
                     break
-                time.sleep(0.02)
+                time.sleep(0.005)
 
         # Clean shutdown if stopped while recording
         if self.recording:
