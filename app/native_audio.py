@@ -617,6 +617,13 @@ class NativeAudioRecorder:
             loop = ProcessLoopback(pid)
             loop.start()
 
+            # Strict isolation check: ensure capture is strictly process-specific to Discord.
+            # Never allow fallback to system-wide loopback (which would capture browser/Spotify/game audio).
+            if not loop.is_process_specific():
+                self.log("❌ ERROR: Process loopback is NOT process-specific! Aborting capture to prevent recording background audio.")
+                loop.stop()
+                return
+
             with wave.open(wav_path, "wb") as wf:
                 wf.setnchannels(2)
                 wf.setsampwidth(2)  # 16-bit PCM
@@ -806,16 +813,16 @@ class NativeAudioRecorder:
         if discord_ok and mic_ok:
             cmd.extend(["-i", self.discord_wav_path, "-i", self.mic_wav_path])
             mix_filter = (
-                "[0:a]aresample=48000,aformat=channel_layouts=stereo[app];"
-                "[1:a]aresample=48000,aformat=channel_layouts=stereo[mic];"
+                "[0:a]aresample=48000,aformat=channel_layouts=stereo,volume=2.5[app];"
+                "[1:a]aresample=48000,aformat=channel_layouts=stereo,volume=2.5[mic];"
                 "[app][mic]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0"
             )
         elif discord_ok:
             cmd.extend(["-i", self.discord_wav_path])
-            mix_filter = "[0:a]aresample=48000,aformat=channel_layouts=stereo"
+            mix_filter = "[0:a]aresample=48000,aformat=channel_layouts=stereo,volume=2.5"
         else:
             cmd.extend(["-i", self.mic_wav_path])
-            mix_filter = "[0:a]aresample=48000,aformat=channel_layouts=stereo"
+            mix_filter = "[0:a]aresample=48000,aformat=channel_layouts=stereo,volume=2.5"
 
         post_filters = []
         if initial_offset < -0.005:

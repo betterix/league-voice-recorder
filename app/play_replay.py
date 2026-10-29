@@ -126,6 +126,9 @@ def create_vlc_instance():
         raise RuntimeError("VLC (64-bit) is not installed or libvlc.dll was not found.")
 
     candidates = (
+        "--quiet --gain=2.5",
+        "--quiet --gain=2.5 --aout=mmdevice",
+        "--quiet --gain=2.5 --aout=directsound",
         "--quiet",
         "--quiet --aout=mmdevice",
         "--quiet --aout=directsound",
