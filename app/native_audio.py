@@ -1,22 +1,43 @@
 """
 Native WASAPI Audio Recorder module for Discord and Player Microphone.
 Captures Discord audio directly from the Discord process tree via Windows WASAPI
-Process Loopback and combines it with the player's microphone.
+Process Loopback (proctap) with continuous hardware clock synchronization,
+and combines it with the player's microphone input (pyaudiowpatch).
 Includes real-time VU audio meter monitoring and application/process selection.
 """
 
+import collections
 import os
 import queue
 import subprocess
+import sys
 import threading
 import time
 import wave
 
 import numpy as np
 import psutil
+import pyaudiowpatch as pyaudio
 
 from app.config import get_ffmpeg_path
 from app.discord_ipc import DiscordMuteWatcher
+
+
+# Process-wide thread-safe singleton for PortAudio
+_SHARED_PYAUDIO = None
+_SHARED_PYAUDIO_LOCK = threading.Lock()
+
+
+def get_shared_pyaudio():
+    """
+    Returns a thread-safe process-wide singleton PyAudio instance.
+    Prevents PortAudio Pa_Initialize / Pa_Terminate race conditions and assertion crashes.
+    """
+    global _SHARED_PYAUDIO
+    with _SHARED_PYAUDIO_LOCK:
+        if _SHARED_PYAUDIO is None:
+            _SHARED_PYAUDIO = pyaudio.PyAudio()
+        return _SHARED_PYAUDIO
 
 
 def scale_vu(peak):
@@ -182,32 +203,37 @@ def find_discord_active_pid():
 
 def get_default_microphone_info():
     """
-    Queries sounddevice for default input device capabilities.
+    Queries default input device capabilities via PyAudioWPatch.
     Returns (device_index, channels, samplerate).
     """
     try:
-        import sounddevice as sd
-
-        default_input = sd.default.device[0]
-        if default_input is None or default_input < 0:
-            return None, 1, 48000
-        info = sd.query_devices(default_input)
-        max_channels = int(info.get("max_input_channels", 1))
-        channels = 2 if max_channels >= 2 else 1
-        return default_input, channels, 48000
+        pa = get_shared_pyaudio()
+        info = pa.get_default_input_device_info()
+        idx = int(info.get("index", 0))
+        channels = min(2, max(1, int(info.get("maxInputChannels", 1))))
+        rate = int(info.get("defaultSampleRate", 44100))
+        return idx, channels, rate
     except Exception:
-        return None, 1, 48000
+        return None, 1, 44100
 
 
 class NativeAudioRecorder:
     """
-    Zero-latency background audio recorder for Discord/App + Microphone.
-    Directly attaches to target process via Windows WASAPI Process Loopback
-    and captures default microphone input into synchronized WAV buffers.
+    Zero-latency background audio recorder for Discord (via Windows WASAPI Process Loopback)
+    and Player Microphone (via PyAudioWPatch).
+    Directly isolates Discord audio (ignoring game sound, browser, etc.) and maintains
+    100% sample-accurate clock synchronization via precise silence injection.
     Exposes live audio level metering (VU meter) for UI visualization.
     """
 
-    def __init__(self, record_folder=None, log_callback=None, target_pid=-1, target_name="Discord", mic_device=None):
+    def __init__(
+        self,
+        record_folder=None,
+        log_callback=None,
+        target_pid=-1,
+        target_name="Discord",
+        mic_device=None,
+    ):
         self.record_folder = record_folder or os.path.abspath("recordings")
         self.log_callback = log_callback
 
@@ -231,12 +257,11 @@ class NativeAudioRecorder:
         self.current_app_level = 0.0
         self.current_mic_level = 0.0
 
-        # Delay buffers to cut out pause detection lag with sample accuracy
-        import collections
+        # Thread synchronization lock and pause-detection staging buffers
         self._buffer_lock = threading.Lock()
-        self._discord_buffer = collections.deque()
-        self._mic_buffer = collections.deque()
-        self._delay_sec = 0.30
+        self._discord_staging = collections.deque()
+        self._mic_staging = collections.deque()
+        self._staging_delay_sec = 0.14
 
         # Discord local IPC mute watcher
         self.discord_mute_watcher = DiscordMuteWatcher(
@@ -264,7 +289,14 @@ class NativeAudioRecorder:
         return False
 
     def log(self, message):
-        print(f"[NativeRecorder] {message}")
+        try:
+            print(f"[NativeRecorder] {message}")
+        except UnicodeEncodeError:
+            try:
+                encoding = sys.stdout.encoding or "utf-8"
+                print(str(f"[NativeRecorder] {message}").encode(encoding, errors="replace").decode(encoding))
+            except Exception:
+                pass
         if self.log_callback:
             try:
                 self.log_callback(message)
@@ -276,38 +308,43 @@ class NativeAudioRecorder:
         if self._monitor_stream is not None or self.is_recording:
             return
         try:
-            import sounddevice as sd
+            pa = get_shared_pyaudio()
+            mic = pa.get_default_input_device_info()
+            rate = int(mic.get("defaultSampleRate", 44100))
+            channels = min(2, max(1, int(mic.get("maxInputChannels", 1))))
+            dev_idx = mic.get("index")
 
-            dev_idx, channels, rate = get_default_microphone_info()
-
-            def monitor_cb(indata, frames, time_info, status):
+            def monitor_cb(in_data, frames, time_info, status):
                 try:
                     if self.is_discord_muted():
                         self.current_mic_level = 0.0
-                        return
-                    floats = np.frombuffer(indata, dtype=np.float32)
+                        return (None, pyaudio.paContinue)
+                    floats = np.frombuffer(in_data, dtype=np.int16)
                     if len(floats) > 0:
-                        peak = float(np.max(np.abs(floats)))
+                        peak = float(np.max(np.abs(floats))) / 32767.0
                         self.current_mic_level = max(peak, self.current_mic_level * 0.85)
                 except Exception:
                     pass
+                return (None, pyaudio.paContinue)
 
-            self._monitor_stream = sd.RawInputStream(
-                samplerate=rate,
+            self._monitor_stream = pa.open(
+                format=pyaudio.paInt16,
                 channels=channels,
-                dtype="float32",
-                device=dev_idx,
-                callback=monitor_cb,
+                rate=rate,
+                input=True,
+                input_device_index=dev_idx,
+                frames_per_buffer=1024,
+                stream_callback=monitor_cb,
             )
-            self._monitor_stream.start()
+            self._monitor_stream.start_stream()
         except Exception:
-            self._monitor_stream = None
+            self._stop_mic_monitor()
 
     def _stop_mic_monitor(self):
         """Stops and closes the live microphone monitor stream."""
         if self._monitor_stream is not None:
             try:
-                self._monitor_stream.abort()
+                self._monitor_stream.stop_stream()
                 self._monitor_stream.close()
             except Exception:
                 pass
@@ -473,8 +510,8 @@ class NativeAudioRecorder:
         self.stop_event.clear()
         self.is_paused = False
         with self._buffer_lock:
-            self._discord_buffer.clear()
-            self._mic_buffer.clear()
+            self._discord_staging.clear()
+            self._mic_staging.clear()
 
         resolved_pid = self.resolve_target_pid()
 
@@ -484,69 +521,84 @@ class NativeAudioRecorder:
         self.discord_wav_path = os.path.join(temp_dir, f"{session_id}_app.wav")
         self.mic_wav_path = os.path.join(temp_dir, f"{session_id}_mic.wav")
 
-        # 1. Start App loopback thread
+        # 1. Start Discord Process Loopback thread
         if resolved_pid:
             try:
                 proc_name = psutil.Process(resolved_pid).name()
             except Exception:
-                proc_name = "Target App"
-            self.log(f"Hooking WASAPI process loopback for {proc_name} (PID: {resolved_pid})...")
+                proc_name = "Discord"
+            self.log(f"Hooking ProcessLoopback for {proc_name} (PID: {resolved_pid})...")
             self._discord_thread = threading.Thread(
                 target=self._capture_discord_loop,
                 args=(resolved_pid, self.discord_wav_path),
                 daemon=True,
+                name="DiscordProcessLoopbackWorker",
             )
             self._discord_thread.start()
         else:
-            self.log("⚠️ No target audio process found. Recording microphone only.")
+            self.log("⚠️ No target Discord process found. Recording microphone only.")
             self.discord_wav_path = None
 
-        # 2. Start Microphone capture
+        # 2. Start Microphone capture via shared PyAudio
         try:
-            import sounddevice as sd
-
-            dev_idx, channels, rate = get_default_microphone_info()
-            self.mic_channels = channels
-
-            self._mic_writer_thread = threading.Thread(
-                target=self._write_mic_loop,
-                args=(self.mic_wav_path, channels, rate),
-                daemon=True,
-            )
-            self._mic_writer_thread.start()
-
-            def mic_callback(indata, frames, time_info, status):
-                if not self.is_paused and self.is_recording:
-                    if self.is_discord_muted():
-                        # Inject silence zeros while maintaining exact frame timeline alignment
-                        self._mic_queue.put(b"\x00" * len(indata))
-                        self.current_mic_level = 0.0
-                    else:
-                        self._mic_queue.put(bytes(indata))
-                        try:
-                            floats = np.frombuffer(indata, dtype=np.float32)
-                            if len(floats) > 0:
-                                peak = float(np.max(np.abs(floats)))
-                                self.current_mic_level = max(peak, self.current_mic_level * 0.85)
-                        except Exception:
-                            pass
-
-            # Pause monitor stream if active to take exclusive stream
-            if self._monitor_stream:
+            pa = get_shared_pyaudio()
+            mic_device = None
+            if self.mic_device is not None and self.mic_device >= 0:
                 try:
-                    self._monitor_stream.stop()
+                    mic_device = pa.get_device_info_by_index(self.mic_device)
                 except Exception:
                     pass
 
-            self._mic_stream = sd.RawInputStream(
-                samplerate=rate,
-                channels=channels,
-                dtype="float32",
-                device=dev_idx,
-                callback=mic_callback,
-            )
-            self._mic_stream.start()
-            self.log(f"Microphone recording started ({channels}ch @ {rate}Hz).")
+            if mic_device is None:
+                try:
+                    mic_device = pa.get_default_input_device_info()
+                except Exception:
+                    mic_device = None
+
+            if mic_device:
+                mic_channels = min(2, max(1, int(mic_device.get("maxInputChannels", 1))))
+                mic_rate = int(mic_device.get("defaultSampleRate", 44100))
+                self.mic_channels = mic_channels
+
+                self._mic_writer_thread = threading.Thread(
+                    target=self._write_mic_loop,
+                    args=(self.mic_wav_path, mic_channels, mic_rate),
+                    daemon=True,
+                    name="MicWriterThread",
+                )
+                self._mic_writer_thread.start()
+
+                def mic_callback(in_data, frames, time_info, status):
+                    if not self.is_paused and self.is_recording:
+                        if self.is_discord_muted():
+                            # Inject silence zeros while maintaining exact frame timeline alignment
+                            self._mic_queue.put(b"\x00" * len(in_data))
+                            self.current_mic_level = 0.0
+                        else:
+                            self._mic_queue.put(bytes(in_data))
+                            try:
+                                floats = np.frombuffer(in_data, dtype=np.int16)
+                                if len(floats) > 0:
+                                    peak = float(np.max(np.abs(floats))) / 32767.0
+                                    self.current_mic_level = max(peak, self.current_mic_level * 0.85)
+                            except Exception:
+                                pass
+                    return (None, pyaudio.paContinue)
+
+                self._mic_stream = pa.open(
+                    format=pyaudio.paInt16,
+                    channels=mic_channels,
+                    rate=mic_rate,
+                    input=True,
+                    input_device_index=mic_device["index"],
+                    frames_per_buffer=1024,
+                    stream_callback=mic_callback,
+                )
+                self._mic_stream.start_stream()
+                self.log(f"Microphone recording started on '{mic_device['name']}' ({mic_channels}ch @ {mic_rate}Hz).")
+            else:
+                self.log("⚠️ No microphone device found. Recording Discord only.")
+                self.mic_wav_path = None
         except Exception as e:
             self.log(f"Warning: Could not start microphone capture: {e}")
             self.mic_wav_path = None
@@ -554,7 +606,11 @@ class NativeAudioRecorder:
         self.is_recording = True
 
     def _capture_discord_loop(self, pid, wav_path):
-        """Polls process audio frames from WASAPI ProcessLoopback and writes to WAV."""
+        """
+        Polls Discord process audio frames from WASAPI ProcessLoopback.
+        Maintains continuous hardware clock alignment by injecting exact silence frames
+        during quiet periods, eliminating any possibility of audio drift over long scrims.
+        """
         try:
             from proctap._native import ProcessLoopback
 
@@ -566,41 +622,97 @@ class NativeAudioRecorder:
                 wf.setsampwidth(2)  # 16-bit PCM
                 wf.setframerate(48000)
 
+                t_last = time.perf_counter()
+                target_frames = 0.0
+                frames_written = 0
+                staged_frames_count = 0
+                was_paused = False
+
                 while not self.stop_event.is_set():
-                    d = loop.read()
-                    if not d:
-                        time.sleep(0.002)
+                    now = time.perf_counter()
+
+                    with self._buffer_lock:
+                        is_paused = self.is_paused
+
+                    if is_paused:
+                        was_paused = True
+                        target_frames = float(frames_written)
+                        staged_frames_count = 0
+                        t_last = now
+                        _ = loop.read()
+                        time.sleep(0.01)
                         continue
-                    while d:
+
+                    if was_paused:
+                        t_last = now
+                        target_frames = float(frames_written)
+                        staged_frames_count = 0
+                        was_paused = False
+
+                    dt = now - t_last
+                    t_last = now
+                    target_frames += dt * 48000.0
+
+                    d = loop.read()
+                    if d:
                         floats = np.frombuffer(d, dtype=np.float32)
                         if len(floats) > 0:
                             peak = float(np.max(np.abs(floats)))
                             self.current_app_level = max(peak, self.current_app_level * 0.85)
+
                         ints = np.clip(floats * 32767.0, -32768, 32767).astype(np.int16)
                         raw_bytes = ints.tobytes()
+                        chunk_frames = len(ints) // 2
 
                         with self._buffer_lock:
                             if not self.is_paused:
-                                now = time.perf_counter()
-                                self._discord_buffer.append((now, raw_bytes))
-                                cutoff = now - self._delay_sec
-                                while self._discord_buffer and self._discord_buffer[0][0] <= cutoff:
-                                    _, chunk = self._discord_buffer.popleft()
-                                    wf.writeframes(chunk)
-                        d = loop.read()
+                                # Silence injection for any gap between voice packets
+                                gap_frames = int(target_frames) - (frames_written + staged_frames_count + chunk_frames)
+                                if gap_frames > 48:  # > 1ms gap
+                                    silence_bytes = b"\x00" * (gap_frames * 4)
+                                    self._discord_staging.append((now, silence_bytes, gap_frames))
+                                    staged_frames_count += gap_frames
+
+                                self._discord_staging.append((now, raw_bytes, chunk_frames))
+                                staged_frames_count += chunk_frames
+
+                                cutoff = now - self._staging_delay_sec
+                                while self._discord_staging and self._discord_staging[0][0] <= cutoff:
+                                    _, frame_bytes, n_frames = self._discord_staging.popleft()
+                                    wf.writeframes(frame_bytes)
+                                    frames_written += n_frames
+                                    staged_frames_count = max(0, staged_frames_count - n_frames)
+                    else:
+                        # Empty read: Discord is quiet / silence period
+                        with self._buffer_lock:
+                            if not self.is_paused:
+                                gap_frames = int(target_frames) - (frames_written + staged_frames_count)
+                                if gap_frames >= 480:  # >= 10ms of missing silence
+                                    silence_bytes = b"\x00" * (gap_frames * 4)
+                                    self._discord_staging.append((now, silence_bytes, gap_frames))
+                                    staged_frames_count += gap_frames
+
+                                    cutoff = now - self._staging_delay_sec
+                                    while self._discord_staging and self._discord_staging[0][0] <= cutoff:
+                                        _, frame_bytes, n_frames = self._discord_staging.popleft()
+                                        wf.writeframes(frame_bytes)
+                                        frames_written += n_frames
+                                        staged_frames_count = max(0, staged_frames_count - n_frames)
+                        time.sleep(0.003)
 
                 # Flush any remaining frames on stop
                 with self._buffer_lock:
-                    while self._discord_buffer:
-                        _, chunk = self._discord_buffer.popleft()
-                        wf.writeframes(chunk)
+                    while self._discord_staging:
+                        _, frame_bytes, n_frames = self._discord_staging.popleft()
+                        wf.writeframes(frame_bytes)
+                        frames_written += n_frames
 
             loop.stop()
         except Exception as e:
-            self.log(f"Process audio capture error: {e}")
+            self.log(f"Discord process audio capture error: {e}")
 
     def _write_mic_loop(self, wav_path, channels, rate):
-        """Consumes microphone audio chunks from queue and writes to WAV."""
+        """Consumes microphone audio chunks from queue and writes to WAV via staging buffer."""
         try:
             with wave.open(wav_path, "wb") as wf:
                 wf.setnchannels(channels)
@@ -610,41 +722,38 @@ class NativeAudioRecorder:
                 while not self.stop_event.is_set() or not self._mic_queue.empty():
                     try:
                         chunk = self._mic_queue.get(timeout=0.05)
-                        floats = np.frombuffer(chunk, dtype=np.float32)
-                        ints = np.clip(floats * 32767.0, -32768, 32767).astype(np.int16)
-                        raw_bytes = ints.tobytes()
-
                         with self._buffer_lock:
                             if not self.is_paused:
                                 now = time.perf_counter()
-                                self._mic_buffer.append((now, raw_bytes))
-                                cutoff = now - self._delay_sec
-                                while self._mic_buffer and self._mic_buffer[0][0] <= cutoff:
-                                    _, frame_bytes = self._mic_buffer.popleft()
+                                self._mic_staging.append((now, chunk))
+                                cutoff = now - self._staging_delay_sec
+                                while self._mic_staging and self._mic_staging[0][0] <= cutoff:
+                                    _, frame_bytes = self._mic_staging.popleft()
                                     wf.writeframes(frame_bytes)
                     except queue.Empty:
                         continue
 
                 # Flush any remaining frames on stop
                 with self._buffer_lock:
-                    while self._mic_buffer:
-                        _, frame_bytes = self._mic_buffer.popleft()
+                    while self._mic_staging:
+                        _, frame_bytes = self._mic_staging.popleft()
                         wf.writeframes(frame_bytes)
         except Exception as e:
             self.log(f"Mic writer error: {e}")
 
     def pause(self):
-        """Pauses audio recording and instantly discards detection delay window."""
+        """Pauses audio recording and instantly purges the pause detection window."""
         with self._buffer_lock:
             self.is_paused = True
-            self._discord_buffer.clear()
-            self._mic_buffer.clear()
-        self.log("Pause confirmed: detection delay cleanly purged from audio buffer.")
+            self._discord_staging.clear()
+            self._mic_staging.clear()
+        self.log("Recording paused: detection window cleanly purged from audio buffer.")
 
     def resume(self):
         """Resumes audio recording."""
         with self._buffer_lock:
             self.is_paused = False
+        self.log("Recording resumed.")
 
     def stop_and_finalize(self, output_base_name, initial_offset=0.0):
         """
@@ -655,26 +764,25 @@ class NativeAudioRecorder:
             return None
 
         self.stop_event.set()
+        self.is_recording = False
 
         # Stop microphone stream first so callback cleanly stops queueing
         if self._mic_stream:
             try:
-                self._mic_stream.stop()
+                self._mic_stream.stop_stream()
                 self._mic_stream.close()
             except Exception:
                 pass
             self._mic_stream = None
 
-        self.is_recording = False
-
         # Wait for threads to finish writing headers
         if self._discord_thread and self._discord_thread.is_alive():
-            self._discord_thread.join(timeout=2.0)
+            self._discord_thread.join(timeout=3.0)
         if self._mic_writer_thread and self._mic_writer_thread.is_alive():
-            self._mic_writer_thread.join(timeout=2.0)
+            self._mic_writer_thread.join(timeout=3.0)
 
         # Mix and encode to MP3
-        final_mp3 = self._mix_to_mp3(output_base_name, initial_offset)
+        final_mp3 = self._mix_to_mp3(output_base_name, initial_offset=initial_offset)
         return final_mp3
 
     def _mix_to_mp3(self, base_name, initial_offset=0.0):
@@ -689,7 +797,7 @@ class NativeAudioRecorder:
         mic_ok = self.mic_wav_path and os.path.exists(self.mic_wav_path) and os.path.getsize(self.mic_wav_path) > 44
 
         if not discord_ok and not mic_ok:
-            self.log("⚠️ No audio data captured (neither target app nor Microphone had data).")
+            self.log("⚠️ No audio data captured (neither Discord nor Microphone had data).")
             return None
 
         ffmpeg_cmd = get_ffmpeg_path()

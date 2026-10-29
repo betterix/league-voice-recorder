@@ -1,6 +1,6 @@
 [project]
 name = "league-scrim-recorder"
-version = "0.2.5"
+version = "0.3.0"
 description = "Record League of Legends scrim voice audio and synchronize it with replay playback."
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -19,13 +19,14 @@ classifiers = [
 ]
 dependencies = [
     "customtkinter>=6.0.0",
+    "numpy>=2.4.6",
     "proc-tap>=1.1.1",
     "psutil>=7.2.2",
+    "pyaudiowpatch>=0.2.12.9",
     "pycaw>=20260927",
     "python-dotenv>=1.2.4",
     "python-vlc>=3.0.21203",
     "requests>=2.34.2",
-    "sounddevice>=0.5.6",
     "urllib3>=2.8.0",
 ]
 

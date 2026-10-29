@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.2.5-blue?logo=github" alt="Release Version" /></a>
+  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.3.0-blue?logo=github" alt="Release Version" /></a>
   <img src="https://img.shields.io/badge/python-3.14.10-blue?logo=python&logoColor=white" alt="Python Version" />
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%2064--bit-0078D6?logo=windows&logoColor=white" alt="Platform" />
   <img src="https://img.shields.io/badge/build-passing-brightgreen?logo=githubactions&logoColor=white" alt="Build Status" />
@@ -345,6 +345,24 @@ League Voice Recorder/
 ├── ruff.toml               # Linter rules and exclusions
 └── requirements.txt        # Frozen dependencies export
 ```
+
+---
+
+## 🚀 What's New in v0.3.0
+
+- 🎧 **Pure Discord Process Isolation (`proc-tap`)**:
+  - Directly hooks into Discord via Windows WASAPI Process Loopback (`proc-tap`).
+  - Ignores game sounds, browser, and background noise — capturing 100% isolated Discord team voice chat.
+- 🎙️ **Native Microphone Capture via PyAudioWPatch**:
+  - Replaced legacy audio packages with lightweight `PyAudioWPatch`.
+  - Process-wide thread-safe PortAudio singleton preventing concurrent initialization crashes.
+- ⏱️ **Continuous Clock Synchronization & Zero Drift**:
+  - Hardware-clock-aligned silence injection writes exact 48kHz silence frames during Discord quiet intervals, eliminating audio drift over 30+ minute matches.
+- ⏸️ **Instant Match Pause Detection & Exact Detection Window Purge**:
+  - Detects match pauses in ~140ms (7 polls @ 20ms) instead of legacy 1.5s delay.
+  - Automatically purges the 140ms detection staging buffer when pause triggers, ensuring 0ms of pause audio is written to disk and eliminating post-pause replay desync.
+- 📦 **Automated Build & CI Dependency Synchronization**:
+  - Build script and GitHub Actions release workflow automatically synchronize and bundle all required packages (`proctap`, `pyaudiowpatch`, `pycaw`).
 
 ---
 

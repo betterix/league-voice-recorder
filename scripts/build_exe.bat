@@ -20,6 +20,15 @@ if exist "dist\build" (
     rd /s /q "dist\build"
 )
 
+rem Ensure all dependencies are synchronized and downloaded
+echo Synchronizing and downloading required packages via uv...
+call uv sync --dev --python 3.14.10
+if %ERRORLEVEL% NEQ 0 (
+    echo uv sync failed. Please check your internet connection or pyproject.toml.
+    pause
+    exit /b %ERRORLEVEL%
+)
+
 rem Resolve Tcl and Tk library directories for Python 3.14.10
 for /f "tokens=*" %%i in ('uv run --python 3.14.10 python -c "import sys, os; print(os.path.join(sys.base_prefix, 'tcl'))"') do set "TCL_DIR=%%i"
 for /f "tokens=*" %%i in ('uv run --python 3.14.10 python -c "import sys, os; tcl = os.path.join(sys.base_prefix, 'tcl'); tk9 = os.path.join(tcl, 'tk9.0'); tk8 = os.path.join(tcl, 'tk8.6'); print(tk9 if os.path.exists(tk9) else (tk8 if os.path.exists(tk8) else tcl))"') do set "TK_DIR=%%i"
@@ -36,13 +45,13 @@ uv run --python 3.14.10 python -m nuitka ^
     --windows-icon-from-ico=assets\icon.ico ^
     --company-name="betterix" ^
     --product-name="League Voice Recorder" ^
-    --file-version=0.2.5.0 ^
-    --product-version=0.2.5.0 ^
+    --file-version=0.3.0.0 ^
+    --product-version=0.3.0.0 ^
     --file-description="League Voice Recorder & Replay Synchronizer" ^
     --copyright="Copyright (c) 2026 betterix. GPL-3.0 License." ^
     --enable-plugin=tk-inter ^
     --include-package=proctap ^
-    --include-package=sounddevice ^
+    --include-package=pyaudiowpatch ^
     --include-package=pycaw ^
     --nofollow-import-to=scipy ^
     --nofollow-import-to=unittest ^

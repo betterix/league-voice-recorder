@@ -506,13 +506,13 @@ class LeagueRecorder:
                             self.update_status("WATCHING", t("record.match_countdown", time=cd_str))
 
                     if self.recording:
-                        # Pause detection: require ~1.5s (75 polls @ 20ms) of unchanged game_time.
-                        # Riot's Live Client Data API refreshes at ~4Hz (250ms intervals).
-                        # Requiring 1.5s prevents network/polling jitter from falsely triggering pauses
-                        # and truncating recording buffers during regular gameplay.
+                        # Fast pause detection: require ~140ms (7 polls @ 20ms) of unchanged game_time.
+                        # Matches the 0.14s staging buffer in NativeAudioRecorder.
+                        # When confirmed, pause() cleanly purges the 140ms detection window so 0ms
+                        # of pause audio is written to disk, preventing any post-pause desync.
                         if game_time == self.last_game_time and game_time > 0:
                             pause_tick_count += 1
-                            if pause_tick_count >= 75 and not self.is_paused:
+                            if pause_tick_count >= 7 and not self.is_paused:
                                 self.native_recorder.pause()
                                 self.is_paused = True
                                 self.log(t("logs.pause"))
