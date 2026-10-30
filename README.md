@@ -54,6 +54,7 @@ In competitive League of Legends scrimmages and tournament matches, reviewing ga
   - Result: `00:00:00` in the exported MP3 matches game time `0.000` frame-by-frame.
 - 🛡️ **Replay Guard**: Inspects running processes to prevent live recording when you are merely inspecting or reviewing `.rofl` replays.
 - 🎙️ **Direct WASAPI Audio Capture**: Automatically captures team Discord voice chat (via WASAPI loopback) along with player microphone directly in Windows.
+- 🎤 **Dedicated Microphone Device Selection**: Choose any connected physical microphone or default Windows input device on the fly from the primary Scrim Recorder card or Settings tab, with live responsive VU visualizers.
 - ⏩ **Real-Time Replay Speed & Position Sync**: Continuously polls the League Replay API (`:2999/replay/playback`) to synchronize playback speed (0.5x to 8x), pauses, and seeks.
 - 🔊 **Dynamic Replay Volume & Mute Hotkey**: Adjust replay voice volume (0–100%) on the fly, or press **`M`** (both inside League replay observer mode and in the desktop app) to instantly mute/unmute the replay voice track.
 - 🌐 **Extensible Internationalization (i18n)**: English (default) and Hungarian built-in. Community translations are purely drop-in JSON files—no Python code modifications required.
@@ -259,7 +260,7 @@ uv run python -m app.play_replay
 
 ### Running the Automated Test Suite
 
-The project includes an automated test suite with 49 unit tests covering configuration, Discord Local IPC mute/deafen synchronization, internationalization, sample-accurate recorder alignment, replay parsing and hotkey mute, and headless UI rendering:
+The project includes an automated test suite with 58 unit tests covering configuration, Discord Local IPC mute/deafen synchronization, microphone input selection, internationalization, sample-accurate recorder alignment, replay parsing and hotkey mute, and headless UI rendering:
 
 ```powershell
 # Run tests with the Windows launcher script
@@ -287,7 +288,7 @@ Every time a new GitHub Release is published or a tag matching `v*` (e.g., `v1.0
 
 1. Spins up a clean `windows-latest` virtual environment.
 2. Installs Python 3.14.10 and dependencies via `uv`.
-3. Provisions VLC Media Player and runs the complete 42-test suite.
+3. Provisions VLC Media Player and runs the complete 58-test suite.
 4. Compiles the standalone distribution with Nuitka in standalone mode.
 5. Bundles `LeagueVoiceRecorder.exe` (automatically creates `config.json` on first run).
 6. Packages and uploads `LeagueVoiceRecorder-Windows-x64.zip` directly to the GitHub Release.
@@ -324,7 +325,7 @@ League Voice Recorder/
 │   ├── run_tests.bat       # Automated test suite runner batch script
 │   └── build_exe.bat       # Standalone Windows .exe compiler batch script
 │
-├── tests/                  # Automated test suite (49 unit tests)
+├── tests/                  # Automated test suite (58 unit tests)
 │   ├── __init__.py
 │   ├── test_config.py      # Config defaults, path resolution, and directory creation
 │   ├── test_discord_ipc.py # Discord Local IPC & mute silence injection

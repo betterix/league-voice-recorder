@@ -47,7 +47,7 @@ League Voice Recorder/
 │   ├── en.json             # English (default fallback)
 │   └── hu.json             # Hungarian
 │
-├── tests/                  # Automated test suite (50 unittests)
+├── tests/                  # Automated test suite (58 unittests)
 │   ├── __init__.py
 │   ├── test_config.py      # Config defaults, path resolution, and directory creation
 │   ├── test_discord_ipc.py # Discord Local IPC & mute silence injection
@@ -141,7 +141,7 @@ The desktop GUI application built using `customtkinter`.
 - **Tabbed Center Area**:
   - **Activity Log**: Thread-safe monospace log terminal displaying live events with timestamps and auto-scroll.
   - **Scrim Recordings**: File manager showing recorded `.mp3` files, sizes, creation timestamps, with "Play in VLC" and "Open in Explorer" actions.
-  - **Settings**: Configuration editor for recording folder, VLC directory, polling intervals, replay volume, and interface language.
+  - **Settings**: Configuration editor for recording folder, VLC directory, microphone device, polling intervals, replay volume, and interface language.
 
 ### 3.2 `record.py` (`LeagueRecorder`)
 Responsible for live match detection, native WASAPI voice capture, and audio export.
@@ -164,7 +164,7 @@ Responsible for live match detection, native WASAPI voice capture, and audio exp
   - Authenticates with Basic Auth `riot:<password>` to query `https://127.0.0.1:{port}/lol-gameflow/v1/session` to obtain `gameData.gameId`.
 - **Native WASAPI Capture (`native_audio.py`)**:
   - Captures Discord voice chat directly via Windows WASAPI Process Loopback.
-  - Captures player microphone via sounddevice.
+  - Captures player microphone via native WASAPI (pyaudiowpatch) with dynamic input device selection and live VU visualizers.
   - Tracks Discord mute & deafen state in real time via local IPC (\\.\pipe\discord-ipc-*). When muted, feeds synchronized silence bytes to keep timeline aligned.
   - Automatically mixes and normalizes both streams into sample-accurate <GameID>.mp3.
 
@@ -271,7 +271,7 @@ Core libraries:
 - `requests` & `urllib3`: HTTPS communication with League local APIs.
 
 ### 5.3 Automated Testing & Code Quality
-The project includes a comprehensive suite of 50 unit tests covering configuration, Discord Local IPC mute/deafen sync (auto-skipped when Discord is offline), i18n key parity and translations, recorder sample-accurate audio alignment and replay protection, replay synchronizer zero-latency unpausing, seek cooldown protection, game ID parsing, volume clamping and hotkey mute, and headless CustomTkinter UI rendering.
+The project includes a comprehensive suite of 58 unit tests covering configuration, Discord Local IPC mute/deafen sync (auto-skipped when Discord is offline), microphone input enumeration and selection, i18n key parity and translations, recorder sample-accurate audio alignment and replay protection, replay synchronizer zero-latency unpausing, seek cooldown protection, game ID parsing, volume clamping and hotkey mute, and headless CustomTkinter UI rendering.
 
 ```powershell
 # Run the test suite via the Windows batch launcher

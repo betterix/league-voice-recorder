@@ -10,7 +10,8 @@ We actively provide security patches, dependency updates, and bug fixes for the 
 
 | Version | Supported | Status |
 | :--- | :---: | :--- |
-| `0.2.x` | :white_check_mark: | **Current Active Release** |
+| `0.3.x` | :white_check_mark: | **Current Active Release** |
+| `0.2.x` | :x: | End of Life (upgrade recommended) |
 | `0.1.x` | :x: | End of Life (upgrade recommended) |
 | `< 0.1.0` | :x: | Unsupported |
 
