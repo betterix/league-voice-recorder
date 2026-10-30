@@ -43,13 +43,15 @@ def get_shared_pyaudio():
 
 def scale_vu(peak):
     """
-    Transforms linear peak amplitude (0.0 to 1.0) into a perceived loudness
-    VU meter value (0.0 to 1.0) using logarithmic/power curve.
+    Transforms linear peak amplitude (0.0 to 1.0) into a responsive, balanced VU meter value.
+    - Low noise threshold (0.0002) stops static/idle hiss from moving the bar at rest.
+    - Balanced power curve (0.42) ensures the visualizer moves actively with normal speech
+      without maxing out or being hyper-sensitive to room noise.
     """
-    if peak <= 0.00005:
+    if peak <= 0.0002:
         return 0.0
-    val = peak ** 0.28
-    return 1.0 if val >= 1.0 else val  # noqa: FURB136
+    val = ((peak - 0.0002) / (1.0 - 0.0002)) ** 0.42
+    return max(0.0, min(1.0, float(val)))
 
 
 def get_available_audio_targets():
@@ -202,12 +204,102 @@ def find_discord_active_pid():
     return None
 
 
-def get_clean_microphone_device(pa, preferred_index=None):
+def get_available_microphones():
+    """
+    Returns a sorted list of unique microphone input devices:
+    [
+        {"index": -1, "name": "default", "display": "Default Microphone (System) 🎯", "hostApi": -1},
+        {"index": 9, "name": "Mikrofon (Arctis Nova 3P Wireless)", "display": "Mikrofon (Arctis Nova 3P Wireless)", "hostApi": 2},
+        ...
+    ]
+    Prioritizes WASAPI devices (hostApi == 2) over legacy MME/DirectSound.
+    """
+    from app.i18n import t
+
+    mics = [{
+        "index": -1,
+        "name": "default",
+        "display": t("record.mic_default"),
+        "hostApi": -1,
+    }]
+    try:
+        pa = get_shared_pyaudio()
+        wasapi_mics = []
+        other_mics = []
+        seen_names = set()
+
+        for i in range(pa.get_device_count()):
+            try:
+                d = pa.get_device_info_by_index(i)
+                if d.get("maxInputChannels", 0) <= 0 or d.get("isLoopbackDevice", False):
+                    continue
+                name = (d.get("name") or "").strip()
+                lower_name = name.lower()
+                # Skip generic Windows sound mappers
+                if any(skip in lower_name for skip in ["hanglek", "mapper", "elsődleges", "primary sound capture"]):
+                    continue
+                if d.get("hostApi") == 2:  # WASAPI
+                    wasapi_mics.append(d)
+                else:
+                    other_mics.append(d)
+            except Exception:
+                pass
+
+        for d in wasapi_mics:
+            name = (d.get("name") or "").strip()
+            seen_names.add(name.lower())
+            mics.append({
+                "index": int(d["index"]),
+                "name": name,
+                "display": name,
+                "hostApi": 2,
+            })
+
+        for d in other_mics:
+            name = (d.get("name") or "").strip()
+            # Avoid duplicate physical mics if already found in WASAPI
+            if not any(name.lower() in w or w in name.lower() for w in seen_names):
+                seen_names.add(name.lower())
+                mics.append({
+                    "index": int(d["index"]),
+                    "name": name,
+                    "display": name,
+                    "hostApi": d.get("hostApi", 0),
+                })
+    except Exception:
+        pass
+    return mics
+
+
+def get_clean_microphone_device(pa, preferred_index=None, preferred_name=None):
     """
     Returns the cleanest microphone device dict.
     Prioritizes Windows WASAPI (hostApi=2) at its native sample rate (typically 48000Hz),
     which completely bypasses legacy Windows MME driver resampling jitter and static crackles.
     """
+    if preferred_name and str(preferred_name).strip().lower() not in ("default", "none", ""):
+        target = str(preferred_name).strip().lower()
+        # 1. Search WASAPI devices matching target name
+        for i in range(pa.get_device_count()):
+            try:
+                d = pa.get_device_info_by_index(i)
+                if d.get("maxInputChannels", 0) > 0 and not d.get("isLoopbackDevice", False) and d.get("hostApi") == 2:
+                    dname = (d.get("name") or "").strip().lower()
+                    if target == dname or target in dname or dname in target:
+                        return d
+            except Exception:
+                pass
+        # 2. Search other host API devices matching target name
+        for i in range(pa.get_device_count()):
+            try:
+                d = pa.get_device_info_by_index(i)
+                if d.get("maxInputChannels", 0) > 0 and not d.get("isLoopbackDevice", False):
+                    dname = (d.get("name") or "").strip().lower()
+                    if target == dname or target in dname or dname in target:
+                        return d
+            except Exception:
+                pass
+
     if preferred_index is not None and preferred_index >= 0:
         try:
             dev = pa.get_device_info_by_index(preferred_index)
@@ -386,6 +478,7 @@ class NativeAudioRecorder:
         target_pid=-1,
         target_name="Discord",
         mic_device=None,
+        mic_device_name=None,
     ):
         self.record_folder = record_folder or os.path.abspath("recordings")
         self.log_callback = log_callback
@@ -393,6 +486,7 @@ class NativeAudioRecorder:
         self.target_pid = target_pid  # -1 means auto-detect active Discord session
         self.target_name = target_name
         self.mic_device = mic_device
+        self.mic_device_name = mic_device_name
 
         self.is_recording = False
         self.is_paused = False
@@ -480,7 +574,7 @@ class NativeAudioRecorder:
             return
         try:
             pa = get_shared_pyaudio()
-            mic = get_clean_microphone_device(pa, self.mic_device)
+            mic = get_clean_microphone_device(pa, self.mic_device, self.mic_device_name)
             if not mic:
                 mic = pa.get_default_input_device_info()
             rate = int(mic.get("defaultSampleRate", 48000))
@@ -674,6 +768,15 @@ class NativeAudioRecorder:
         self._last_resolved_time = 0.0
         self.log(f"Target process set to: PID {pid} ({name or 'Auto'})")
 
+    def set_mic_device(self, index, name=None):
+        """Updates the microphone device to record and monitor."""
+        self.mic_device = index
+        self.mic_device_name = name
+        if not self.is_recording and self._monitor_stream is not None:
+            self._stop_mic_monitor()
+            self._start_mic_monitor()
+        self.log(f"Microphone device set to: {name or f'Index {index}'}")
+
     def start_recording(self, session_id, initial_game_time=0.0):
         """Starts asynchronous capture of target process audio and player microphone."""
         if self.is_recording:
@@ -719,7 +822,7 @@ class NativeAudioRecorder:
         # 2. Start Microphone capture via shared PyAudio
         try:
             pa = get_shared_pyaudio()
-            mic_device = get_clean_microphone_device(pa, self.mic_device)
+            mic_device = get_clean_microphone_device(pa, self.mic_device, self.mic_device_name)
             if mic_device is None:
                 try:
                     mic_device = pa.get_default_input_device_info()
@@ -918,11 +1021,17 @@ class NativeAudioRecorder:
         ffmpeg_cmd = get_ffmpeg_path()
         cmd = [ffmpeg_cmd, "-y"]
 
+        # High-fidelity natural microphone audio chain (zero noise filtering / zero gating chatter):
+        # 1. aresample=48000,aformat=channel_layouts=stereo: Bit-perfect studio sample rate alignment
+        # 2. volume=2.5: Clean transparent gain matching Discord call volume
+        # 3. alimiter=limit=0.95: True peak limiter preventing any digital clipping or distortion
+        mic_dsp_chain = "aresample=48000,aformat=channel_layouts=stereo,volume=2.5,alimiter=limit=0.95"
+
         if discord_ok and mic_ok:
             cmd.extend(["-i", self.discord_wav_path, "-i", self.mic_wav_path])
             mix_filter = (
                 "[0:a]aresample=48000,aformat=channel_layouts=stereo,volume=2.5[app];"
-                "[1:a]highpass=f=80,afftdn=nf=-25,aresample=48000,aformat=channel_layouts=stereo,volume=2.5,alimiter=limit=0.95[mic];"
+                f"[1:a]{mic_dsp_chain}[mic];"
                 "[app][mic]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0"
             )
         elif discord_ok:
@@ -930,7 +1039,7 @@ class NativeAudioRecorder:
             mix_filter = "[0:a]aresample=48000,aformat=channel_layouts=stereo,volume=2.5"
         else:
             cmd.extend(["-i", self.mic_wav_path])
-            mix_filter = "[0:a]highpass=f=80,afftdn=nf=-25,aresample=48000,aformat=channel_layouts=stereo,volume=2.5,alimiter=limit=0.95"
+            mix_filter = f"[0:a]{mic_dsp_chain}"
 
         wav_dur = 0.0
         check_p = self.discord_wav_path if (discord_ok and os.path.exists(self.discord_wav_path)) else self.mic_wav_path

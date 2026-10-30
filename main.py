@@ -12,7 +12,7 @@ import psutil
 
 from app import __version__
 from app.config import get_ffmpeg_path, load_config, save_config
-from app.native_audio import get_available_audio_targets
+from app.native_audio import get_available_audio_targets, get_available_microphones
 from app.i18n import (
     get_available_languages,
     get_language,
@@ -78,6 +78,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self._queue_timer = self.after(50, self._process_queue)
         self.after(500, self._check_system_health)
         self.after(200, self._refresh_audio_targets)
+        self.after(200, self._refresh_microphones)
         self._start_audio_meter_loop()
 
         # Automatic Champion Select & Replay match detection monitor
@@ -333,6 +334,41 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         )
         self.refresh_progs_btn.grid(row=1, column=1, padx=(0, 10), pady=(0, 8))
 
+        # Microphone selector frame
+        mic_frame = ctk.CTkFrame(rec_card, fg_color="#0F172A", corner_radius=8)
+        mic_frame.pack(fill="x", padx=16, pady=(0, 10))
+        mic_frame.grid_columnconfigure(0, weight=1)
+        mic_frame.grid_columnconfigure(1, weight=0)
+
+        self.mic_input_lbl = ctk.CTkLabel(
+            mic_frame,
+            text=t("record.mic_input"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#38BDF8",
+        )
+        self.mic_input_lbl.grid(row=0, column=0, columnspan=2, padx=10, pady=(6, 2), sticky="w")
+
+        self.available_mics = []
+        self.mic_input_menu = ctk.CTkOptionMenu(
+            mic_frame,
+            values=[t("record.mic_default")],
+            command=self._on_mic_input_selected,
+            fg_color="#1E293B",
+            button_color="#0284C7",
+            button_hover_color="#0369A1",
+        )
+        self.mic_input_menu.grid(row=1, column=0, padx=(10, 4), pady=(0, 8), sticky="ew")
+
+        self.refresh_mics_btn = ctk.CTkButton(
+            mic_frame,
+            text="🔄",
+            width=36,
+            fg_color="#334155",
+            hover_color="#475569",
+            command=self._refresh_microphones,
+        )
+        self.refresh_mics_btn.grid(row=1, column=1, padx=(0, 10), pady=(0, 8))
+
         # Live Audio VU Meter Frame (Hangcsik)
         meter_frame = ctk.CTkFrame(rec_card, fg_color="#0F172A", corner_radius=8)
         meter_frame.pack(fill="x", padx=16, pady=(0, 10))
@@ -538,6 +574,57 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                     save_config(self.config)
                 break
 
+    def _refresh_microphones(self):
+        try:
+            self.available_mics = get_available_microphones()
+            displays = [m["display"] for m in self.available_mics]
+            if hasattr(self, "mic_input_menu"):
+                self.mic_input_menu.configure(values=displays)
+            if hasattr(self, "settings_mic_menu"):
+                self.settings_mic_menu.configure(values=displays)
+
+            saved_name = str(self.config.get("mic_device_name", "default"))
+            saved_idx = int(self.config.get("mic_device_index", -1))
+            current_choice = displays[0]
+            for m in self.available_mics:
+                if (saved_name != "default" and m["name"] == saved_name) or (
+                    saved_idx != -1 and m["index"] == saved_idx
+                ):
+                    current_choice = m["display"]
+                    break
+
+            if hasattr(self, "mic_input_menu"):
+                self.mic_input_menu.set(current_choice)
+            if hasattr(self, "settings_mic_menu"):
+                self.settings_mic_menu.set(current_choice)
+            self._on_mic_input_selected(current_choice)
+        except Exception as e:
+            self.log_message(f"Error listing microphones: {e}")
+
+    def _on_mic_input_selected(self, chosen_display):
+        for m in getattr(self, "available_mics", []):
+            if m["display"] == chosen_display:
+                idx = m["index"]
+                name = m["name"]
+                prev_idx = self.config.get("mic_device_index")
+                prev_name = self.config.get("mic_device_name")
+                self.config["mic_device_index"] = idx
+                self.config["mic_device_name"] = name
+
+                if hasattr(self, "mic_input_menu") and self.mic_input_menu.get() != chosen_display:
+                    self.mic_input_menu.set(chosen_display)
+                if hasattr(self, "settings_mic_menu") and self.settings_mic_menu.get() != chosen_display:
+                    self.settings_mic_menu.set(chosen_display)
+
+                if hasattr(self, "recorder_worker") and self.recorder_worker and hasattr(self.recorder_worker, "native_recorder"):
+                    self.recorder_worker.native_recorder.set_mic_device(idx, name)
+                if hasattr(self, "_preview_native_recorder") and self._preview_native_recorder:
+                    self._preview_native_recorder.set_mic_device(idx, name)
+
+                if prev_idx != idx or prev_name != name:
+                    save_config(self.config)
+                break
+
     def _start_audio_meter_loop(self):
         self._update_audio_meters()
 
@@ -560,6 +647,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self._preview_native_recorder = NativeAudioRecorder(
                     record_folder=self.config.get("record_folder"),
                     mic_device=self.config.get("mic_device_index"),
+                    mic_device_name=self.config.get("mic_device_name"),
                     target_pid=int(self.config.get("target_audio_pid", -1)),
                     target_name=self.config.get("target_audio_name", "Discord"),
                 )
@@ -821,9 +909,23 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.lang_menu.set(current_display)
         self.lang_menu.grid(row=6, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
 
+        # Microphone Input
+        self.settings_mic_lbl = ctk.CTkLabel(scroll, text=t("settings.mic_device"))
+        self.settings_mic_lbl.grid(row=7, column=0, padx=10, pady=6, sticky="w")
+
+        self.settings_mic_menu = ctk.CTkOptionMenu(
+            scroll,
+            values=[t("record.mic_default")],
+            command=self._on_mic_input_selected,
+            fg_color="#334155",
+            button_color="#0284C7",
+            button_hover_color="#0369A1",
+        )
+        self.settings_mic_menu.grid(row=7, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
+
         # Auto-Start in Champion Select
         self.auto_champ_select_lbl = ctk.CTkLabel(scroll, text=t("settings.auto_start_champ_select"))
-        self.auto_champ_select_lbl.grid(row=7, column=0, padx=10, pady=6, sticky="w")
+        self.auto_champ_select_lbl.grid(row=8, column=0, padx=10, pady=6, sticky="w")
         self.auto_champ_select_var = ctk.BooleanVar(
             value=bool(self.config.get("auto_start_champ_select", True))
         )
@@ -835,11 +937,11 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             offvalue=False,
             progress_color="#0284C7",
         )
-        self.auto_champ_select_switch.grid(row=7, column=1, columnspan=2, padx=10, pady=6, sticky="w")
+        self.auto_champ_select_switch.grid(row=8, column=1, columnspan=2, padx=10, pady=6, sticky="w")
 
         # Auto-Start Replay Sync
         self.auto_replay_lbl = ctk.CTkLabel(scroll, text=t("settings.auto_start_replay"))
-        self.auto_replay_lbl.grid(row=8, column=0, padx=10, pady=6, sticky="w")
+        self.auto_replay_lbl.grid(row=9, column=0, padx=10, pady=6, sticky="w")
         self.auto_replay_var = ctk.BooleanVar(
             value=bool(self.config.get("auto_start_replay", True))
         )
@@ -851,7 +953,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             offvalue=False,
             progress_color="#0284C7",
         )
-        self.auto_replay_switch.grid(row=8, column=1, columnspan=2, padx=10, pady=6, sticky="w")
+        self.auto_replay_switch.grid(row=9, column=1, columnspan=2, padx=10, pady=6, sticky="w")
 
         # Save Button
         self.save_btn = ctk.CTkButton(
@@ -863,7 +965,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             hover_color="#0369A1",
             command=self._save_settings,
         )
-        self.save_btn.grid(row=9, column=0, columnspan=3, padx=10, pady=(20, 10), sticky="ew")
+        self.save_btn.grid(row=10, column=0, columnspan=3, padx=10, pady=(20, 10), sticky="ew")
 
     # ==========================================
     # I18N DYNAMIC TEXT REFRESH
@@ -899,6 +1001,9 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self._last_mic_muted_state = None
                 self.mic_meter_title.configure(text="🎤 " + t("record.microphone") + ":", text_color="#94A3B8")
                 self._refresh_audio_targets()
+            if hasattr(self, "mic_input_lbl"):
+                self.mic_input_lbl.configure(text=t("record.mic_input"))
+                self._refresh_microphones()
             self._render_rec_status(*self.last_rec_status)
 
             self.rep_header_lbl.configure(text=t("replay.title"))
@@ -946,6 +1051,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.replay_vol_lbl.configure(text=t("settings.replay_volume"))
                 self.sync_offset_lbl.configure(text=t("settings.sync_offset"))
                 self.lang_lbl.configure(text=t("settings.language"))
+                if hasattr(self, "settings_mic_lbl"):
+                    self.settings_mic_lbl.configure(text=t("settings.mic_device"))
                 if hasattr(self, "auto_champ_select_lbl"):
                     self.auto_champ_select_lbl.configure(text=t("settings.auto_start_champ_select"))
                     self.auto_champ_select_switch.configure(text=t("settings.auto_start_champ_select_info"))

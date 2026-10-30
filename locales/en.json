@@ -46,6 +46,8 @@
         "refresh_targets": "🔄 Refresh",
         "app_sound": "Discord Audio",
         "microphone": "Microphone",
+        "mic_input": "🎤 Microphone Input:",
+        "mic_default": "Default Microphone (System) 🎯",
         "muted": "MUTED",
         "sound_detected": "Sound Active",
         "auto_discord": "Discord (Auto Detect Audio) 🎯"
@@ -98,6 +100,7 @@
         "replay_volume": "Replay Volume (%):",
         "sync_offset": "Audio Sync Offset (ms):",
         "language": "Interface Language:",
+        "mic_device": "Microphone Input:",
         "auto_start_champ_select": "Auto-Start in Champ Select:",
         "auto_start_champ_select_info": "Automatically starts recording watcher when entering Champion Select",
         "auto_start_replay": "Auto-Start Replay Sync:",

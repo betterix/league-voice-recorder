@@ -221,14 +221,15 @@ class TestRecorderModule(unittest.TestCase):
         q_idx = cmd.index("-q:a")
         self.assertEqual(cmd[q_idx + 1], "0")
 
-        # Verify no loudnorm filter distorting voices, and de-noising/anti-clipping filters present
+        # Verify natural uncolored voice recording (no loudnorm, afftdn, highpass, or agate chatter)
         filter_str = cmd[cmd.index("-filter_complex") + 1]
         self.assertNotIn("loudnorm", filter_str)
+        self.assertNotIn("agate", filter_str)
+        self.assertNotIn("afftdn", filter_str)
+        self.assertNotIn("highpass", filter_str)
         self.assertIn("aresample=48000", filter_str)
         self.assertIn("amix=inputs=2", filter_str)
-        self.assertIn("afftdn", filter_str)
         self.assertIn("alimiter", filter_str)
-        self.assertIn("highpass", filter_str)
 
     def test_recorder_pause_and_resume_state(self):
         """Verify that calling pause() and resume() toggles is_paused and purges staging buffers."""
@@ -319,7 +320,9 @@ class TestRecorderModule(unittest.TestCase):
             if game_time == rec.last_game_time and game_time > 0:
                 rec.pause_tick_count += 1
                 elapsed_unchanged = 1000.010 - rec.last_advance_time
-                if (rec.pause_tick_count >= 1 or elapsed_unchanged >= 0.010) and not rec.is_paused:
+                if (
+                    rec.pause_tick_count >= 1 or elapsed_unchanged >= 0.010
+                ) and not rec.is_paused:
                     rec.native_recorder.pause()
                     rec.is_paused = True
 
@@ -384,6 +387,22 @@ class TestRecorderModule(unittest.TestCase):
         with wave.open(wav_path, "rb") as wf:
             dur = wf.getnframes() / wf.getframerate()
             self.assertEqual(dur, 120.0, "Total duration must match 2:00 in-game clock exactly")
+
+    def test_get_available_microphones_and_selection(self):
+        """get_available_microphones returns default option and clean physical devices, and handles device selection."""
+        from app.native_audio import get_available_microphones
+
+        mics = get_available_microphones()
+        self.assertIsInstance(mics, list)
+        self.assertGreaterEqual(len(mics), 1)
+        self.assertEqual(mics[0]["index"], -1)
+        self.assertEqual(mics[0]["name"], "default")
+
+        # Test setting mic device on recorder
+        rec = self.recorder
+        rec.set_mic_device(mics[0]["index"], mics[0]["name"])
+        self.assertEqual(rec.native_recorder.mic_device, -1)
+        self.assertEqual(rec.native_recorder.mic_device_name, "default")
 
 
 if __name__ == "__main__":

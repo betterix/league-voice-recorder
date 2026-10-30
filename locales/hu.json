@@ -46,6 +46,8 @@
         "refresh_targets": "🔄 Frissítés",
         "app_sound": "Discord hang",
         "microphone": "Mikrofon",
+        "mic_input": "🎤 Mikrofon bemenet:",
+        "mic_default": "Alapértelmezett mikrofon (Rendszer) 🎯",
         "muted": "NÉMÍTVA",
         "sound_detected": "Hang aktív",
         "auto_discord": "Discord (Automatikus hangfelismerés) 🎯"
@@ -98,6 +100,7 @@
         "replay_volume": "Visszajátszási hangerő (%):",
         "sync_offset": "Hang szinkron eltolás (ms):",
         "language": "Kezelőfelület nyelve:",
+        "mic_device": "Mikrofon bemenet:",
         "auto_start_champ_select": "Figyelő indítása Hős Választáskor:",
         "auto_start_champ_select_info": "Automatikusan elindítja a felvétel figyelőt, amint belépsz a hős választásba",
         "auto_start_replay": "Replay szinkron automatikus indítása:",

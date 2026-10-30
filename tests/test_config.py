@@ -16,6 +16,8 @@ class TestConfigModule(unittest.TestCase):
         cfg = get_default_config()
         self.assertIn("target_audio_pid", cfg)
         self.assertIn("target_audio_name", cfg)
+        self.assertIn("mic_device_index", cfg)
+        self.assertIn("mic_device_name", cfg)
         self.assertIn("record_folder", cfg)
         self.assertIn("vlc_dir", cfg)
         self.assertIn("check_time", cfg)

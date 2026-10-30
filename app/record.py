@@ -151,7 +151,10 @@ class LeagueRecorder:
 
         self.record_folder = self.config.get("record_folder", os.path.abspath("recordings"))
         self.native_recorder = NativeAudioRecorder(
-            record_folder=self.record_folder, log_callback=self.log
+            record_folder=self.record_folder,
+            mic_device=self.config.get("mic_device_index"),
+            mic_device_name=self.config.get("mic_device_name"),
+            log_callback=self.log,
         )
         self.native_recorder.set_target_process(
             pid=int(self.config.get("target_audio_pid", -1)),
@@ -175,6 +178,10 @@ class LeagueRecorder:
         # Persistent HTTP session for live API polling
         self.session = requests.Session()
         self.session.verify = False
+
+    def set_mic_device(self, index, name=None):
+        if hasattr(self, "native_recorder") and self.native_recorder:
+            self.native_recorder.set_mic_device(index, name)
 
     def log(self, message):
         print(message)

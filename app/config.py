@@ -112,6 +112,8 @@ def get_clean_default_config():
     return {
         "target_audio_pid": -1,
         "target_audio_name": "Discord",
+        "mic_device_index": -1,
+        "mic_device_name": "default",
         "record_folder": get_current_user_documents_recordings_dir(),
         "vlc_dir": r"C:\Program Files\VideoLAN\VLC",
         "check_time": 0.2,
@@ -136,6 +138,8 @@ def get_default_config():
     return {
         "target_audio_pid": int(os.getenv("TARGET_AUDIO_PID", "-1")),
         "target_audio_name": os.getenv("TARGET_AUDIO_NAME", "Discord"),
+        "mic_device_index": int(os.getenv("MIC_DEVICE_INDEX", "-1")),
+        "mic_device_name": os.getenv("MIC_DEVICE_NAME", "default"),
         "record_folder": rec_folder,
         "vlc_dir": resolve_path(os.getenv("VLC_DIR", r"C:\Program Files\VideoLAN\VLC")),
         "check_time": float(os.getenv("CHECK_TIME", "0.2")),

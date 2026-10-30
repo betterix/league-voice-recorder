@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.3.0-blue?logo=github" alt="Release Version" /></a>
+  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.3.1-blue?logo=github" alt="Release Version" /></a>
   <img src="https://img.shields.io/badge/python-3.14.10-blue?logo=python&logoColor=white" alt="Python Version" />
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%2064--bit-0078D6?logo=windows&logoColor=white" alt="Platform" />
   <img src="https://img.shields.io/badge/build-passing-brightgreen?logo=githubactions&logoColor=white" alt="Build Status" />
@@ -345,6 +345,23 @@ League Voice Recorder/
 ├── ruff.toml               # Linter rules and exclusions
 └── requirements.txt        # Frozen dependencies export
 ```
+
+---
+
+## 🚀 What's New in v0.3.1
+
+- 🎙️ **Microphone Input Selector (UI & Settings)**:
+  - Added dedicated Microphone Input selector dropdown directly on the Scrim Recorder card and in the Settings tab.
+  - Automatically discovers all available physical audio inputs (prioritizing high-resolution WASAPI devices) along with Windows Default Microphone.
+  - Dynamically updates live VU meters and switches active recording hardware instantly without needing app restart.
+  - Persists selected microphone device name and index across sessions in `config.json`.
+- 📊 **Calibrated Responsive Audio VU Visualizers**:
+  - Fine-tuned VU meter curve and noise floor thresholds for smooth, natural audio visualization.
+  - Prevents idle jitter at rest while actively tracking team Discord comms and microphone levels.
+- 🎛️ **Transparent Natural Audio Mixing**:
+  - Clean, uncolored 48kHz stereo alignment with transparent gain staging and true-peak limiting (`alimiter=limit=0.95`).
+- ⚡ **Timeline Alignment & Sample Stability**:
+  - Sample-accurate alignment with League of Legends match time (`00:00:00`) with ultra-fast pause and unpause handling.
 
 ---
 
