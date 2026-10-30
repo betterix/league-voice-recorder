@@ -137,14 +137,16 @@ class TestDiscordIpcModule(unittest.TestCase):
     def test_persisted_token_lifecycle(self):
         """Verify token is correctly saved in config.json and legacy .discord_token is cleaned up."""
         token_path = os.path.join(self.temp_dir.name, ".discord_token")
+        global_path = os.path.join(self.temp_dir.name, ".global_token")
         mock_cfg = {}
         with (
             patch("app.discord_ipc.get_token_file_path", return_value=token_path),
+            patch("app.discord_ipc.get_global_token_file_path", return_value=global_path),
             patch("app.config.load_config", return_value=mock_cfg),
             patch("app.config.save_config", side_effect=lambda c: mock_cfg.update(c)),
         ):
             self.assertIsNone(load_persisted_token())
-            # Save token directly to config, verify no .discord_token file is created
+            # Save token directly to config, verify legacy file is cleaned up
             save_persisted_token("my_dummy_test_token_123")
             self.assertEqual(load_persisted_token(), "my_dummy_test_token_123")
             self.assertEqual(mock_cfg.get("discord_ipc_token"), "my_dummy_test_token_123")
@@ -154,6 +156,8 @@ class TestDiscordIpcModule(unittest.TestCase):
             with open(token_path, "w", encoding="utf-8") as f:
                 f.write("legacy_token_456")
             mock_cfg.clear()
+            if os.path.exists(global_path):
+                os.remove(global_path)
             self.assertEqual(load_persisted_token(), "legacy_token_456")
             self.assertFalse(os.path.exists(token_path))
             self.assertEqual(mock_cfg.get("discord_ipc_token"), "legacy_token_456")

@@ -26,6 +26,18 @@ STREAMKIT_CLIENT_ID = "207646673902501888"
 TOKEN_URL = "https://streamkit.discord.com/overlay/token"
 
 
+def get_global_token_file_path():
+    """Returns the persistent user-level token path in Documents/League Voice Recorder."""
+    try:
+        from app.config import get_current_user_documents_recordings_dir
+
+        rec_dir = get_current_user_documents_recordings_dir()
+        base_dir = os.path.dirname(rec_dir)
+        return os.path.join(base_dir, ".discord_token")
+    except Exception:
+        return None
+
+
 def get_token_file_path():
     """Returns the legacy path to the .discord_token file for migration/cleanup."""
     try:
@@ -37,7 +49,7 @@ def get_token_file_path():
 
 
 def load_persisted_token():
-    """Loads saved Discord IPC access token from config.json (cleaning up legacy .discord_token if found)."""
+    """Loads saved Discord IPC access token from config.json, user Documents, or legacy file."""
     # 1. Primary: load from config.json
     try:
         from app.config import load_config
@@ -45,7 +57,7 @@ def load_persisted_token():
         cfg = load_config()
         tok = cfg.get("discord_ipc_token")
         if tok and str(tok).strip():
-            # Clean up legacy .discord_token file if still present
+            # Clean up legacy .discord_token file in project root if still present
             legacy_path = get_token_file_path()
             if os.path.exists(legacy_path):
                 try:
@@ -56,7 +68,19 @@ def load_persisted_token():
     except Exception:
         pass
 
-    # 2. Legacy fallback: check .discord_token, migrate into config.json, and delete file
+    # 2. Secondary: check persistent user Documents directory (.discord_token)
+    global_path = get_global_token_file_path()
+    try:
+        if global_path and os.path.exists(global_path):
+            with open(global_path, "r", encoding="utf-8") as f:
+                tok = f.read().strip()
+            if tok:
+                save_persisted_token(tok)
+                return tok
+    except Exception:
+        pass
+
+    # 3. Legacy fallback: check .discord_token in project root, migrate, and delete file
     legacy_path = get_token_file_path()
     try:
         if os.path.exists(legacy_path):
@@ -72,7 +96,7 @@ def load_persisted_token():
 
 
 def save_persisted_token(token):
-    """Saves Discord IPC access token directly into config.json and removes legacy .discord_token."""
+    """Saves Discord IPC access token directly into config.json and user Documents."""
     if not token or not str(token).strip():
         return
     clean_token = str(token).strip()
@@ -85,7 +109,17 @@ def save_persisted_token(token):
     except Exception:
         pass
 
-    # 2. Save directly to config.json
+    # 2. Save to persistent user Documents directory
+    global_path = get_global_token_file_path()
+    try:
+        if global_path:
+            os.makedirs(os.path.dirname(global_path), exist_ok=True)
+            with open(global_path, "w", encoding="utf-8") as f:
+                f.write(clean_token)
+    except Exception:
+        pass
+
+    # 3. Save directly to config.json
     try:
         from app.config import load_config, save_config
 
@@ -97,11 +131,17 @@ def save_persisted_token(token):
 
 
 def delete_persisted_token():
-    """Removes token from config.json and deletes any legacy .discord_token file."""
+    """Removes token from config.json, user Documents, and legacy file."""
     legacy_path = get_token_file_path()
     try:
         if os.path.exists(legacy_path):
             os.remove(legacy_path)
+    except Exception:
+        pass
+    global_path = get_global_token_file_path()
+    try:
+        if global_path and os.path.exists(global_path):
+            os.remove(global_path)
     except Exception:
         pass
     try:
@@ -346,14 +386,14 @@ class DiscordMuteWatcher:
             ):
                 return False
 
-            _op, auth_resp = self._read_frame(pipe, timeout_sec=5.0)
+            _op, auth_resp = self._read_frame(pipe, timeout_sec=60.0)
             code = (auth_resp or {}).get("data", {}).get("code")
             if not code:
                 self.log("Discord authorization declined or timed out.")
                 return False
 
             try:
-                r = requests.post(TOKEN_URL, json={"code": code}, timeout=4.0)
+                r = requests.post(TOKEN_URL, json={"code": code}, timeout=10.0)
                 if r.status_code == 200:
                     token = r.json().get("access_token")
                     if token:
