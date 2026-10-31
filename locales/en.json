@@ -108,7 +108,17 @@
         "save_btn": "💾 Save Settings",
         "saved_success": "✅ Settings saved successfully to config.json!",
         "saved_error": "❌ Failed to write config.json!",
-        "invalid_input": "❌ Invalid settings input: {error}"
+        "invalid_input": "❌ Invalid settings input: {error}",
+        "updates_title": "Software Updates",
+        "app_version": "App Version:",
+        "check_updates_btn": "🔄 Check for Updates",
+        "checking_updates": "Checking for updates...",
+        "up_to_date": "✅ You are running the latest version! (v{version})",
+        "update_available": "🚀 New update available: v{version}",
+        "update_now_btn": "⬇️ Update to v{version} & Restart",
+        "downloading_update": "⏳ Downloading update ({percent}%)...",
+        "restarting": "🔄 Update downloaded! Restarting application...",
+        "update_failed": "⚠️ Update check failed: {error}"
     },
     "logs": {
         "champ_select_detected": "🎯 Champion Select detected! Auto-starting recording watcher...",

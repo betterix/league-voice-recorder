@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.3.1-blue?logo=github" alt="Release Version" /></a>
+  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.3.2-blue?logo=github" alt="Release Version" /></a>
   <img src="https://img.shields.io/badge/python-3.14.10-blue?logo=python&logoColor=white" alt="Python Version" />
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%2064--bit-0078D6?logo=windows&logoColor=white" alt="Platform" />
   <img src="https://img.shields.io/badge/build-passing-brightgreen?logo=githubactions&logoColor=white" alt="Build Status" />
@@ -346,6 +346,25 @@ League Voice Recorder/
 ├── ruff.toml               # Linter rules and exclusions
 └── requirements.txt        # Frozen dependencies export
 ```
+
+---
+
+## 🚀 What's New in v0.3.2
+
+- 🎧 **Audio Cracking & Static Fix (Append-Only Audio Pipeline)**:
+  - Eliminated audio cracking and static artifacts by removing backward WAV file seeks in the timeline audio writer; audio recording pipeline is now strictly sequential and append-only.
+  - Refined match pause detection thresholds (`pause_tick_count >= 20` or `elapsed_unchanged >= 0.45s`) to completely eliminate 4 Hz false-pause fluttering during active games.
+  - Removed artificial DSP limiters and gain compression in favor of transparent, uncolored 1:1 stream pass-through.
+- 🔄 **In-App Automatic Update Checker & One-Click Upgrade**:
+  - Integrated automatic GitHub release update checks with header badge notification and one-click upgrade button in the Settings tab.
+  - Full support for distribution `.zip` archives (`LeagueVoiceRecorder-Windows-x64.zip`): downloads with real-time percentage progress, unpacks assets, and performs seamless in-place replacement and relaunch via a silent background updater script.
+- 📁 **Dedicated Windows Documents Configuration Storage**:
+  - `config.json` is now stored cleanly in the user's standard Windows `Documents/League Voice Recorder/` folder (alongside match recordings) with automatic migration of existing configuration files.
+  - Removed OneDrive cloud redirections for predictable, local-first configuration persistence.
+- 🔒 **Discord Authorization Stability**:
+  - Implemented a process-wide shared Discord mute watcher singleton, preventing Discord authorization dialogs from prematurely dismissing during UI preview initialization.
+- 📐 **Roomier UI Window Geometry**:
+  - Expanded default desktop window dimensions (`1040x960`) to provide expansive vertical space for activity logs and recorded scrim listings.
 
 ---
 

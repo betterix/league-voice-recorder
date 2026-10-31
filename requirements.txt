@@ -36,14 +36,14 @@ pyaudiowpatch==0.2.12.9
     # via league-scrim-recorder
 pycaw==20260927
     # via league-scrim-recorder
-pyobjc-core==12.2.2 ; sys_platform == 'darwin'
+pyobjc-core==13.0 ; sys_platform == 'darwin'
     # via
     #   proc-tap
     #   pyobjc-framework-cocoa
     #   pyobjc-framework-coreaudio
-pyobjc-framework-cocoa==12.2.2 ; sys_platform == 'darwin'
+pyobjc-framework-cocoa==13.0 ; sys_platform == 'darwin'
     # via pyobjc-framework-coreaudio
-pyobjc-framework-coreaudio==12.2.2 ; sys_platform == 'darwin'
+pyobjc-framework-coreaudio==13.0 ; sys_platform == 'darwin'
     # via proc-tap
 python-dotenv==1.2.4
     # via league-scrim-recorder

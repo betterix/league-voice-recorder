@@ -221,15 +221,16 @@ class TestRecorderModule(unittest.TestCase):
         q_idx = cmd.index("-q:a")
         self.assertEqual(cmd[q_idx + 1], "0")
 
-        # Verify natural uncolored voice recording (no loudnorm, afftdn, highpass, or agate chatter)
+        # Verify pure unamplified direct recording (no loudnorm, afftdn, highpass, alimiter, or volume gain)
         filter_str = cmd[cmd.index("-filter_complex") + 1]
         self.assertNotIn("loudnorm", filter_str)
         self.assertNotIn("agate", filter_str)
         self.assertNotIn("afftdn", filter_str)
         self.assertNotIn("highpass", filter_str)
+        self.assertNotIn("alimiter", filter_str)
+        self.assertNotIn("volume=", filter_str)
         self.assertIn("aresample=48000", filter_str)
         self.assertIn("amix=inputs=2", filter_str)
-        self.assertIn("alimiter", filter_str)
 
     def test_recorder_pause_and_resume_state(self):
         """Verify that calling pause() and resume() toggles is_paused and purges staging buffers."""
@@ -304,7 +305,7 @@ class TestRecorderModule(unittest.TestCase):
             self.assertIn("adelay=delays=1770", filter_str)
 
     def test_fast_pause_detection_triggers_immediately(self):
-        """Inhuman fast pause detection must trigger pause within 10ms of unchanged game_time."""
+        """Match pause detection must avoid false-pause chopping during 250ms API ticks and pause when unchanged >= 0.45s."""
         rec = self.recorder
         rec.recording = True
         rec.is_paused = False
@@ -314,23 +315,38 @@ class TestRecorderModule(unittest.TestCase):
         rec.pause_tick_count = 0
         rec.last_advance_time = 1000.0
 
-        # Simulate unchanged game_time at tick time 1000.010 (10ms later)
-        with patch("time.monotonic", return_value=1000.010):
+        # 1. Normal API refresh cycle (e.g. 100ms unchanged): MUST NOT pause
+        with patch("time.monotonic", return_value=1000.100):
             game_time = 120.0
             if game_time == rec.last_game_time and game_time > 0:
                 rec.pause_tick_count += 1
-                elapsed_unchanged = 1000.010 - rec.last_advance_time
+                elapsed_unchanged = 1000.100 - rec.last_advance_time
                 if (
-                    rec.pause_tick_count >= 1 or elapsed_unchanged >= 0.010
+                    rec.pause_tick_count >= 20 or elapsed_unchanged >= 0.45
                 ) and not rec.is_paused:
                     rec.native_recorder.pause()
                     rec.is_paused = True
 
-        self.assertTrue(rec.is_paused)
+        self.assertFalse(rec.is_paused, "Must not pause during standard 250ms API refresh tick")
+        rec.native_recorder.pause.assert_not_called()
+
+        # 2. True in-game pause (>= 0.45s unchanged): MUST trigger pause
+        with patch("time.monotonic", return_value=1000.460):
+            game_time = 120.0
+            if game_time == rec.last_game_time and game_time > 0:
+                rec.pause_tick_count += 1
+                elapsed_unchanged = 1000.460 - rec.last_advance_time
+                if (
+                    rec.pause_tick_count >= 20 or elapsed_unchanged >= 0.45
+                ) and not rec.is_paused:
+                    rec.native_recorder.pause()
+                    rec.is_paused = True
+
+        self.assertTrue(rec.is_paused, "Must pause when match is paused for >= 0.45s")
         rec.native_recorder.pause.assert_called_once()
 
-        # Simulate game advancing after unpause
-        with patch("time.monotonic", return_value=1000.020):
+        # 3. Simulate game advancing after unpause
+        with patch("time.monotonic", return_value=1000.500):
             game_time = 120.5
             if game_time > rec.last_game_time:
                 if rec.is_paused:
@@ -341,52 +357,29 @@ class TestRecorderModule(unittest.TestCase):
         rec.native_recorder.resume.assert_called_once()
 
     def test_timeline_wav_writer_overwrite_when_ahead_and_preserves_timeline(self):
-        """TimelineWavWriter must overwrite at game_time when audio rushed ahead during pause, and preserve voice timings."""
+        """TimelineWavWriter writes sequentially without backwards corruption and pads initial silence mid-game."""
         from app.native_audio import TimelineWavWriter
         import wave
 
         wav_path = os.path.join(self.temp_dir.name, "timeline_test.wav")
         writer = TimelineWavWriter(wav_path, channels=2, sample_rate=48000)
 
-        # 1. Voice at 1:30 (90.0s)
+        # 1. Voice at 1:30 (90.0s) pads silence
         writer.sync_to_game_time(90.0)
         self.assertEqual(writer.current_frame, 90 * 48000)
         # Speak for 2 seconds (up to 92.0s)
         writer.write_frames(b"\x11\x22" * (48000 * 2 * 2))
         self.assertEqual(writer.current_frame, 92 * 48000)
 
-        # 2. Silence between 1:30 and 1:40 (8s of silence)
-        writer.write_frames(b"\x00" * (48000 * 8 * 4))
-        self.assertEqual(writer.current_frame, 100 * 48000)
+        # 2. Continuous writing without backwards seek tearing
+        writer.write_frames(b"\x33\x44" * (48000 * 3 * 2))
+        self.assertEqual(writer.current_frame, 95 * 48000)
 
-        # 3. Voice at 1:40 (100.0s)
-        writer.write_frames(b"\x33\x44" * (48000 * 2 * 2))
-        self.assertEqual(writer.current_frame, 102 * 48000)
-
-        # 4. In-game pause occurs at 105.0s for 10 seconds.
-        # Audio writer rushed ahead to 115.0s during pause:
-        writer.sync_to_game_time(105.0)
-        writer.write_frames(b"\x55\x66" * (48000 * 10 * 2)) # 10s of audio written during pause
-        self.assertEqual(writer.current_frame, 115 * 48000)
-
-        # 5. Game unpauses at 105.0s: sync_to_game_time rewinds and overwrites at 105.0s!
-        writer.sync_to_game_time(105.0)
-        self.assertEqual(writer.current_frame, 105 * 48000, "Must seek back to game_time without cutting seconds")
-
-        # Test ultra-fast 10ms threshold: write 15ms of audio (720 frames)
-        writer.write_frames(b"\x99\xAA" * (720 * 2))
-        self.assertEqual(writer.current_frame, 105 * 48000 + 720)
-        # Calling sync_to_game_time(105.0) with >10ms drift rewinds immediately!
-        writer.sync_to_game_time(105.0)
-        self.assertEqual(writer.current_frame, 105 * 48000, "Must seek back on >10ms drift")
-
-        # Resume writing unpaused gameplay from 105s to 120s (2:00)
-        writer.write_frames(b"\x77\x88" * (48000 * 15 * 2))
-        writer.close(final_game_time=120.0)
+        writer.close()
 
         with wave.open(wav_path, "rb") as wf:
             dur = wf.getnframes() / wf.getframerate()
-            self.assertEqual(dur, 120.0, "Total duration must match 2:00 in-game clock exactly")
+            self.assertEqual(dur, 95.0, "Total duration must match 95.0s (90s silence + 5s audio)")
 
     def test_get_available_microphones_and_selection(self):
         """get_available_microphones returns default option and clean physical devices, and handles device selection."""

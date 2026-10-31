@@ -52,6 +52,18 @@ class TestConfigModule(unittest.TestCase):
         cfg = load_config()
         self.assertTrue(os.path.isdir(cfg["record_folder"]))
 
+    def test_config_file_location_in_documents(self):
+        from app.config import get_config_file_path, get_user_documents_app_dir
+
+        cfg_path = get_config_file_path()
+        app_dir = get_user_documents_app_dir()
+        rec_dir = get_current_user_documents_recordings_dir()
+
+        self.assertEqual(os.path.dirname(cfg_path), app_dir)
+        self.assertEqual(os.path.basename(cfg_path), "config.json")
+        self.assertEqual(os.path.dirname(rec_dir), app_dir)
+        self.assertEqual(os.path.basename(rec_dir), "recordings")
+
 
 if __name__ == "__main__":
     unittest.main()

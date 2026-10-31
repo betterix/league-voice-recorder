@@ -524,18 +524,21 @@ class LeagueRecorder:
                             self.update_status("WATCHING", t("record.match_countdown", time=cd_str))
 
                     if self.recording:
-                        # Synchronize audio timeline directly to in-game clock.
-                        # Overwrites at game_time if recording rushed ahead during a pause.
+                        # Synchronize audio timeline directly to in-game clock
                         self.native_recorder.update_game_time(game_time)
 
-                        # Ultra-fast inhuman pause detection (<= 10ms)
+                        # Match pause detection:
+                        # Riot's Live Client Data API refreshes at ~4Hz (every 250ms).
+                        # Between API refreshes (0ms - 250ms), game_time naturally remains unchanged during normal gameplay.
+                        # Requiring unchanged game_time for > 0.45s (or > 20 polls) ensures true in-game pauses are caught
+                        # instantly without rapid 50Hz false-pause chopping during normal unpaused gameplay.
                         if game_time == self.last_game_time and game_time > 0:
                             self.pause_tick_count += 1
                             elapsed_unchanged = time.monotonic() - getattr(
                                 self, "last_advance_time", time.monotonic()
                             )
                             if (
-                                self.pause_tick_count >= 1 or elapsed_unchanged >= 0.010
+                                self.pause_tick_count >= 20 or elapsed_unchanged >= 0.45
                             ) and not self.is_paused:
                                 self.native_recorder.pause()
                                 self.is_paused = True

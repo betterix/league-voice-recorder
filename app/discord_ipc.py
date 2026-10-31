@@ -25,6 +25,28 @@ logger = logging.getLogger(__name__)
 STREAMKIT_CLIENT_ID = "207646673902501888"
 TOKEN_URL = "https://streamkit.discord.com/overlay/token"
 
+_shared_watcher = None
+_shared_watcher_lock = threading.Lock()
+
+
+def get_shared_discord_mute_watcher(on_mute_change=None, log_callback=None):
+    """Returns or creates the application-wide singleton DiscordMuteWatcher instance."""
+    global _shared_watcher
+    with _shared_watcher_lock:
+        if _shared_watcher is None:
+            _shared_watcher = DiscordMuteWatcher(
+                on_mute_change=on_mute_change,
+                log_callback=log_callback,
+            )
+            _shared_watcher.start()
+        else:
+            if on_mute_change:
+                _shared_watcher.on_mute_change = on_mute_change
+            if log_callback:
+                _shared_watcher.log_callback = log_callback
+        return _shared_watcher
+
+
 
 def get_global_token_file_path():
     """Returns the persistent user-level token path in Documents/League Voice Recorder."""

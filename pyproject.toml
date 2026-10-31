@@ -1,6 +1,6 @@
 [project]
 name = "league-scrim-recorder"
-version = "0.3.1"
+version = "0.3.2"
 description = "Record League of Legends scrim voice audio and synchronize it with replay playback."
 readme = "README.md"
 license = "GPL-3.0-or-later"

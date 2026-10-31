@@ -36,7 +36,8 @@ League Voice Recorder/
 │   ├── i18n.py             # Internationalization and community translation loader
 │   ├── record.py           # LeagueRecorder engine (WASAPI capture & FFmpeg alignment)
 │   ├── native_audio.py     # Native WASAPI audio capture (Discord loopback & mic)
-│   └── play_replay.py      # ReplaySynchronizer engine (process watcher & VLC sync)
+│   ├── play_replay.py      # ReplaySynchronizer engine (process watcher & VLC sync)
+│   └── updater.py          # Auto-updater (GitHub releases, zip extraction, in-place replace)
 │
 ├── assets/                 # Visual branding assets (icons, logos)
 │   ├── icon.ico            # Windows executable multi-resolution icon
@@ -47,14 +48,15 @@ League Voice Recorder/
 │   ├── en.json             # English (default fallback)
 │   └── hu.json             # Hungarian
 │
-├── tests/                  # Automated test suite (58 unittests)
+├── tests/                  # Automated test suite (69 unittests)
 │   ├── __init__.py
 │   ├── test_config.py      # Config defaults, path resolution, and directory creation
 │   ├── test_discord_ipc.py # Discord Local IPC & mute silence injection
 │   ├── test_i18n.py        # Locale discovery, translation lookup, and key parity
 │   ├── test_recorder.py    # FFmpeg sample-accurate offset alignment & replay guard
 │   ├── test_replay_sync.py # ROFL Game ID extraction & volume clamping
-│   └── test_ui.py          # CustomTkinter headless UI & live language switching
+│   ├── test_ui.py          # CustomTkinter headless UI & live language switching
+│   └── test_updater.py     # Release asset check, zip extraction, and in-place update
 │
 ├── .github/
 │   └── workflows/
@@ -195,7 +197,11 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
     - Pause: If `paused == True` or `game_time <= 0.5`, calls `player.pause()`.
   - Auto-exit: If the Replay API fails 8 consecutive times (replay closed), it stops VLC and returns to the watcher loop.
 
-### 3.4 Configuration & Secrets (`config.py`, `.env`, `.env.example`, `.gitignore`)
+### 3.4 Configuration & Storage (`config.py`, `.env`, `config.json`)
+- **Configuration Storage**:
+  - `config.json` is stored cleanly in standard Windows `Documents/League Voice Recorder/config.json` alongside `recordings/`.
+  - Automatically migrates existing configuration files to the Documents directory on first run.
+  - Zero third-party cloud/OneDrive redirection dependencies.
 - **Environment & Secrets (`.env` and `.env.example`)**:
   - Configuration values are safely stored in `.env` and `config.json`.
   - `.env.example` provides a tracked template for new setups with placeholder values.
@@ -208,6 +214,7 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
   - Ignores secrets (`.env`, `config.json`).
   - Ignores large local binaries (`ffmpeg.exe`, `redist/` installer).
   - Ignores recordings (`recordings/*`, preserving `.gitkeep`).
+
 ### 3.5 Internationalization & Community Translations (`i18n.py` & `locales/`)
 - **Default Language**: English (`en.json`) is the default language.
 - **Built-in Translations**:
@@ -223,6 +230,18 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
 - **Safe Fallback**:
   - `t(key, **kwargs)` resolves nested dot-notated keys (e.g. `record.start_btn`).
   - If a key is missing in a community translation, it automatically falls back to English (`en.json`). If missing in both, it returns the raw key.
+
+### 3.6 Automatic Updates & Packaging (`updater.py`)
+- **GitHub Releases Integration**:
+  - Checks GitHub Releases API for newer semantic version tags (`check_for_update`).
+  - Prioritizes `.zip` release distribution packages (`LeagueVoiceRecorder-Windows-x64.zip`), falling back to standalone `.exe` binaries.
+- **Stream Download with Progress Callback**:
+  - Downloads release assets into a temporary directory while reporting real-time percentage progress (0–100%) to the UI.
+- **Distribution Package Unpacking**:
+  - Uses standard library `zipfile` to unpack archives and find the target executable and updated dependencies (DLLs, `locales/`, assets).
+- **Silent Background In-Place Replacement**:
+  - In compiled Windows binary mode: spawns a detached background updater script (`cmd.exe /c updater.bat` with `CREATE_NO_WINDOW`) that waits for the active application process to exit, copies all updated files cleanly via `robocopy` into the app directory, relaunches `LeagueVoiceRecorder.exe`, and cleans up temporary archives.
+  - In development mode: returns extracted target directory without modifying the local Python runtime environment.
 
 ---
 
@@ -271,7 +290,7 @@ Core libraries:
 - `requests` & `urllib3`: HTTPS communication with League local APIs.
 
 ### 5.3 Automated Testing & Code Quality
-The project includes a comprehensive suite of 58 unit tests covering configuration, Discord Local IPC mute/deafen sync (auto-skipped when Discord is offline), microphone input enumeration and selection, i18n key parity and translations, recorder sample-accurate audio alignment and replay protection, replay synchronizer zero-latency unpausing, seek cooldown protection, game ID parsing, volume clamping and hotkey mute, and headless CustomTkinter UI rendering.
+The project includes a comprehensive suite of 69 unit tests covering configuration, Discord Local IPC mute/deafen sync (auto-skipped when Discord is offline), microphone input enumeration and selection, i18n key parity and translations, recorder sample-accurate audio alignment and replay protection, replay synchronizer zero-latency unpausing, seek cooldown protection, game ID parsing, volume clamping and hotkey mute, automatic release checks, zip extraction, in-place binary updater scripts, and headless CustomTkinter UI rendering.
 
 ```powershell
 # Run the test suite via the Windows batch launcher

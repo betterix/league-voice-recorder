@@ -108,7 +108,17 @@
         "save_btn": "💾 Beállítások mentése",
         "saved_success": "✅ A beállítások sikeresen mentve a config.json fájlba!",
         "saved_error": "❌ Nem sikerült írni a config.json fájlt!",
-        "invalid_input": "❌ Érvénytelen beállítás: {error}"
+        "invalid_input": "❌ Érvénytelen beállítás: {error}",
+        "updates_title": "Szoftverfrissítések",
+        "app_version": "Alkalmazás verziója:",
+        "check_updates_btn": "🔄 Frissítések keresése",
+        "checking_updates": "Frissítések keresése...",
+        "up_to_date": "✅ A legfrissebb verziót használod! (v{version})",
+        "update_available": "🚀 Új verzió érhető el: v{version}",
+        "update_now_btn": "⬇️ Frissítés a v{version} verzióra és újraindítás",
+        "downloading_update": "⏳ Frissítés letöltése ({percent}%)...",
+        "restarting": "🔄 Frissítés letöltve! Alkalmazás újraindítása...",
+        "update_failed": "⚠️ Frissítés keresési hiba: {error}"
     },
     "logs": {
         "champ_select_detected": "🎯 Hős választás (Champ Select) észlelve! Felvétel figyelő automatikus indítása...",

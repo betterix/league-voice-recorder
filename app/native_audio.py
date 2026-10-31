@@ -21,7 +21,7 @@ import psutil
 import pyaudiowpatch as pyaudio
 
 from app.config import get_ffmpeg_path
-from app.discord_ipc import DiscordMuteWatcher
+from app.discord_ipc import get_shared_discord_mute_watcher
 
 
 # Process-wide thread-safe singleton for PortAudio
@@ -374,11 +374,10 @@ def get_default_microphone_info():
 
 class TimelineWavWriter:
     """
-    Direct-to-disk PCM WAV writer that continuously synchronizes with the League match clock.
+    Direct-to-disk PCM WAV writer that maintains match clock synchronization.
     - If recording starts mid-match (e.g. 29:30), fills blank silence up to game_time.
-    - If the recording rushed ahead because of an in-game pause, seeks back
-      to the in-game clock and overwrites at that exact timestamp (no seconds cut out).
-    - Preserves sample-accurate 1:1 timeline alignment between voice and game events.
+    - Writes PCM frames sequentially without backwards seeking, preventing voice cracking/tearing.
+    - Finalizes with standard 44-byte RIFF WAVE header.
     """
 
     def __init__(self, file_path, channels=2, sample_rate=48000):
@@ -390,7 +389,6 @@ class TimelineWavWriter:
         self.file = open(file_path, "wb+")  # noqa: SIM115
         self.file.write(b"\x00" * 44)  # placeholder header
         self.current_frame = 0
-        self.max_frame_written = 0
 
     def file_size(self):
         self.file.seek(0, 2)
@@ -405,7 +403,7 @@ class TimelineWavWriter:
             fsize = self.file_size()
 
             if target_byte > fsize:
-                # Game time is ahead (e.g. started at 29:30): write blank silence!
+                # Game time is ahead (e.g. started mid-game): pad silence to align timeline
                 self.file.seek(fsize)
                 gap = target_byte - fsize
                 chunk = b"\x00" * 65536
@@ -413,13 +411,6 @@ class TimelineWavWriter:
                     w = min(gap, len(chunk))
                     self.file.write(chunk[:w])
                     gap -= w
-                self.file.seek(target_byte)
-                self.current_frame = target_frame
-                self.max_frame_written = max(self.max_frame_written, target_frame)
-            elif self.current_frame > target_frame + int(0.010 * self.sample_rate):
-                # Audio is ahead of game_time by > 10ms.
-                # Seek back and overwrite at game_time!
-                self.file.seek(target_byte)
                 self.current_frame = target_frame
 
     def write_frames(self, pcm_bytes):
@@ -427,19 +418,13 @@ class TimelineWavWriter:
             self.file.write(pcm_bytes)
             n = len(pcm_bytes) // self.frame_size
             self.current_frame += n
-            self.max_frame_written = max(self.max_frame_written, self.current_frame)
 
     def close(self, final_game_time=None):
         with self.lock:
             if self.file.closed:
                 return
-            if final_game_time is not None and final_game_time > 0:
-                final_frame = int(final_game_time * self.sample_rate)
-                self.max_frame_written = min(self.max_frame_written, final_frame)
-
-            total_data = self.max_frame_written * self.frame_size
-            self.file.seek(44 + total_data)
-            self.file.truncate()
+            fsize = self.file_size()
+            total_data = max(0, fsize - 44)
 
             # Write standard 44-byte RIFF WAVE header
             self.file.seek(0)
@@ -514,12 +499,11 @@ class NativeAudioRecorder:
         self._mic_staging = collections.deque()
         self._staging_delay_sec = 2.0
 
-        # Discord local IPC mute watcher
-        self.discord_mute_watcher = DiscordMuteWatcher(
+        # Discord local IPC mute watcher (shared singleton across recorders)
+        self.discord_mute_watcher = get_shared_discord_mute_watcher(
             on_mute_change=self._on_discord_mute_change,
             log_callback=self.log,
         )
-        self.discord_mute_watcher.start()
 
         # Background monitoring for VU meters (runs non-blocking in background thread)
         self._cached_resolved_pid = None
@@ -698,11 +682,6 @@ class NativeAudioRecorder:
 
     def close(self):
         self._stop_idle_monitor()
-        if hasattr(self, "discord_mute_watcher") and self.discord_mute_watcher:
-            try:
-                self.discord_mute_watcher.stop()
-            except Exception:
-                pass
         if self.is_recording:
             try:
                 self.stop_and_finalize("closed")
@@ -712,8 +691,6 @@ class NativeAudioRecorder:
     def __del__(self):
         try:
             self._stop_idle_monitor()
-            if hasattr(self, "discord_mute_watcher") and self.discord_mute_watcher:
-                self.discord_mute_watcher.stop()
         except Exception:
             pass
 
@@ -1021,25 +998,23 @@ class NativeAudioRecorder:
         ffmpeg_cmd = get_ffmpeg_path()
         cmd = [ffmpeg_cmd, "-y"]
 
-        # High-fidelity natural microphone audio chain (zero noise filtering / zero gating chatter):
-        # 1. aresample=48000,aformat=channel_layouts=stereo: Bit-perfect studio sample rate alignment
-        # 2. volume=2.5: Clean transparent gain matching Discord call volume
-        # 3. alimiter=limit=0.95: True peak limiter preventing any digital clipping or distortion
-        mic_dsp_chain = "aresample=48000,aformat=channel_layouts=stereo,volume=2.5,alimiter=limit=0.95"
+        # Pure unamplified direct audio pipeline (no volume boosts, no limiters, zero DSP filtering):
+        # Sample rate and channel layout alignment strictly for clean FFmpeg mixing directly into MP3
+        format_filter = "aresample=48000,aformat=channel_layouts=stereo"
 
         if discord_ok and mic_ok:
             cmd.extend(["-i", self.discord_wav_path, "-i", self.mic_wav_path])
             mix_filter = (
-                "[0:a]aresample=48000,aformat=channel_layouts=stereo,volume=2.5[app];"
-                f"[1:a]{mic_dsp_chain}[mic];"
+                f"[0:a]{format_filter}[app];"
+                f"[1:a]{format_filter}[mic];"
                 "[app][mic]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0"
             )
         elif discord_ok:
             cmd.extend(["-i", self.discord_wav_path])
-            mix_filter = "[0:a]aresample=48000,aformat=channel_layouts=stereo,volume=2.5"
+            mix_filter = f"[0:a]{format_filter}"
         else:
             cmd.extend(["-i", self.mic_wav_path])
-            mix_filter = f"[0:a]{mic_dsp_chain}"
+            mix_filter = f"[0:a]{format_filter}"
 
         wav_dur = 0.0
         check_p = self.discord_wav_path if (discord_ok and os.path.exists(self.discord_wav_path)) else self.mic_wav_path

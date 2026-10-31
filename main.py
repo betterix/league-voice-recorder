@@ -50,8 +50,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         on_language_change(self._update_ui_texts)
 
         self.title(f"{t('app.window_title')} v{__version__}")
-        self.geometry("1020x850")
-        self.minsize(850, 650)
+        self.geometry("1040x960")
+        self.minsize(850, 750)
 
         # Set Window & Taskbar Icon
         self._apply_window_icon()
@@ -85,6 +85,16 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self._last_auto_started_phase = None
         self._last_auto_started_rofl = None
         self.after(1000, self._start_auto_detect_monitor)
+
+        # Clean leftover *.old files from previous updates and schedule background update check
+        try:
+            from app.updater import clean_old_executables
+
+            clean_old_executables()
+        except Exception:
+            pass
+        self._pending_update = None
+        self.after(3000, self._check_update_background)
 
         # Replay mute state & hotkeys
         self._replay_muted = False
@@ -236,7 +246,17 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             hover_color="#475569",
             command=self._check_system_health,
         )
-        self.refresh_health_btn.pack(side="right", padx=10, pady=4)
+        self.refresh_health_btn.pack(side="right", padx=(4, 10), pady=4)
+
+        self.update_header_badge = ctk.CTkButton(
+            health_frame,
+            text="",
+            height=26,
+            font=ctk.CTkFont(size=11, weight="bold"),
+            fg_color="#059669",
+            hover_color="#047857",
+            command=self._on_header_update_badge_clicked,
+        )
 
         # ==========================================
         # 2. MAIN ACTION BUTTONS SECTION (2 CARDS)
@@ -967,6 +987,58 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         )
         self.save_btn.grid(row=10, column=0, columnspan=3, padx=10, pady=(20, 10), sticky="ew")
 
+        # --- Software Updates Section ---
+        self.updates_title_lbl = ctk.CTkLabel(
+            scroll,
+            text=t("settings.updates_title"),
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color="#38BDF8",
+        )
+        self.updates_title_lbl.grid(row=11, column=0, columnspan=3, padx=10, pady=(18, 6), sticky="w")
+
+        self.app_version_lbl = ctk.CTkLabel(scroll, text=t("settings.app_version"))
+        self.app_version_lbl.grid(row=12, column=0, padx=10, pady=6, sticky="w")
+
+        version_frame = ctk.CTkFrame(scroll, fg_color="transparent")
+        version_frame.grid(row=12, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
+
+        self.version_val_lbl = ctk.CTkLabel(
+            version_frame,
+            text=f"v{__version__}",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="#94A3B8",
+        )
+        self.version_val_lbl.pack(side="left", padx=(0, 12))
+
+        self.check_update_btn = ctk.CTkButton(
+            version_frame,
+            text=t("settings.check_updates_btn"),
+            height=28,
+            font=ctk.CTkFont(size=12),
+            fg_color="#334155",
+            hover_color="#475569",
+            command=self._on_check_update_clicked,
+        )
+        self.check_update_btn.pack(side="left")
+
+        self.update_status_lbl = ctk.CTkLabel(
+            scroll,
+            text="",
+            font=ctk.CTkFont(size=11),
+            text_color="#94A3B8",
+        )
+        self.update_status_lbl.grid(row=13, column=0, columnspan=3, padx=10, pady=(4, 0), sticky="w")
+
+        self.update_action_btn = ctk.CTkButton(
+            scroll,
+            text="",
+            height=34,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color="#10B981",
+            hover_color="#059669",
+            command=self._on_perform_update_clicked,
+        )
+
     # ==========================================
     # I18N DYNAMIC TEXT REFRESH
     # ==========================================
@@ -1060,6 +1132,12 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                     self.auto_replay_lbl.configure(text=t("settings.auto_start_replay"))
                     self.auto_replay_switch.configure(text=t("settings.auto_start_replay_info"))
                 self.save_btn.configure(text=t("settings.save_btn"))
+                if hasattr(self, "updates_title_lbl"):
+                    self.updates_title_lbl.configure(text=t("settings.updates_title"))
+                if hasattr(self, "app_version_lbl"):
+                    self.app_version_lbl.configure(text=t("settings.app_version"))
+                if hasattr(self, "check_update_btn"):
+                    self.check_update_btn.configure(text=t("settings.check_updates_btn"))
 
                 curr_code = get_language()
                 curr_name = self.lang_code_to_name.get(curr_code, curr_code.capitalize())
@@ -1125,6 +1203,24 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                     if not self.replay_worker:
                         self.log_message(t("logs.replay_detected_autostart"))
                         self._start_replay()
+
+                elif action == "UPDATE_CHECK_RESULT":
+                    res = item[1]
+                    manual = item[2] if len(item) > 2 else False
+                    self._handle_update_result(res, manual=manual)
+
+                elif action == "UPDATE_DOWNLOAD_PROGRESS":
+                    pct = item[1]
+                    if hasattr(self, "update_action_btn"):
+                        self.update_action_btn.configure(
+                            text=t("settings.downloading_update", percent=pct)
+                        )
+
+                elif action == "UPDATE_DOWNLOAD_COMPLETE":
+                    if hasattr(self, "update_action_btn"):
+                        self.update_action_btn.configure(
+                            text=t("settings.restarting")
+                        )
 
         except Exception:
             pass
@@ -1625,6 +1721,116 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             self.ffmpeg_badge.configure(
                 text=f"{ffmpeg_prefix} {t('health.checking')}", text_color="#CBD5E1"
             )
+
+    # ==========================================
+    # SOFTWARE UPDATES (ONE-CLICK IN-PLACE UPDATER)
+    # ==========================================
+    def _check_update_background(self):
+        """Silently checks GitHub Releases in the background."""
+        def worker():
+            from app.updater import check_for_update
+
+            res = check_for_update(__version__)
+            self.msg_queue.put(("UPDATE_CHECK_RESULT", res, False))
+
+        threading.Thread(target=worker, daemon=True, name="UpdateCheckWorker").start()
+
+    def _on_check_update_clicked(self):
+        """User explicitly clicked 'Check for Updates' in Settings."""
+        self.update_status_lbl.configure(
+            text=t("settings.checking_updates"), text_color="#38BDF8"
+        )
+        self.check_update_btn.configure(state="disabled")
+
+        def worker():
+            from app.updater import check_for_update
+
+            res = check_for_update(__version__)
+            self.msg_queue.put(("UPDATE_CHECK_RESULT", res, True))
+
+        threading.Thread(target=worker, daemon=True, name="ManualUpdateCheckWorker").start()
+
+    def _handle_update_result(self, res, manual=False):
+        """Processes update check result on GUI main thread."""
+        if hasattr(self, "check_update_btn"):
+            self.check_update_btn.configure(state="normal")
+
+        if res.get("available"):
+            self._pending_update = res
+            ver = res.get("latest_version", "")
+
+            # Show prominent header notification badge
+            if hasattr(self, "update_header_badge"):
+                self.update_header_badge.configure(text=f"🚀 Update: v{ver}")
+                self.update_header_badge.pack(side="right", padx=(4, 6), pady=4)
+
+            # Show update prompt in Settings tab
+            if hasattr(self, "update_status_lbl"):
+                self.update_status_lbl.configure(
+                    text=t("settings.update_available", version=ver),
+                    text_color="#10B981",
+                )
+            if hasattr(self, "update_action_btn"):
+                self.update_action_btn.configure(
+                    text=t("settings.update_now_btn", version=ver),
+                    state="normal",
+                )
+                self.update_action_btn.grid(row=14, column=0, columnspan=3, padx=10, pady=(6, 12), sticky="ew")
+
+        elif manual:
+            if res.get("error"):
+                if hasattr(self, "update_status_lbl"):
+                    self.update_status_lbl.configure(
+                        text=t("settings.update_failed", error=res["error"]),
+                        text_color="#F87171",
+                    )
+            else:
+                if hasattr(self, "update_status_lbl"):
+                    self.update_status_lbl.configure(
+                        text=t("settings.up_to_date", version=__version__),
+                        text_color="#4ADE80",
+                    )
+            if hasattr(self, "update_action_btn"):
+                self.update_action_btn.grid_forget()
+
+    def _on_header_update_badge_clicked(self):
+        """Clicking update notification badge in header opens Settings tab."""
+        if hasattr(self, "tabview"):
+            self.tabview.set("settings")
+
+    def _on_perform_update_clicked(self):
+        """Downloads update and performs seamless in-place replacement and restart."""
+        update_info = getattr(self, "_pending_update", None)
+        if not update_info or not update_info.get("download_url"):
+            # Fallback: open release page in web browser if direct binary asset is missing
+            if update_info and update_info.get("html_url"):
+                import webbrowser
+
+                webbrowser.open(update_info["html_url"])
+            return
+
+        self.update_action_btn.configure(
+            state="disabled", text=t("settings.downloading_update", percent=0)
+        )
+        self.update_status_lbl.configure(text="")
+
+        def worker():
+            from app.updater import download_and_install_update
+
+            def on_progress(pct):
+                self.msg_queue.put(("UPDATE_DOWNLOAD_PROGRESS", pct))
+
+            try:
+                download_and_install_update(
+                    update_info["download_url"], progress_callback=on_progress
+                )
+                self.msg_queue.put(("UPDATE_DOWNLOAD_COMPLETE", None))
+            except Exception as e:
+                self.msg_queue.put(
+                    ("UPDATE_CHECK_RESULT", {"available": False, "error": str(e)}, True)
+                )
+
+        threading.Thread(target=worker, daemon=True, name="UpdateDownloadWorker").start()
 
     # ==========================================
     # RECORDINGS TAB FUNCTIONS

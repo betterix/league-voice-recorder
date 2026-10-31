@@ -61,39 +61,56 @@ def _detect_project_root():
     return os.path.dirname(app_dir)
 
 
-PROJECT_ROOT = _detect_project_root()
-APP_DIR = os.path.join(PROJECT_ROOT, "app")
-
-DOTENV_PATH = os.path.join(PROJECT_ROOT, ".env")
-CONFIG_FILE = os.path.join(PROJECT_ROOT, "config.json")
-
-# Load .env if present
-load_dotenv(DOTENV_PATH)
-
-
+_CACHED_USER_DOCS_APP_DIR = None
 _CACHED_USER_DOCS_RECORDINGS_DIR = None
+
+
+def get_user_documents_app_dir():
+    """
+    Finds or creates the 'League Voice Recorder' base directory
+    inside the CURRENT user's Windows Documents folder.
+    """
+    global _CACHED_USER_DOCS_APP_DIR
+    if _CACHED_USER_DOCS_APP_DIR and os.path.exists(_CACHED_USER_DOCS_APP_DIR):
+        return _CACHED_USER_DOCS_APP_DIR
+
+    app_dir = Path.home() / "Documents" / "League Voice Recorder"
+    os.makedirs(app_dir, exist_ok=True)
+    _CACHED_USER_DOCS_APP_DIR = str(app_dir)
+    return _CACHED_USER_DOCS_APP_DIR
 
 
 def get_current_user_documents_recordings_dir():
     """
     Finds or creates the 'League Voice Recorder/recordings' folder
-    inside the CURRENT user's Documents directory.
+    inside the CURRENT user's Windows Documents directory.
     """
     global _CACHED_USER_DOCS_RECORDINGS_DIR
     if _CACHED_USER_DOCS_RECORDINGS_DIR and os.path.exists(_CACHED_USER_DOCS_RECORDINGS_DIR):
         return _CACHED_USER_DOCS_RECORDINGS_DIR
 
-    user_home = Path.home()
-    user_docs = user_home / "Documents"
-
-    # Fallback for OneDrive Documents redirection if standard doesn't exist
-    if not user_docs.exists() and (user_home / "OneDrive" / "Documents").exists():
-        user_docs = user_home / "OneDrive" / "Documents"
-
-    target_dir = user_docs / "League Voice Recorder" / "recordings"
+    target_dir = os.path.join(get_user_documents_app_dir(), "recordings")
     os.makedirs(target_dir, exist_ok=True)
     _CACHED_USER_DOCS_RECORDINGS_DIR = str(target_dir)
     return _CACHED_USER_DOCS_RECORDINGS_DIR
+
+
+def get_config_file_path():
+    """
+    Returns the persistent user-level path to config.json located in
+    Documents/League Voice Recorder/config.json (next to recordings/).
+    """
+    return os.path.join(get_user_documents_app_dir(), "config.json")
+
+
+PROJECT_ROOT = _detect_project_root()
+APP_DIR = os.path.join(PROJECT_ROOT, "app")
+
+DOTENV_PATH = os.path.join(PROJECT_ROOT, ".env")
+CONFIG_FILE = get_config_file_path()
+
+# Load .env if present
+load_dotenv(DOTENV_PATH)
 
 
 def resolve_path(path_str):
@@ -152,21 +169,33 @@ def get_default_config():
 
 
 def load_config():
-    """Load configuration from .env / config.json and ensure target folders exist."""
+    """Load configuration from Documents/League Voice Recorder/config.json and ensure target folders exist."""
     config = get_default_config()
+    config_path = get_config_file_path()
+    legacy_config_path = os.path.join(PROJECT_ROOT, "config.json")
 
-    if os.path.exists(CONFIG_FILE):
+    # Migrate from legacy project root config.json to Documents folder if not yet migrated
+    if not os.path.exists(config_path) and os.path.exists(legacy_config_path):
         try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            with open(legacy_config_path, "r", encoding="utf-8") as f:
+                legacy_cfg = json.load(f)
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(legacy_cfg, f, indent=4, ensure_ascii=False)
+        except Exception:
+            pass
+
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
                 user_config = json.load(f)
                 config.update(user_config)
         except Exception as e:
             print(f"⚠️ Failed to load config.json: {e}")
     else:
-        # Create initial default config.json if not present
+        # Create initial default config.json in Documents/League Voice Recorder/ if not present
         try:
             clean_cfg = get_clean_default_config()
-            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            with open(config_path, "w", encoding="utf-8") as f:
                 json.dump(clean_cfg, f, indent=4, ensure_ascii=False)
         except Exception as e:
             print(f"⚠️ Failed to create default config.json: {e}")
@@ -179,14 +208,24 @@ def load_config():
 
 
 def save_config(config_data):
-    """Save configuration dictionary to config.json and synchronize .env."""
+    """Save configuration dictionary to Documents/League Voice Recorder/config.json and synchronize .env."""
     success = True
+    config_path = get_config_file_path()
     try:
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        with open(config_path, "w", encoding="utf-8") as f:
             f.write(json.dumps(config_data, indent=4, ensure_ascii=False))
     except Exception as e:
         print(f"❌ Error saving config.json: {e}")
         success = False
+
+    # Also keep legacy project root config.json in sync if present
+    legacy_config_path = os.path.join(PROJECT_ROOT, "config.json")
+    if os.path.exists(legacy_config_path):
+        try:
+            with open(legacy_config_path, "w", encoding="utf-8") as f:
+                f.write(json.dumps(config_data, indent=4, ensure_ascii=False))
+        except Exception:
+            pass
 
     # Also update .env file if it exists
     if os.path.exists(DOTENV_PATH):
