@@ -48,6 +48,13 @@ League Voice Recorder/
 │   ├── en.json             # English (default fallback)
 │   └── hu.json             # Hungarian
 │
+├── web/                    # Official landing page & interactive desktop app simulator
+│   ├── assets/             # Web logos and visual assets
+│   ├── css/style.css       # Hextech esports design system & responsive styling
+│   ├── js/app.js           # Particle canvas, i18n dictionary, interactive app simulator
+│   ├── index.html          # Semantic showcase landing page
+│   └── README.md           # Web documentation & local preview guide
+│
 ├── tests/                  # Automated test suite (69 unittests)
 │   ├── __init__.py
 │   ├── test_config.py      # Config defaults, path resolution, and directory creation

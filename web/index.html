@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>League Voice Recorder & Replay Synchronizer | Automated Scrim Comms for League of Legends</title>
+  
+  <!-- SEO & Social Meta Tags -->
+  <meta name="description" content="Zero-latency automated Discord voice capture and frame-accurate replay audio synchronization for League of Legends. Scrub scrim replays at 0.5x, 1x, 2x, 4x without losing comms sync.">
+  <meta name="keywords" content="League of Legends, Scrim Recording, Discord Voice Recorder, League Replay Sync, ROFL audio, League Voice Recorder, Esports Tool">
+  <meta name="author" content="betterix">
+  <meta property="og:title" content="League Voice Recorder & Replay Synchronizer">
+  <meta property="og:description" content="Zero-Latency Automated Discord Voice Capture & Frame-Accurate Replay Audio Synchronization for League of Legends.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="assets/icon.png">
+  <meta name="theme-color" content="#060b18">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="assets/icon.svg">
+  <link rel="alternate icon" type="image/x-icon" href="assets/icon.ico">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&family=Rajdhani:wght@500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Ambient Animated Particle Canvas -->
+  <canvas id="hextech-canvas"></canvas>
+  <div class="ambient-glow-1"></div>
+  <div class="ambient-glow-2"></div>
+
+  <!-- ========================================================================
+       TOP NAVIGATION
+       ======================================================================== -->
+  <header class="site-header">
+    <div class="container nav-container">
+      <a href="#" class="brand-link">
+        <div class="brand-logo-wrap">
+          <img src="assets/icon.svg" alt="League Voice Recorder Logo" class="brand-logo">
+        </div>
+        <div class="brand-text">
+          <span class="brand-name">League Voice Recorder</span>
+          <span class="brand-tag">&amp; Replay Sync</span>
+        </div>
+      </a>
+
+      <!-- Desktop Nav -->
+      <ul class="nav-links">
+        <li><a href="#simulator" class="nav-link" data-i18n="nav_simulator">Live Simulator</a></li>
+        <li><a href="#how-it-works" class="nav-link" data-i18n="nav_how_it_works">How It Works</a></li>
+        <li><a href="#features" class="nav-link" data-i18n="nav_features">Features</a></li>
+        <li><a href="#setup" class="nav-link" data-i18n="nav_setup">Setup Guide</a></li>
+        <li><a href="#architecture" class="nav-link" data-i18n="nav_architecture">Architecture</a></li>
+        <li><a href="#faq" class="nav-link" data-i18n="nav_faq">FAQ</a></li>
+      </ul>
+
+      <!-- Nav Actions -->
+      <div class="nav-actions">
+        <!-- Language Switcher -->
+        <div class="lang-switcher" aria-label="Select Language">
+          <button class="lang-btn active" data-lang="en">EN</button>
+          <button class="lang-btn" data-lang="hu">HU</button>
+        </div>
+
+        <!-- GitHub Repo Link -->
+        <a href="https://github.com/betterix/league-voice-recorder" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View Source on GitHub">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+          <span>GitHub</span>
+        </a>
+
+        <!-- Download CTA -->
+        <a href="https://github.com/betterix/league-voice-recorder/releases" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm" data-i18n="nav_download">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span>Download v0.3.2</span>
+        </a>
+
+        <!-- Mobile Menu Toggle -->
+        <button class="mobile-toggle" aria-label="Toggle navigation">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- ========================================================================
+         HERO SECTION
+         ======================================================================== -->
+    <section class="hero-section">
+      <div class="container">
+        <!-- Release Badge -->
+        <div class="version-badge">
+          <span class="version-dot"></span>
+          <span data-i18n="hero_badge">v0.3.2 Released • Windows 10/11 64-bit • Open Source</span>
+        </div>
+
+        <!-- Hero Headline -->
+        <h1 class="hero-title">
+          <span class="gold-gradient-text" data-i18n="hero_title_1">Frame-Accurate Scrim Comms &amp;</span><br>
+          <span class="cyan-gradient-text" data-i18n="hero_title_2">Replay Synchronization</span><br>
+          <span data-i18n="hero_title_3">For League of Legends</span>
+        </h1>
+
+        <!-- Subtitle -->
+        <p class="hero-subtitle" data-i18n="hero_subtitle">
+          Zero-latency automated Discord voice recording coupled with frame-accurate League of Legends replay audio lock. Scrub at 0.5x, 1x, 2x, or 4x without losing comms sync.
+        </p>
+
+        <!-- CTA Buttons -->
+        <div class="hero-actions">
+          <a href="https://github.com/betterix/league-voice-recorder/releases/latest" target="_blank" rel="noopener noreferrer" class="btn btn-gold" data-i18n="hero_cta_download">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            <span>Download Standalone (.ZIP)</span>
+          </a>
+
+          <a href="#simulator" class="btn btn-primary" data-i18n="hero_cta_sim">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+            <span>Try Interactive App</span>
+          </a>
+
+          <a href="https://github.com/betterix/league-voice-recorder" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" data-i18n="hero_cta_github">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+            </svg>
+            <span>View on GitHub</span>
+          </a>
+        </div>
+
+        <!-- Meta Pills -->
+        <div class="hero-meta-badges">
+          <div class="meta-pill">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span data-i18n="hero_meta_vanguard">100% Vanguard &amp; Riot API Safe</span>
+          </div>
+          <div class="meta-pill">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+            <span data-i18n="hero_meta_drivers">No Virtual Audio Cables Needed</span>
+          </div>
+          <div class="meta-pill">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span data-i18n="hero_meta_license">Free &amp; Open Source (GPL-3.0)</span>
+          </div>
+        </div>
+
+        <!-- System Health Ribbon (Replica of Desktop App's top banner) -->
+        <div class="health-ribbon-wrapper">
+          <div class="health-ribbon">
+            <div class="health-status-list">
+              <div class="health-badge">
+                <span class="status-dot"></span>
+                <span class="health-badge-label" data-i18n="health_discord">Discord IPC:</span>
+                <span class="health-badge-val" id="health-discord-val" data-i18n="health_connected">🟢 Connected</span>
+              </div>
+              <div class="health-badge">
+                <span class="status-dot"></span>
+                <span class="health-badge-label" data-i18n="health_league">League Client:</span>
+                <span class="health-badge-val" id="health-league-val" data-i18n="health_running">🟢 Running</span>
+              </div>
+              <div class="health-badge">
+                <span class="status-dot"></span>
+                <span class="health-badge-label" data-i18n="health_vlc">VLC Engine:</span>
+                <span class="health-badge-val" id="health-vlc-val" data-i18n="health_ready">🟢 Ready</span>
+              </div>
+              <div class="health-badge">
+                <span class="status-dot"></span>
+                <span class="health-badge-label" data-i18n="health_ffmpeg">FFmpeg:</span>
+                <span class="health-badge-val" id="health-ffmpeg-val" data-i18n="health_ready">🟢 Ready</span>
+              </div>
+            </div>
+
+            <button class="btn-health-refresh" id="health-refresh-btn" title="Run diagnostic test">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+              </svg>
+              <span data-i18n="health_refresh">Refresh</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================================
+         INTERACTIVE DESKTOP APP SIMULATOR (SHOWSTOPPER)
+         ======================================================================== -->
+    <section class="simulator-section" id="simulator">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag" data-i18n="sim_tag">INTERACTIVE DESKTOP APP PREVIEW</span>
+          <h2 class="section-title gold-gradient-text" data-i18n="sim_title">Test Drive League Voice Recorder</h2>
+          <p class="section-desc" data-i18n="sim_desc">
+            Experience the real desktop GUI right in your browser. Start a mock scrim recording, test Discord mute synchronization, scrub replay timelines, and inspect recordings.
+          </p>
+        </div>
+
+        <!-- Windows Frame Mockup -->
+        <div class="app-window-frame">
+          <!-- Titlebar -->
+          <div class="app-titlebar">
+            <div class="titlebar-left">
+              <img src="assets/icon.svg" alt="App Icon" class="titlebar-icon">
+              <span class="titlebar-title">League Voice Recorder &amp; Replay Synchronizer v0.3.2</span>
+              <span class="titlebar-update-badge">✓ v0.3.2</span>
+            </div>
+            <div class="titlebar-controls">
+              <button class="titlebar-btn btn-min" title="Minimize"></button>
+              <button class="titlebar-btn btn-max" title="Maximize"></button>
+              <button class="titlebar-btn btn-close" title="Close"></button>
+            </div>
+          </div>
+
+          <!-- Body -->
+          <div class="app-window-body">
+            <!-- Simulator Cards Grid -->
+            <div class="simulator-cards-grid">
+              <!-- Card 1: Scrim Recorder -->
+              <div class="sim-card">
+                <div class="sim-card-header">
+                  <h3 class="sim-card-title text-cyan">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0ac8b9" stroke-width="2">
+                      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                      <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                      <line x1="12" y1="19" x2="12" y2="23"></line>
+                      <line x1="8" y1="23" x2="16" y2="23"></line>
+                    </svg>
+                    <span data-i18n="sim_rec_title">🎙️ SCRIM RECORDER</span>
+                  </h3>
+                  <div class="sim-status-pill" id="sim-rec-status-pill">
+                    <span class="status-dot"></span>
+                    <span data-i18n="sim_rec_idle">● IDLE (Click Start to monitor)</span>
+                  </div>
+                </div>
+
+                <!-- Microphone Device Selector (v0.3.1+ feature) -->
+                <div class="sim-mic-select-wrap">
+                  <label for="sim-mic-select" class="sim-mic-select-label" data-i18n="sim_mic_select">🎤 Microphone Device:</label>
+                  <select id="sim-mic-select" class="sim-select">
+                    <option value="default">Default Windows Microphone</option>
+                    <option value="mic1">Microphone (Realtek High Definition Audio)</option>
+                    <option value="mic2">Headset Microphone (HyperX Cloud II Wireless)</option>
+                    <option value="mic3">Focusrite USB Audio (Scarlett 2i2)</option>
+                  </select>
+                </div>
+
+                <!-- VU Meters -->
+                <div class="vu-meters-container">
+                  <div class="vu-meter-row">
+                    <div class="vu-label-row">
+                      <span data-i18n="sim_discord_audio">Discord Audio Loopback</span>
+                      <span class="game-clock">WASAPI</span>
+                    </div>
+                    <div class="vu-bar-track">
+                      <div class="vu-bar-fill" id="sim-vu-discord" style="width: 25%;"></div>
+                    </div>
+                  </div>
+                  <div class="vu-meter-row">
+                    <div class="vu-label-row">
+                      <span data-i18n="sim_mic_audio">Microphone Input (Default)</span>
+                      <span class="game-clock" id="sim-mic-status-label">Active</span>
+                    </div>
+                    <div class="vu-bar-track">
+                      <div class="vu-bar-fill" id="sim-vu-mic" style="width: 40%;"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="sim-controls-row">
+                  <button class="btn-sim-action btn-sim-record" id="sim-rec-toggle-btn" data-i18n="sim_rec_start_btn">
+                    🔴 Start Recording Watcher
+                  </button>
+                  <button class="btn-discord-test-mute" id="sim-test-mute-btn" data-i18n="sim_test_mute" title="Click to test Discord live mute silence injection">
+                    Simulate Discord Mute
+                  </button>
+                </div>
+              </div>
+
+              <!-- Card 2: Replay Synchronizer -->
+              <div class="sim-card">
+                <div class="sim-card-header">
+                  <h3 class="sim-card-title text-gold">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c8aa6e" stroke-width="2">
+                      <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+                      <line x1="7" y1="2" x2="7" y2="22"></line>
+                      <line x1="17" y1="2" x2="17" y2="22"></line>
+                      <line x1="2" y1="12" x2="22" y2="12"></line>
+                      <line x1="2" y1="7" x2="7" y2="7"></line>
+                      <line x1="2" y1="17" x2="7" y2="17"></line>
+                      <line x1="17" y1="17" x2="22" y2="17"></line>
+                      <line x1="17" y1="7" x2="22" y2="7"></line>
+                    </svg>
+                    <span data-i18n="sim_rep_title">🎬 REPLAY AUTO-SYNC</span>
+                  </h3>
+                  <div class="sim-status-pill" id="sim-rep-status-pill">
+                    <span class="status-dot"></span>
+                    <span data-i18n="sim_rep_idle">● IDLE (Click Start to detect .rofl)</span>
+                  </div>
+                </div>
+
+                <!-- Scrub Controls -->
+                <div class="replay-scrub-wrap">
+                  <div class="scrub-timeline-header">
+                    <div>
+                      <span data-i18n="sim_rep_clock">Game Clock:</span>
+                      <span class="game-clock" id="sim-game-clock">14:32 (1.0x)</span>
+                    </div>
+                    <div class="speed-badge-group">
+                      <button class="speed-btn" data-speed="0.5">0.5x</button>
+                      <button class="speed-btn active" data-speed="1.0">1.0x</button>
+                      <button class="speed-btn" data-speed="2.0">2.0x</button>
+                      <button class="speed-btn" data-speed="4.0">4.0x</button>
+                    </div>
+                  </div>
+
+                  <input type="range" class="range-slider" id="sim-time-slider" min="0" max="1800" value="872">
+
+                  <div class="volume-row">
+                    <span data-i18n="sim_rep_vol">Replay Volume:</span>
+                    <input type="range" class="range-slider" id="sim-volume-slider" min="0" max="100" value="85" style="width: 120px;">
+                    <button class="btn-mute-hotkey" id="sim-mute-hotkey-btn" data-i18n="sim_rep_hotkey">Vol: 85% [M]</button>
+                  </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="sim-controls-row">
+                  <button class="btn-sim-action btn-sim-replay" id="sim-rep-toggle-btn" data-i18n="sim_rep_start_btn">
+                    ▶ Start Replay Auto-Sync
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab View -->
+            <div class="sim-tabs-header">
+              <button class="sim-tab-btn active" data-sim-tab="log" data-i18n="sim_tab_log">📋 Activity Log</button>
+              <button class="sim-tab-btn" data-sim-tab="recordings" data-i18n="sim_tab_recordings">📁 Scrim Recordings</button>
+              <button class="sim-tab-btn" data-sim-tab="settings" data-i18n="sim_tab_settings">⚙️ Settings</button>
+            </div>
+
+            <!-- Tab 1: Activity Log -->
+            <div class="sim-tab-content active" id="sim-tab-log">
+              <div class="sim-log-box" id="sim-log-content">
+                <div class="log-entry">
+                  <span class="log-time">[09:30:12]</span>
+                  <span class="log-msg info">🎙️ League voice recorder initialized. Systems diagnostic passing.</span>
+                </div>
+                <div class="log-entry">
+                  <span class="log-time">[09:30:13]</span>
+                  <span class="log-msg success">✅ Discord IPC named pipe attached: StreamKit Overlay RPC ready.</span>
+                </div>
+                <div class="log-entry">
+                  <span class="log-time">[09:30:14]</span>
+                  <span class="log-msg info">ℹ️ Replay API monitor ready on port 2999. Waiting for player trigger...</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab 2: Recordings Explorer -->
+            <div class="sim-tab-content" id="sim-tab-recordings">
+              <div class="recordings-list" id="sim-recordings-list">
+                <!-- Dynamically populated via JS -->
+              </div>
+            </div>
+
+            <!-- Tab 3: Settings -->
+            <div class="sim-tab-content" id="sim-tab-settings">
+              <div style="background: #020617; border: 1px solid #1e293b; border-radius: 6px; padding: 16px; font-size: 0.85rem; color: #94a3b8; display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div>
+                  <div style="color: #fff; font-weight: 600; margin-bottom: 4px;">Recordings Folder:</div>
+                  <div style="font-family: var(--font-mono); color: #cbd5e1; background: #0f172a; padding: 6px 10px; border-radius: 4px;">%USERPROFILE%\Documents\League Voice Recorder\recordings</div>
+                </div>
+                <div>
+                  <div style="color: #fff; font-weight: 600; margin-bottom: 4px;">Configuration File:</div>
+                  <div style="font-family: var(--font-mono); color: #cbd5e1; background: #0f172a; padding: 6px 10px; border-radius: 4px;">%USERPROFILE%\Documents\League Voice Recorder\config.json</div>
+                </div>
+                <div>
+                  <div style="color: #fff; font-weight: 600; margin-bottom: 4px;">VLC 64-Bit Directory:</div>
+                  <div style="font-family: var(--font-mono); color: #cbd5e1; background: #0f172a; padding: 6px 10px; border-radius: 4px;">C:\Program Files\VideoLAN\VLC</div>
+                </div>
+                <div>
+                  <div style="color: #fff; font-weight: 600; margin-bottom: 4px;">Auto-Start in Champ Select:</div>
+                  <div style="font-family: var(--font-mono); color: #4ade80;">ENABLED (Auto monitors LCU Gameflow)</div>
+                </div>
+                <div style="grid-column: span 2; border-top: 1px solid #1e293b; padding-top: 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: gap: 8px;">
+                  <div>
+                    <div style="color: #fff; font-weight: 600; margin-bottom: 2px;" data-i18n="sim_settings_update">Software Updates:</div>
+                    <div id="sim-update-status" style="color: #4ade80; font-size: 0.8rem;" data-i18n="sim_settings_update_status">● You are running the latest version (v0.3.2)</div>
+                  </div>
+                  <button class="btn btn-secondary btn-sm" id="sim-check-update-btn" data-i18n="sim_settings_update_btn">🔄 Check for Updates</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================================
+         THE DUAL-ENGINE ARCHITECTURE (HOW IT WORKS)
+         ======================================================================== -->
+    <section class="engines-section" id="how-it-works">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag" data-i18n="engines_tag">THE DUAL-ENGINE ARCHITECTURE</span>
+          <h2 class="section-title gold-gradient-text" data-i18n="engines_title">Engineered For Competitive Esports</h2>
+          <p class="section-desc" data-i18n="engines_desc">
+            Two autonomous, ultra-reliable engines working in tandem to eliminate manual recording and review friction forever.
+          </p>
+        </div>
+
+        <div class="engines-grid">
+          <!-- Engine 1: Recorder -->
+          <div class="engine-card recorder">
+            <span class="engine-badge rec" data-i18n="engine_rec_badge">ENGINE 1 • RECORDING</span>
+            <h3 class="engine-title" data-i18n="engine_rec_title">Zero-Latency Scrim Watcher</h3>
+            <p class="engine-desc" data-i18n="engine_rec_desc">
+              Directly monitors League's Gameflow and Live Client Data APIs. Captures your Discord call and player microphone with sample-accurate timestamping.
+            </p>
+
+            <ul class="engine-steps">
+              <li class="engine-step-item">
+                <span class="step-number">1</span>
+                <div class="step-content">
+                  <h4 data-i18n="engine_rec_s1_title">Sub-Millisecond Match Start</h4>
+                  <p data-i18n="engine_rec_s1_desc">Attaches instantly when the game launches. Detects live games vs. replays with process guard.</p>
+                </div>
+              </li>
+              <li class="engine-step-item">
+                <span class="step-number">2</span>
+                <div class="step-content">
+                  <h4 data-i18n="engine_rec_s2_title">Discord Local IPC Live Mute Sync</h4>
+                  <p data-i18n="engine_rec_s2_desc">Connects via Windows named pipe. When you mute or deafen in Discord, silence bytes are injected to preserve timeline lock.</p>
+                </div>
+              </li>
+              <li class="engine-step-item">
+                <span class="step-number">3</span>
+                <div class="step-content">
+                  <h4 data-i18n="engine_rec_s3_title">Nexus Auto-Finalization</h4>
+                  <p data-i18n="engine_rec_s3_desc">Nexus explodes -> saves compressed &lt;GameID&gt;.mp3 aligned precisely to 00:00:00 without clicking any buttons.</p>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <!-- Engine 2: Replay Synchronizer -->
+          <div class="engine-card replay">
+            <span class="engine-badge rep" data-i18n="engine_rep_badge">ENGINE 2 • REPLAY SYNCHRONIZATION</span>
+            <h3 class="engine-title" data-i18n="engine_rep_title">Frame-Accurate Replay Lock</h3>
+            <p class="engine-desc" data-i18n="engine_rep_desc">
+              Hooks into the League Replay Playback API (:2999/replay/playback) and synchronizes audio via VLC Media Player.
+            </p>
+
+            <ul class="engine-steps">
+              <li class="engine-step-item">
+                <span class="step-number">1</span>
+                <div class="step-content">
+                  <h4 data-i18n="engine_rep_s1_title">Instant .ROFL Detection</h4>
+                  <p data-i18n="engine_rep_s1_desc">Opening any match replay in League automatically locates the matching &lt;GameID&gt;.mp3 in your recordings.</p>
+                </div>
+              </li>
+              <li class="engine-step-item">
+                <span class="step-number">2</span>
+                <div class="step-content">
+                  <h4 data-i18n="engine_rep_s2_title">Dynamic Variable Rate Sync (0.5x - 8x)</h4>
+                  <p data-i18n="engine_rep_s2_desc">Fast forward or rewind during review; VLC dynamically adjusts voice playback speed in microsecond intervals.</p>
+                </div>
+              </li>
+              <li class="engine-step-item">
+                <span class="step-number">3</span>
+                <div class="step-content">
+                  <h4 data-i18n="engine_rep_s3_title">In-Game Observer Mute ('M' Hotkey)</h4>
+                  <p data-i18n="engine_rep_s3_desc">Press 'M' while watching in League to instantly silence voice comms to hear important in-game audio cues.</p>
+                </div>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================================
+         TIMELINE PRECISION COMPARISON
+         ======================================================================== -->
+    <section class="timeline-section">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag" data-i18n="timeline_tag">TIMELINE PRECISION</span>
+          <h2 class="section-title cyan-gradient-text" data-i18n="timeline_title">Why Frame-Accuracy Matters</h2>
+          <p class="section-desc" data-i18n="timeline_desc">
+            Manual recordings always drift. League Voice Recorder uses FFmpeg sample math to lock audio frame-by-frame.
+          </p>
+        </div>
+
+        <div class="timeline-card">
+          <div class="timeline-diagram">
+            <!-- Track 1: Live Game -->
+            <div class="timeline-track-wrap">
+              <div class="track-label-bar">
+                <span class="track-title" data-i18n="timeline_track_game">🎮 In-Game Scrim Timeline</span>
+                <span class="game-clock">00:00:00 Start ➔ 28:15 Nexus</span>
+              </div>
+              <div class="track-visual-bar track-game">
+                <div class="track-fill">
+                  <span>Minions Spawn (01:05)</span>
+                  <span>Dragon Fight (14:32)</span>
+                  <span>Baron Nashor (22:10)</span>
+                  <span>Victory / Defeat</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Track 2: Standard Recording -->
+            <div class="timeline-track-wrap">
+              <div class="track-label-bar">
+                <span class="track-title" style="color: #f87171;" data-i18n="timeline_track_bad">❌ Standard Manual Recording (Disaster)</span>
+                <span style="font-family: var(--font-mono); color: #f87171;">Desynced by ~14s</span>
+              </div>
+              <div class="track-visual-bar track-bad">
+                <div class="bad-delay-zone">Forgot to record</div>
+                <div class="track-fill">
+                  <span>Player comms out of sync with replay timestamps... scrubbing breaks sync completely!</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Track 3: League Voice Recorder -->
+            <div class="timeline-track-wrap">
+              <div class="track-label-bar">
+                <span class="track-title" style="color: #0ac8b9;" data-i18n="timeline_track_good">✨ League Voice Recorder (Frame Locked)</span>
+                <span style="font-family: var(--font-mono); color: #0ac8b9;">0.000s Error Margin</span>
+              </div>
+              <div class="track-visual-bar track-good">
+                <div class="auto-padded-zone">Auto-Padded</div>
+                <div class="track-fill">
+                  <span>Exact sample lock: 00:00:00 in audio = 0.000s in League Replay Engine</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================================
+         CORE CAPABILITIES (6 STANDOUT CARDS)
+         ======================================================================== -->
+    <section class="features-section" id="features">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag" data-i18n="feat_tag">CORE CAPABILITIES</span>
+          <h2 class="section-title gold-gradient-text" data-i18n="feat_title">Built For Scrim Perfection</h2>
+        </div>
+
+        <div class="features-grid">
+          <!-- Feat 1 -->
+          <div class="feature-card">
+            <div class="feature-icon-box">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                <line x1="12" y1="19" x2="12" y2="22"></line>
+              </svg>
+            </div>
+            <h3 class="feature-title" data-i18n="feat_1_title">Zero Third-Party Drivers</h3>
+            <p class="feature-text" data-i18n="feat_1_desc">
+              Direct WASAPI loopback capture. No virtual audio cables, no Voicemeeter crashes, no audio driver conflicts.
+            </p>
+          </div>
+
+          <!-- Feat 2 -->
+          <div class="feature-card">
+            <div class="feature-icon-box gold">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 8h1a4 4 0 0 1 0 8h-1"></path>
+                <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"></path>
+                <line x1="6" y1="1" x2="6" y2="4"></line>
+                <line x1="10" y1="1" x2="10" y2="4"></line>
+                <line x1="14" y1="1" x2="14" y2="4"></line>
+              </svg>
+            </div>
+            <h3 class="feature-title" data-i18n="feat_2_title">Discord IPC Integration</h3>
+            <p class="feature-text" data-i18n="feat_2_desc">
+              Uses Discord's first-party StreamKit Overlay RPC client ID. Clean, authorized, local named pipe communication.
+            </p>
+          </div>
+
+          <!-- Feat 3 -->
+          <div class="feature-card">
+            <div class="feature-icon-box red">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+              </svg>
+            </div>
+            <h3 class="feature-title" data-i18n="feat_3_title">100% Vanguard Safe</h3>
+            <p class="feature-text" data-i18n="feat_3_desc">
+              Zero memory injection, zero DLL hooking. Communicates strictly with Riot's approved local HTTP endpoints.
+            </p>
+          </div>
+
+          <!-- Feat 4 -->
+          <div class="feature-card">
+            <div class="feature-icon-box">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+              </svg>
+            </div>
+            <h3 class="feature-title" data-i18n="feat_4_title">Replay Guard Protection</h3>
+            <p class="feature-text" data-i18n="feat_4_desc">
+              Inspects running process trees to ensure you never accidentally record over an existing file when reviewing replays.
+            </p>
+          </div>
+
+          <!-- Feat 5 -->
+          <div class="feature-card">
+            <div class="feature-icon-box gold">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </div>
+            <h3 class="feature-title" data-i18n="feat_5_title">Integrated Scrim Browser</h3>
+            <p class="feature-text" data-i18n="feat_5_desc">
+              Browse, audit, and play recordings directly inside the app with instant metadata, file sizes, and timestamps.
+            </p>
+          </div>
+
+          <!-- Feat 6 -->
+          <div class="feature-card">
+            <div class="feature-icon-box">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="2" y1="12" x2="22" y2="12"></line>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+              </svg>
+            </div>
+            <h3 class="feature-title" data-i18n="feat_6_title">Drop-In Translations (i18n)</h3>
+            <p class="feature-text" data-i18n="feat_6_desc">
+              Full internationalization support. English &amp; Hungarian built-in; add any language via a simple JSON file.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================================
+         SETUP & INSTALLATION GUIDE (TABBED TERMINAL)
+         ======================================================================== -->
+    <section class="setup-section" id="setup">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag" data-i18n="setup_tag">INSTALLATION &amp; CONFIGURATION</span>
+          <h2 class="section-title gold-gradient-text" data-i18n="setup_title">Get Running in Under 2 Minutes</h2>
+          <p class="section-desc" data-i18n="setup_desc">
+            Available as a precompiled standalone Windows executable or run directly from source with uv.
+          </p>
+        </div>
+
+        <div class="setup-card">
+          <!-- Setup Tabs Bar -->
+          <div class="setup-tabs-bar">
+            <button class="setup-tab-btn active" data-panel="release" data-i18n="setup_tab_release">1. Standalone Release</button>
+            <button class="setup-tab-btn" data-panel="winget" data-i18n="setup_tab_winget">2. Winget Prerequisites</button>
+            <button class="setup-tab-btn" data-panel="gamecfg" data-i18n="setup_tab_gamecfg">3. Enable Replay API</button>
+            <button class="setup-tab-btn" data-panel="discord" data-i18n="setup_tab_discord">4. Discord Auth</button>
+            <button class="setup-tab-btn" data-panel="source" data-i18n="setup_tab_source">5. Run from Source</button>
+          </div>
+
+          <!-- Panel 1: Standalone Release -->
+          <div class="setup-tab-panel active" id="setup-panel-release">
+            <h3 style="font-size: 1.4rem; color: #fff; margin-bottom: 12px;">Quick Start with Standalone ZIP (Recommended)</h3>
+            <p style="margin-bottom: 20px;">No Python environment required. Packaged with Nuitka standalone compiler into a high-performance Windows executable.</p>
+
+            <ol style="padding-left: 20px; line-height: 1.8; color: var(--text-secondary); margin-bottom: 24px;">
+              <li>Go to the <a href="https://github.com/betterix/league-voice-recorder/releases" target="_blank" rel="noopener noreferrer">GitHub Releases</a> page.</li>
+              <li>Download <strong><code>LeagueVoiceRecorder-Windows-x64.zip</code></strong>.</li>
+              <li>Extract the archive anywhere on your drive (e.g. <code>C:\Games\LeagueVoiceRecorder</code>).</li>
+              <li>Double-click <strong><code>LeagueVoiceRecorder.exe</code></strong> to launch!</li>
+            </ol>
+
+            <a href="https://github.com/betterix/league-voice-recorder/releases/latest" target="_blank" rel="noopener noreferrer" class="btn btn-gold">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              <span>Download Latest Windows Release</span>
+            </a>
+          </div>
+
+          <!-- Panel 2: Winget Prerequisites -->
+          <div class="setup-tab-panel" id="setup-panel-winget">
+            <h3 style="font-size: 1.4rem; color: #fff; margin-bottom: 12px;">Install Dependencies via Windows Package Manager</h3>
+            <p>League Voice Recorder uses FFmpeg for audio sample alignment and 64-bit VLC for synchronized replay seeking.</p>
+
+            <div class="code-box">
+              <div class="code-box-header">
+                <span>PowerShell (Run as Administrator or standard user)</span>
+                <button class="btn-copy" data-copy-target="code-winget">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                  <span>Copy Command</span>
+                </button>
+              </div>
+              <pre><code id="code-winget"># 1. Install FFmpeg (Audio conversion &amp; offset alignment)
+winget install -e --id Gyan.FFmpeg
+
+# 2. Install VLC Media Player 64-bit (Replay playback engine)
+winget install -e --id VideoLAN.VLC</code></pre>
+            </div>
+          </div>
+
+          <!-- Panel 3: Enable Replay API -->
+          <div class="setup-tab-panel" id="setup-panel-gamecfg">
+            <h3 style="font-size: 1.4rem; color: #fff; margin-bottom: 12px;">Enable League of Legends Replay API</h3>
+            <p style="margin-bottom: 14px;">By default, League's local Replay API is turned off. You only need to add one line to your config file once:</p>
+
+            <div class="cfg-path-note">
+              Default Path: <strong>C:\Riot Games\League of Legends\Config\game.cfg</strong>
+            </div>
+
+            <div class="code-box">
+              <div class="code-box-header">
+                <span>game.cfg configuration</span>
+                <button class="btn-copy" data-copy-target="code-cfg">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                  <span>Copy Configuration</span>
+                </button>
+              </div>
+              <pre><code id="code-cfg">[General]
+EnableReplayApi=1</code></pre>
+            </div>
+            <p style="font-size: 0.88rem; color: var(--text-muted);">
+              Note: If <code>[General]</code> is already present in your <code>game.cfg</code>, simply add <code>EnableReplayApi=1</code> right under it.
+            </p>
+          </div>
+
+          <!-- Panel 4: Discord One-Time Auth -->
+          <div class="setup-tab-panel" id="setup-panel-discord">
+            <h3 style="font-size: 1.4rem; color: #fff; margin-bottom: 12px;">Discord Local IPC &amp; Safe One-Time Authorization</h3>
+            <p style="margin-bottom: 16px;">
+              On your very first run, Discord will display an official authorization popup:
+            </p>
+
+            <div style="background: rgba(88, 101, 242, 0.12); border: 1px solid rgba(88, 101, 242, 0.35); border-radius: var(--radius-md); padding: 20px; margin-bottom: 20px;">
+              <div style="display: flex; align-items: center; gap: 10px; color: #5865F2; font-weight: 700; font-size: 1.05rem; margin-bottom: 8px;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028z"/>
+                </svg>
+                <span>"StreamKit Overlay wants to access your Discord account: Access your voice settings."</span>
+              </div>
+              <p style="font-size: 0.92rem; color: #cbd5e1;">
+                Simply click <strong>Authorize</strong>. The token is securely stored in <code>config.json</code> on your computer. Discord will remember your authorization and will <strong>never ask you again</strong>. Subsequent launches authenticate in &lt;50ms.
+              </p>
+            </div>
+          </div>
+
+          <!-- Panel 5: Run from Source -->
+          <div class="setup-tab-panel" id="setup-panel-source">
+            <h3 style="font-size: 1.4rem; color: #fff; margin-bottom: 12px;">Run Directly from Python Source via uv</h3>
+            <p>Compatible with Python 3.12+ and 3.14. Uses the blazing-fast <code>uv</code> package manager.</p>
+
+            <div class="code-box">
+              <div class="code-box-header">
+                <span>PowerShell</span>
+                <button class="btn-copy" data-copy-target="code-source">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                  <span>Copy Commands</span>
+                </button>
+              </div>
+              <pre><code id="code-source"># 1. Clone the repository
+git clone https://github.com/betterix/league-voice-recorder.git
+cd league-voice-recorder
+
+# 2. Sync dependencies
+uv sync --dev
+
+# 3. Launch the desktop GUI
+uv run main.py
+
+# 4. Run automated test suite (69 unit tests)
+uv run python -m unittest discover tests -v</code></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================================
+         ARCHITECTURE & SECURITY
+         ======================================================================== -->
+    <section class="arch-section" id="architecture">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag" data-i18n="nav_architecture">SYSTEM ARCHITECTURE</span>
+          <h2 class="section-title cyan-gradient-text">Non-Invasive, Safe &amp; Auditable</h2>
+          <p class="section-desc">Designed from day one to operate safely alongside Riot Vanguard and Discord without triggering security flags.</p>
+        </div>
+
+        <div class="arch-badges-row">
+          <div class="security-box">
+            <h4>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+              <span>100% Riot Vanguard Safe</span>
+            </h4>
+            <p>Does not hook into game memory or modify game client binaries. Communicates only with official localhost HTTP APIs exposed by Riot.</p>
+          </div>
+
+          <div class="security-box">
+            <h4>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5865F2" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M8 12h8"></path></svg>
+              <span>Discord Native Named Pipe</span>
+            </h4>
+            <p>Communicates directly over Windows local named pipe (<code>\\.\pipe\discord-ipc-*</code>) using the official StreamKit RPC overlay protocol.</p>
+          </div>
+
+          <div class="security-box">
+            <h4>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c8aa6e" stroke-width="2"><path d="M16.5 9.4 7.55 4.24a1.78 1.78 0 0 0-2.5 1.55v12.42a1.78 1.78 0 0 0 2.5 1.55L16.5 14.6a1.78 1.78 0 0 0 0-3.2z"/></svg>
+              <span>Direct WASAPI Loopback</span>
+            </h4>
+            <p>Uses Windows' built-in Audio Session API (WASAPI) directly. Avoids crashes caused by virtual cables and audio routing software.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================================
+         FREQUENTLY ASKED QUESTIONS
+         ======================================================================== -->
+    <section class="faq-section" id="faq">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag" data-i18n="faq_tag">FREQUENTLY ASKED QUESTIONS</span>
+          <h2 class="section-title gold-gradient-text" data-i18n="faq_title">Answers &amp; Technical Details</h2>
+        </div>
+
+        <div class="faq-list">
+          <!-- FAQ 1 -->
+          <div class="faq-item open">
+            <button class="faq-question-btn">
+              <span>Will Riot Vanguard or League anti-cheat ban me for using this?</span>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                <strong>No, absolutely not.</strong> League Voice Recorder strictly relies on Riot's official, sanctioned developer APIs: the Live Client Data API and the League Replay API on port <code>2999</code>, as well as the standard League Client LCU lockfile. It does not inject DLLs, read protected process memory, or modify game files.
+              </div>
+            </div>
+          </div>
+
+          <!-- FAQ 2 -->
+          <div class="faq-item">
+            <button class="faq-question-btn">
+              <span>Do I need to install Virtual Audio Cable or Voicemeeter?</span>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                <strong>No!</strong> The application uses Windows Native WASAPI audio loopback capture. It captures your Discord voice audio stream directly from the Windows audio mixer while simultaneously recording your selected microphone input.
+              </div>
+            </div>
+          </div>
+
+          <!-- FAQ 3 -->
+          <div class="faq-item">
+            <button class="faq-question-btn">
+              <span>What happens if the game is paused in a tournament or scrim?</span>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                The recording engine monitors the game clock in real time via the Live Client API. When the game is paused (e.g., <code>/pause</code> in competitive custom games), the audio recorder automatically pauses as well, guaranteeing that the recorded voice track does not drift out of sync with game time.
+              </div>
+            </div>
+          </div>
+
+          <!-- FAQ 4 -->
+          <div class="faq-item">
+            <button class="faq-question-btn">
+              <span>How does the replay audio mute hotkey ('M') work?</span>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                When analyzing a match replay in League observer mode, pressing <strong><code>M</code></strong> on your keyboard instantly mutes or restores the synced voice track without needing to alt-tab out of the game.
+              </div>
+            </div>
+          </div>
+
+          <!-- FAQ 5 -->
+          <div class="faq-item">
+            <button class="faq-question-btn">
+              <span>Can I add my own language or Hungarian translation?</span>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                Yes! Both English and Hungarian (Magyar) are built-in from day one. You can add any other language simply by creating a new <code>.json</code> file in the <code>locales/</code> directory without modifying any Python code.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================================
+         CALL TO ACTION BANNER
+         ======================================================================== -->
+    <section class="cta-section">
+      <div class="container">
+        <div class="cta-banner">
+          <h2 class="cta-title gold-gradient-text" data-i18n="cta_title">Ready To Elevate Your Scrim Reviews?</h2>
+          <p class="cta-desc" data-i18n="cta_desc">
+            Download League Voice Recorder for Windows 10 &amp; 11 today. Completely free, open source, and built for competitive League.
+          </p>
+          <div class="cta-actions">
+            <a href="https://github.com/betterix/league-voice-recorder/releases/latest" target="_blank" rel="noopener noreferrer" class="btn btn-gold" data-i18n="cta_btn_download">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              <span>Download v0.3.2 Release</span>
+            </a>
+            <a href="https://github.com/betterix/league-voice-recorder" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" data-i18n="cta_btn_repo">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+              </svg>
+              <span>Star on GitHub</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ========================================================================
+       FOOTER
+       ======================================================================== -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <div class="brand-link">
+            <div class="brand-logo-wrap">
+              <img src="assets/icon.svg" alt="League Voice Recorder" class="brand-logo">
+            </div>
+            <div class="brand-text">
+              <span class="brand-name">League Voice Recorder</span>
+              <span class="brand-tag">&amp; Replay Synchronizer</span>
+            </div>
+          </div>
+          <p data-i18n="footer_desc">
+            Automated Discord voice comms capture &amp; frame-accurate replay audio synchronization for League of Legends esports teams.
+          </p>
+        </div>
+
+        <div class="footer-col">
+          <h4>Navigation</h4>
+          <ul class="footer-links">
+            <li><a href="#simulator" data-i18n="nav_simulator">Live Simulator</a></li>
+            <li><a href="#how-it-works" data-i18n="nav_how_it_works">How It Works</a></li>
+            <li><a href="#features" data-i18n="nav_features">Features</a></li>
+            <li><a href="#setup" data-i18n="nav_setup">Setup Guide</a></li>
+            <li><a href="#faq" data-i18n="nav_faq">FAQ</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4>Community &amp; Source</h4>
+          <ul class="footer-links">
+            <li><a href="https://github.com/betterix/league-voice-recorder" target="_blank" rel="noopener noreferrer">GitHub Repository</a></li>
+            <li><a href="https://github.com/betterix/league-voice-recorder/releases" target="_blank" rel="noopener noreferrer">Releases &amp; Changelogs</a></li>
+            <li><a href="https://github.com/betterix/league-voice-recorder/issues" target="_blank" rel="noopener noreferrer">Report an Issue</a></li>
+            <li><a href="https://github.com/betterix/league-voice-recorder/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">GPL-3.0 License</a></li>
+            <li><a href="https://github.com/betterix/league-voice-recorder/blob/main/SECURITY.md" target="_blank" rel="noopener noreferrer">Security Policy</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="disclaimer-box" data-i18n="footer_disclaimer">
+        League Voice Recorder is an independent open-source project and is not endorsed by, directly affiliated with, maintained, authorized, or sponsored by Riot Games, Inc. League of Legends is a trademark or registered trademark of Riot Games, Inc.
+      </div>
+
+      <div class="footer-bottom">
+        <div>&copy; 2026 betterix. Free &amp; Open Source under GNU General Public License v3.0.</div>
+        <div>Engineered with precision for League of Legends Scrims &amp; Tournaments.</div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="js/app.js"></script>
+</body>
+</html>

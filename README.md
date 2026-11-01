@@ -320,19 +320,27 @@ League Voice Recorder/
 │   ├── en.json             # English (default fallback)
 │   └── hu.json             # Hungarian
 │
+├── web/                    # Official landing page & interactive desktop app simulator
+│   ├── assets/             # Web logos and visual assets
+│   ├── css/style.css       # Hextech esports design system & responsive styling
+│   ├── js/app.js           # Particle canvas, i18n dictionary, interactive app simulator
+│   ├── index.html          # Semantic showcase landing page
+│   └── README.md           # Web documentation & local preview guide
+│
 ├── scripts/                # Windows automation & build scripts
 │   ├── start_ui.bat        # Windows quick-launcher for the GUI
 │   ├── run_tests.bat       # Automated test suite runner batch script
 │   └── build_exe.bat       # Standalone Windows .exe compiler batch script
 │
-├── tests/                  # Automated test suite (58 unit tests)
+├── tests/                  # Automated test suite (69 unit tests)
 │   ├── __init__.py
 │   ├── test_config.py      # Config defaults, path resolution, and directory creation
 │   ├── test_discord_ipc.py # Discord Local IPC & mute silence injection
 │   ├── test_i18n.py        # Locale discovery, translation lookup, and key parity
 │   ├── test_recorder.py    # FFmpeg sample-accurate offset alignment & replay guard
 │   ├── test_replay_sync.py # ROFL Game ID extraction & volume clamping
-│   └── test_ui.py          # CustomTkinter headless UI & live language switching
+│   ├── test_ui.py          # CustomTkinter headless UI & live language switching
+│   └── test_updater.py     # Release asset check, zip extraction, and in-place update
 │
 ├── .github/
 │   └── workflows/
