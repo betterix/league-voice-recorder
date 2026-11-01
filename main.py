@@ -1211,6 +1211,16 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
                 elif action == "UPDATE_DOWNLOAD_PROGRESS":
                     pct = item[1]
+                    # Drain intermediate progress updates in queue to prevent Tkinter redraw lag
+                    while not self.msg_queue.empty():
+                        try:
+                            next_item = self.msg_queue.queue[0]
+                            if next_item[0] == "UPDATE_DOWNLOAD_PROGRESS":
+                                pct = self.msg_queue.get_nowait()[1]
+                            else:
+                                break
+                        except Exception:
+                            break
                     if hasattr(self, "update_action_btn"):
                         self.update_action_btn.configure(
                             text=t("settings.downloading_update", percent=pct)

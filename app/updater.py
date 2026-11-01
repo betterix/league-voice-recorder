@@ -89,15 +89,33 @@ def check_for_update(current_version, repo=GITHUB_REPO, timeout=5.0):
         latest_tuple = parse_version_tuple(latest_tag)
         current_tuple = parse_version_tuple(current_version)
 
-        # Look for release assets: prefer .zip distribution archives, fallback to .exe
+        # Look for release assets:
+        # If running from an Inno Setup installed copy (unins000.exe exists), prefer Setup installer (~22MB)
+        # Otherwise, prefer .zip distribution archive (~32MB) for in-place portable update
+        is_installed = False
+        try:
+            exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+            if os.path.exists(os.path.join(exe_dir, "unins000.exe")):
+                is_installed = True
+        except Exception:
+            pass
+
         chosen_asset = None
-        for asset in data.get("assets", []):
-            name = asset.get("name", "").lower()
-            if name.endswith(".zip"):
-                chosen_asset = asset
-                break
-            elif name.endswith(".exe") and not chosen_asset:
-                chosen_asset = asset
+        if is_installed:
+            for asset in data.get("assets", []):
+                name = asset.get("name", "").lower()
+                if "setup" in name and name.endswith(".exe"):
+                    chosen_asset = asset
+                    break
+
+        if not chosen_asset:
+            for asset in data.get("assets", []):
+                name = asset.get("name", "").lower()
+                if name.endswith(".zip"):
+                    chosen_asset = asset
+                    break
+                elif name.endswith(".exe") and not chosen_asset:
+                    chosen_asset = asset
 
         is_newer = latest_tuple > current_tuple
         is_zip = chosen_asset.get("name", "").lower().endswith(".zip") if chosen_asset else False
@@ -150,21 +168,29 @@ def download_and_install_update(download_url, progress_callback=None, timeout=60
 
     download_path = os.path.join(temp_dir, f"lvr_update_{int(time.time())}{ext}")
 
-    # 1. Download stream with progress reporting
-    headers = {"User-Agent": "LeagueVoiceRecorder-Updater"}
+    # 1. Download stream with high-performance buffer and throttled progress reporting
+    headers = {
+        "User-Agent": "LeagueVoiceRecorder-Updater",
+        "Accept-Encoding": "gzip, deflate",
+    }
     with requests.get(download_url, headers=headers, stream=True, timeout=timeout) as r:
         r.raise_for_status()
         total_size = int(r.headers.get("content-length", 0))
         downloaded = 0
+        last_pct = -1
 
-        with open(download_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=65536):
+        # Use 512KB chunk size with 1MB buffered I/O for maximum transfer throughput
+        chunk_size = 512 * 1024
+        with open(download_path, "wb", buffering=1024 * 1024) as f:
+            for chunk in r.iter_content(chunk_size=chunk_size):
                 if chunk:
                     f.write(chunk)
                     downloaded += len(chunk)
                     if progress_callback and total_size > 0:
                         pct = int((downloaded / total_size) * 100)
-                        progress_callback(min(100, pct))
+                        if pct != last_pct:
+                            last_pct = pct
+                            progress_callback(min(100, pct))
 
     if progress_callback:
         progress_callback(100)
@@ -208,18 +234,9 @@ def download_and_install_update(download_url, progress_callback=None, timeout=60
     if is_zip and extracted_app_dir:
         bat_content = f"""@echo off
 setlocal
-timeout /t 1 /nobreak >nul
+powershell -NoProfile -Command "Wait-Process -Id {current_pid} -Timeout 5 -ErrorAction SilentlyContinue"
 
-set RETRIES=0
-:WAIT_LOOP
-tasklist /fi "PID eq {current_pid}" 2>nul | find "{current_pid}" >nul
-if not errorlevel 1 (
-    timeout /t 1 /nobreak >nul
-    set /a RETRIES+=1
-    if %RETRIES% lss 8 goto WAIT_LOOP
-)
-
-robocopy "{extracted_app_dir}" "{target_dir}" /E /IS /IT /R:3 /W:1 /NFL /NDL /NJH /NJS /nc /ns /np
+robocopy "{extracted_app_dir}" "{target_dir}" /E /IS /IT /MT:8 /R:2 /W:1 /NFL /NDL /NJH /NJS /nc /ns /np
 
 if exist "{target_exe}" (
     start "" "{target_exe}"
@@ -229,19 +246,25 @@ rd /s /q "{temp_extract_dir}" >nul 2>&1
 del /f /q "{download_path}" >nul 2>&1
 del "%~f0" >nul 2>&1
 """
+    elif "setup" in url_lower:
+        # Inno Setup silent in-place update
+        bat_content = f"""@echo off
+setlocal
+powershell -NoProfile -Command "Wait-Process -Id {current_pid} -Timeout 5 -ErrorAction SilentlyContinue"
+
+start /wait "" "{download_path}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+
+if exist "{target_exe}" (
+    start "" "{target_exe}"
+)
+
+del /f /q "{download_path}" >nul 2>&1
+del "%~f0" >nul 2>&1
+"""
     else:
         bat_content = f"""@echo off
 setlocal
-timeout /t 1 /nobreak >nul
-
-set RETRIES=0
-:WAIT_LOOP
-tasklist /fi "PID eq {current_pid}" 2>nul | find "{current_pid}" >nul
-if not errorlevel 1 (
-    timeout /t 1 /nobreak >nul
-    set /a RETRIES+=1
-    if %RETRIES% lss 8 goto WAIT_LOOP
-)
+powershell -NoProfile -Command "Wait-Process -Id {current_pid} -Timeout 5 -ErrorAction SilentlyContinue"
 
 copy /y "{download_path}" "{target_exe}" >nul
 
