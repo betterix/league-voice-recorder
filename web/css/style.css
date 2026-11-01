@@ -915,51 +915,80 @@ a:hover {
   color: #fff;
 }
 
-/* Replay Card Scrub Controls */
-.replay-scrub-wrap {
+/* Replay Card Volume & Info */
+.sim-replay-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
+  flex: 1;
+}
+
+.sim-volume-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   background: #0f172a;
   border-radius: var(--radius-sm);
   padding: 14px;
-  margin-bottom: 16px;
 }
 
-.scrub-timeline-header {
+.sim-volume-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.82rem;
 }
 
-.game-clock {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  color: var(--cyan-300);
+.sim-volume-label {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  font-weight: 600;
 }
 
-.speed-badge-group {
-  display: flex;
-  gap: 4px;
-}
-
-.speed-btn {
+.btn-mute-hotkey {
   background: #1e293b;
   border: 1px solid #334155;
-  color: #94a3b8;
-  font-size: 0.75rem;
-  font-family: var(--font-mono);
-  padding: 2px 7px;
+  color: #38bdf8;
+  font-size: 0.8rem;
+  padding: 4px 10px;
   border-radius: 4px;
   cursor: pointer;
+  font-family: var(--font-mono);
+  font-weight: 700;
   transition: all var(--transition-fast);
 }
 
-.speed-btn.active {
-  background: var(--cyan-500);
+.btn-mute-hotkey:hover {
+  background: #334155;
+}
+
+.btn-mute-hotkey.active {
+  background: #ef4444;
+  border-color: #dc2626;
   color: #fff;
-  border-color: var(--cyan-400);
+}
+
+.sim-replay-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.76rem;
+  color: #94a3b8;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  line-height: 1.4;
+  margin-top: auto;
+}
+
+.sim-hint-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.sim-hint-row svg {
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .range-slider {
@@ -967,30 +996,6 @@ a:hover {
   accent-color: var(--cyan-400);
   cursor: pointer;
   height: 6px;
-}
-
-.volume-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 0.8rem;
-  color: #94a3b8;
-}
-
-.btn-mute-hotkey {
-  background: #334155;
-  border: none;
-  color: #f1f5f9;
-  font-size: 0.76rem;
-  padding: 3px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-family: var(--font-mono);
-}
-
-.btn-mute-hotkey.active {
-  background: #ef4444;
-  color: #fff;
 }
 
 /* Tabview inside Simulator */

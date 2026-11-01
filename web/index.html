@@ -317,35 +317,34 @@
                   </div>
                 </div>
 
-                <!-- Scrub Controls -->
-                <div class="replay-scrub-wrap">
-                  <div class="scrub-timeline-header">
-                    <div>
-                      <span data-i18n="sim_rep_clock">Game Clock:</span>
-                      <span class="game-clock" id="sim-game-clock">14:32 (1.0x)</span>
+                <div class="sim-replay-body">
+                  <!-- Replay Volume Slider Control (Matches Desktop GUI) -->
+                  <div class="sim-volume-container">
+                    <div class="sim-volume-header">
+                      <span class="sim-volume-label" data-i18n="sim_rep_vol">Replay Volume:</span>
+                      <button class="btn-mute-hotkey" id="sim-mute-hotkey-btn" title="Toggle mute (Press M)">🔊 85% [M]</button>
                     </div>
-                    <div class="speed-badge-group">
-                      <button class="speed-btn" data-speed="0.5">0.5x</button>
-                      <button class="speed-btn active" data-speed="1.0">1.0x</button>
-                      <button class="speed-btn" data-speed="2.0">2.0x</button>
-                      <button class="speed-btn" data-speed="4.0">4.0x</button>
+                    <input type="range" class="range-slider" id="sim-volume-slider" min="0" max="100" value="85">
+                  </div>
+
+                  <!-- Replay Info Hint -->
+                  <div class="sim-replay-hint">
+                    <div class="sim-hint-row">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                      <span data-i18n="sim_rep_hint_auto">Auto-detects running League replay process and locks VLC playback clock.</span>
+                    </div>
+                    <div class="sim-hint-row">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c8aa6e" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                      <span data-i18n="sim_rep_hint_m">Press 'M' hotkey while watching to mute/unmute synced voice comms.</span>
                     </div>
                   </div>
 
-                  <input type="range" class="range-slider" id="sim-time-slider" min="0" max="1800" value="872">
-
-                  <div class="volume-row">
-                    <span data-i18n="sim_rep_vol">Replay Volume:</span>
-                    <input type="range" class="range-slider" id="sim-volume-slider" min="0" max="100" value="85" style="width: 120px;">
-                    <button class="btn-mute-hotkey" id="sim-mute-hotkey-btn" data-i18n="sim_rep_hotkey">Vol: 85% [M]</button>
+                  <!-- Actions -->
+                  <div class="sim-controls-row">
+                    <button class="btn-sim-action btn-sim-replay" id="sim-rep-toggle-btn" data-i18n="sim_rep_start_btn">
+                      ▶ Start Replay Auto-Sync
+                    </button>
                   </div>
-                </div>
-
-                <!-- Actions -->
-                <div class="sim-controls-row">
-                  <button class="btn-sim-action btn-sim-replay" id="sim-rep-toggle-btn" data-i18n="sim_rep_start_btn">
-                    ▶ Start Replay Auto-Sync
-                  </button>
                 </div>
               </div>
             </div>

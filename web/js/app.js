@@ -58,10 +58,10 @@ const i18n = {
     sim_rep_syncing: "● SYNCING: Match #3194821034",
     sim_rep_start_btn: "▶ Start Replay Auto-Sync",
     sim_rep_stop_btn: "⏹ Stop Replay Auto-Sync",
-    sim_rep_clock: "Game Clock",
-    sim_rep_speed: "Speed",
-    sim_rep_vol: "Replay Volume",
+    sim_rep_vol: "Replay Volume:",
     sim_rep_hotkey: "Press M to Mute/Unmute",
+    sim_rep_hint_auto: "Auto-detects running League replay process and locks VLC playback clock.",
+    sim_rep_hint_m: "Press 'M' hotkey while watching to mute/unmute synced voice comms.",
 
     sim_tab_log: "📋 Activity Log",
     sim_tab_recordings: "📁 Scrim Recordings",
@@ -189,10 +189,10 @@ const i18n = {
     sim_rep_syncing: "● SZINKRONBAN: Meccs #3194821034",
     sim_rep_start_btn: "▶ Visszajátszás szinkronizáló indítása",
     sim_rep_stop_btn: "⏹ Replay Auto-Sync leállítása",
-    sim_rep_clock: "Játékidő",
-    sim_rep_speed: "Sebesség",
-    sim_rep_vol: "Visszajátszási hangerő",
+    sim_rep_vol: "Visszajátszási hangerő:",
     sim_rep_hotkey: "M billentyű: Némítás / Visszakapcsolás",
+    sim_rep_hint_auto: "Automatikusan felismeri a futó League replay-t és zárja a VLC órát.",
+    sim_rep_hint_m: "Nyomd meg az 'M' billentyűt nézői módban a hang némításához.",
 
     sim_tab_log: "📋 Tevékenységnapló",
     sim_tab_recordings: "📁 Scrim Felvételek",
@@ -530,8 +530,7 @@ function updateSimUI() {
   // Replay Card
   const repPill = document.getElementById("sim-rep-status-pill");
   const repBtn = document.getElementById("sim-rep-toggle-btn");
-  const repClock = document.getElementById("sim-game-clock");
-  const repSlider = document.getElementById("sim-time-slider");
+  const repVolSlider = document.getElementById("sim-volume-slider");
   const muteHotkeyBtn = document.getElementById("sim-mute-hotkey-btn");
 
   if (repPill && repBtn) {
@@ -548,15 +547,13 @@ function updateSimUI() {
     }
   }
 
-  if (repClock) {
-    repClock.textContent = `${formatSeconds(simState.replaySeconds)} (${simState.replaySpeed.toFixed(1)}x)`;
-  }
-  if (repSlider) {
-    repSlider.value = simState.replaySeconds;
+  if (repVolSlider) {
+    repVolSlider.value = simState.replayVolume;
   }
   if (muteHotkeyBtn) {
+    const volIcon = simState.replayVolume >= 70 ? "🔊" : (simState.replayVolume >= 35 ? "🔉" : (simState.replayVolume > 0 ? "🔈" : "🔇"));
     muteHotkeyBtn.classList.toggle("active", simState.replayMuted);
-    muteHotkeyBtn.textContent = simState.replayMuted ? "MUTED (M)" : "Vol: " + simState.replayVolume + "% [M]";
+    muteHotkeyBtn.textContent = simState.replayMuted ? "🔇 MUTED (M)" : `${volIcon} ${simState.replayVolume}% [M]`;
   }
 }
 
@@ -659,31 +656,23 @@ function initSimulator() {
     });
   }
 
-  // Time Scrub Slider
-  const repSlider = document.getElementById("sim-time-slider");
-  if (repSlider) {
-    repSlider.addEventListener("input", e => {
-      simState.replaySeconds = parseInt(e.target.value);
-      if (simState.replaySyncing) {
-        appendSimLog(`⏩ Replay seeked to ${formatSeconds(simState.replaySeconds)} — VLC audio relocated frame-accurately.`, "info");
+  // Replay Volume Slider Control
+  const repVolSlider = document.getElementById("sim-volume-slider");
+  if (repVolSlider) {
+    repVolSlider.addEventListener("input", e => {
+      const newVol = parseInt(e.target.value);
+      simState.replayVolume = newVol;
+      if (simState.replayMuted && newVol > 0) {
+        simState.replayMuted = false;
       }
       updateSimUI();
+    });
+    repVolSlider.addEventListener("change", e => {
+      if (simState.replaySyncing) {
+        appendSimLog(`🔊 Replay volume set to ${e.target.value}%`, "info");
+      }
     });
   }
-
-  // Speed Buttons
-  document.querySelectorAll(".speed-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".speed-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      const oldSpeed = simState.replaySpeed;
-      simState.replaySpeed = parseFloat(btn.dataset.speed);
-      if (simState.replaySyncing) {
-        appendSimLog(`⏩ Playback speed: ${oldSpeed.toFixed(1)}x -> ${simState.replaySpeed.toFixed(1)}x`, "info");
-      }
-      updateSimUI();
-    });
-  });
 
   // Mute Hotkey Button
   const muteHotkeyBtn = document.getElementById("sim-mute-hotkey-btn");
