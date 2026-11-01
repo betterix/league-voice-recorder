@@ -1227,10 +1227,26 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                         )
 
                 elif action == "UPDATE_DOWNLOAD_COMPLETE":
+                    target_path = item[1]
                     if hasattr(self, "update_action_btn"):
                         self.update_action_btn.configure(
                             text=t("settings.restarting")
                         )
+                    # If in dev/script mode and download_and_install_update returned a file, launch it and exit
+                    if target_path and os.path.exists(str(target_path)):
+                        try:
+                            p = str(target_path)
+                            if p.lower().endswith(".exe"):
+                                os.startfile(p)
+                            elif os.path.isdir(p):
+                                exe_cand = os.path.join(p, "LeagueVoiceRecorder.exe")
+                                if os.path.exists(exe_cand):
+                                    os.startfile(exe_cand)
+                                else:
+                                    os.startfile(p)
+                            self.after(1200, lambda: os._exit(0))
+                        except Exception:
+                            pass
 
         except Exception:
             pass
@@ -1831,10 +1847,10 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.msg_queue.put(("UPDATE_DOWNLOAD_PROGRESS", pct))
 
             try:
-                download_and_install_update(
+                res = download_and_install_update(
                     update_info["download_url"], progress_callback=on_progress
                 )
-                self.msg_queue.put(("UPDATE_DOWNLOAD_COMPLETE", None))
+                self.msg_queue.put(("UPDATE_DOWNLOAD_COMPLETE", res))
             except Exception as e:
                 self.msg_queue.put(
                     ("UPDATE_CHECK_RESULT", {"available": False, "error": str(e)}, True)
