@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://betterix.github.io/league-voice-recorder/"><img src="https://img.shields.io/badge/website-live-success?logo=googlechrome&logoColor=white" alt="Live Website" /></a>
-  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.3.2-blue?logo=github" alt="Release Version" /></a>
+  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.3.3-blue?logo=github" alt="Release Version" /></a>
   <img src="https://img.shields.io/badge/python-3.14.10-blue?logo=python&logoColor=white" alt="Python Version" />
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%2064--bit-0078D6?logo=windows&logoColor=white" alt="Platform" />
   <img src="https://img.shields.io/badge/build-passing-brightgreen?logo=githubactions&logoColor=white" alt="Build Status" />
@@ -356,6 +356,22 @@ League Voice Recorder/
 ├── ruff.toml               # Linter rules and exclusions
 └── requirements.txt        # Frozen dependencies export
 ```
+
+---
+
+## 🚀 What's New in v0.3.3
+
+- 📦 **Professional Windows Setup Installer (Inno Setup)**:
+  - Added a dedicated Windows Setup installer (`LeagueVoiceRecorder-Setup-v0.3.3.exe`) with LZMA2 ultra compression, reducing download size to only ~22 MB.
+  - Hides away all loose `.dll` and `.pyd` dependencies into `%LOCALAPPDATA%\Programs\League Voice Recorder` — no messy build folders for end users.
+  - Installs cleanly per-user with **zero Administrator UAC elevation prompts required** and seamless in-place auto-update capability.
+  - Automatically detects Windows locale to display the installation wizard in **English** or **Hungarian**.
+  - Adds branded **Desktop** and **Start Menu** shortcuts and a clean uninstaller registered in Windows Settings (*Installed Apps*).
+- 🛠️ **Dual Distribution Architecture**:
+  - Automatically compiles both the modern setup installer (`LeagueVoiceRecorder-Setup-*.exe`) and the standalone portable zip (`LeagueVoiceRecorder-Windows-x64.zip`) in both local build scripts and GitHub Actions release workflows.
+- 🛡️ **Web Showcase Security Hardening (CodeQL Resolution)**:
+  - Completely resolved GitHub CodeQL alert #2 (CWE-79 DOM-based XSS) in `web/js/app.js` by replacing all `innerHTML` assignments with safe DOM construction and `textContent`.
+  - Repository security audit now reports 0 open vulnerabilities.
 
 ---
 

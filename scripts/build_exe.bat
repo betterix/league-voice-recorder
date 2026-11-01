@@ -45,8 +45,8 @@ uv run --python 3.14.10 python -m nuitka ^
     --windows-icon-from-ico=assets\icon.ico ^
     --company-name="betterix" ^
     --product-name="League Voice Recorder" ^
-    --file-version=0.3.2.0 ^
-    --product-version=0.3.2.0 ^
+    --file-version=0.3.3.0 ^
+    --product-version=0.3.3.0 ^
     --file-description="League Voice Recorder & Replay Synchronizer" ^
     --copyright="Copyright (c) 2026 betterix. GPL-3.0 License." ^
     --enable-plugin=tk-inter ^
@@ -106,9 +106,32 @@ if exist "dist\main.build" (
     rd /s /q "dist\main.build"
 )
 
+rem Check for Inno Setup compiler (ISCC)
+set "ISCC_EXE="
+where iscc >nul 2>nul && set "ISCC_EXE=iscc"
+if not defined ISCC_EXE if exist "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" set "ISCC_EXE=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
+if not defined ISCC_EXE if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" set "ISCC_EXE=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+if not defined ISCC_EXE if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" set "ISCC_EXE=%ProgramFiles%\Inno Setup 6\ISCC.exe"
+
+if defined ISCC_EXE (
+    echo.
+    echo ========================================================
+    echo Compiling Windows Setup Installer with Inno Setup...
+    echo ========================================================
+    "%ISCC_EXE%" installer.iss
+    if %ERRORLEVEL% EQU 0 (
+        echo [OK] Installer created in dist\
+    ) else (
+        echo [WARN] Inno Setup compilation had issues.
+    )
+) else (
+    echo [INFO] Inno Setup not found. Skipping installer generation. (Install with: winget install JRSoftware.InnoSetup)
+)
+
 echo.
 echo ========================================================
-echo Nuitka Build Succeeded!
-echo Standalone distribution created at: dist\LeagueVoiceRecorder\
+echo Build Succeeded!
+echo Standalone distribution: dist\LeagueVoiceRecorder\
+if defined ISCC_EXE echo Setup Installer:         dist\LeagueVoiceRecorder-Setup-v0.3.3.exe
 echo ========================================================
 pause

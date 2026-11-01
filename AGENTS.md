@@ -24,6 +24,7 @@ The project provides both:
 League Voice Recorder/
 │
 ├── main.py                 # Primary Desktop GUI application entrypoint
+├── installer.iss           # Inno Setup 6 dual-language Windows installer script
 ├── scripts/                # Windows automation & build scripts
 │   ├── start_ui.bat        # Windows quick-launcher for the GUI
 │   ├── run_tests.bat       # Automated test suite runner batch script
@@ -310,13 +311,12 @@ uv run python -m unittest discover tests -v
 uvx ruff check .
 ```
 
-### 5.4 Standalone Executable Packaging
-The application is compiled into a standalone Windows binary distribution using `Nuitka` in `--standalone` mode.
+### 5.4 Standalone Executable & Installer Packaging
+The application is compiled into a standalone Windows binary distribution using `Nuitka` in `--standalone` mode and packaged into an installer via `Inno Setup`.
 - Built via batch script: `.\scripts\build_exe.bat`
-- Output directory: `dist/LeagueVoiceRecorder/` containing:
-  - `LeagueVoiceRecorder.exe`: Standalone binary with instant startup (<100ms) and zero runtime extraction overhead.
-  - Python runtime DLL, dependency libraries, and Tkinter assets.
-  - `locales/` directory for built-in and community translation JSON files.
+- Output artifacts in `dist/`:
+  - `dist/LeagueVoiceRecorder/`: Standalone folder containing `LeagueVoiceRecorder.exe`, Python runtime DLLs, dependency libraries, and `locales/`.
+  - `dist/LeagueVoiceRecorder-Setup-v*.exe`: 1-click Inno Setup Windows installer wizard with dual-language support (English/Hungarian), desktop & Start Menu shortcuts, per-user `%LOCALAPPDATA%` installation, and automatic uninstaller.
 - Automatically cleans up `dist/main.build` after compilation to conserve disk space.
 - Automatically creates `config.json` next to the binary on first run.
 

@@ -14,9 +14,9 @@ const i18n = {
     nav_setup: "Setup Guide",
     nav_architecture: "Architecture",
     nav_faq: "FAQ",
-    nav_download: "Download v0.3.2",
+    nav_download: "Download v0.3.3",
 
-    hero_badge: "v0.3.2 Released • Windows 10/11 64-bit • Open Source",
+    hero_badge: "v0.3.3 Released • Windows 10/11 64-bit • Open Source",
     hero_title_1: "Frame-Accurate Scrim Comms &",
     hero_title_2: "Replay Synchronization",
     hero_title_3: "For League of Legends",
@@ -68,7 +68,7 @@ const i18n = {
     sim_tab_settings: "⚙️ Settings",
     sim_mic_select: "Microphone Device:",
     sim_settings_update: "Software Updates:",
-    sim_settings_update_status: "● You are running the latest version (v0.3.2)",
+    sim_settings_update_status: "● You are running the latest version (v0.3.3)",
     sim_settings_update_btn: "🔄 Check for Updates",
 
     engines_tag: "THE DUAL-ENGINE ARCHITECTURE",
@@ -131,7 +131,7 @@ const i18n = {
 
     cta_title: "Ready To Elevate Your Scrim Reviews?",
     cta_desc: "Download League Voice Recorder for Windows 10 & 11 today. Completely free, open source, and built for competitive League.",
-    cta_btn_download: "Download v0.3.2 Release",
+    cta_btn_download: "Download v0.3.3 Release",
     cta_btn_repo: "Star on GitHub",
 
     footer_desc: "Automated Discord voice comms capture & frame-accurate replay audio synchronization for League of Legends esports teams.",
@@ -145,9 +145,9 @@ const i18n = {
     nav_setup: "Telepítés",
     nav_architecture: "Architektúra",
     nav_faq: "GYIK",
-    nav_download: "Letöltés v0.3.2",
+    nav_download: "Letöltés v0.3.3",
 
-    hero_badge: "v0.3.2 Megjelent • Windows 10/11 64-bit • Nyílt forráskód",
+    hero_badge: "v0.3.3 Megjelent • Windows 10/11 64-bit • Nyílt forráskód",
     hero_title_1: "Képkocka-Pontos Scrim Hang &",
     hero_title_2: "Visszajátszás Szinkronizáció",
     hero_title_3: "League of Legends-hez",
@@ -199,7 +199,7 @@ const i18n = {
     sim_tab_settings: "⚙️ Beállítások",
     sim_mic_select: "Mikrofon Eszköz:",
     sim_settings_update: "Szoftverfrissítések:",
-    sim_settings_update_status: "● A legfrissebb verziót használod (v0.3.2)",
+    sim_settings_update_status: "● A legfrissebb verziót használod (v0.3.3)",
     sim_settings_update_btn: "🔄 Frissítések keresése",
 
     engines_tag: "A KETTŐS MOTOR ARCHITEKTÚRA",
@@ -262,7 +262,7 @@ const i18n = {
 
     cta_title: "Készen Állsz Szintre Emelni a Scrim Elemzést?",
     cta_desc: "Töltsd le a League Voice Recorder-t Windows 10 és 11 rendszerekre még ma. Teljesen ingyenes, nyílt forráskódú és esportra szabott.",
-    cta_btn_download: "v0.3.2 Kiadás Letöltése",
+    cta_btn_download: "v0.3.3 Kiadás Letöltése",
     cta_btn_repo: "Csillagozd GitHubon",
 
     footer_desc: "Automatizált Discord hangrögzítő és képkocka-pontos League of Legends visszajátszás-szinkronizáló esport csapatoknak.",
@@ -774,10 +774,10 @@ function initSimulator() {
           statusEl.replaceChildren();
           const span = document.createElement("span");
           span.style.color = "#4ade80";
-          span.textContent = "● You are running the latest version (v0.3.2)";
+          span.textContent = "● You are running the latest version (v0.3.3)";
           statusEl.appendChild(span);
         }
-        appendSimLog("✅ [UPDATER] Version check complete. Running latest release v0.3.2.", "success");
+        appendSimLog("✅ [UPDATER] Version check complete. Running latest release v0.3.3.", "success");
       }, 900);
     });
   }
