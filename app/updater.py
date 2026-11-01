@@ -234,12 +234,21 @@ def download_and_install_update(download_url, progress_callback=None, timeout=60
     if is_zip and extracted_app_dir:
         bat_content = f"""@echo off
 setlocal
-powershell -NoProfile -Command "Wait-Process -Id {current_pid} -Timeout 5 -ErrorAction SilentlyContinue"
+set RETRIES=0
+:WAIT_PID
+tasklist /fi "PID eq {current_pid}" 2>nul | find "{current_pid}" >nul
+if not errorlevel 1 (
+    timeout /t 1 /nobreak >nul
+    set /a RETRIES+=1
+    if %RETRIES% lss 8 goto WAIT_PID
+)
 
-robocopy "{extracted_app_dir}" "{target_dir}" /E /IS /IT /MT:8 /R:2 /W:1 /NFL /NDL /NJH /NJS /nc /ns /np
+robocopy "{extracted_app_dir}" "{target_dir}" /E /IS /IT /MT:8 /R:5 /W:1 /NFL /NDL /NJH /NJS /nc /ns /np
+
+timeout /t 1 /nobreak >nul
 
 if exist "{target_exe}" (
-    start "" "{target_exe}"
+    start "" /d "{target_dir}" "{target_exe}"
 )
 
 rd /s /q "{temp_extract_dir}" >nul 2>&1
@@ -250,12 +259,21 @@ del "%~f0" >nul 2>&1
         # Inno Setup silent in-place update
         bat_content = f"""@echo off
 setlocal
-powershell -NoProfile -Command "Wait-Process -Id {current_pid} -Timeout 5 -ErrorAction SilentlyContinue"
+set RETRIES=0
+:WAIT_PID
+tasklist /fi "PID eq {current_pid}" 2>nul | find "{current_pid}" >nul
+if not errorlevel 1 (
+    timeout /t 1 /nobreak >nul
+    set /a RETRIES+=1
+    if %RETRIES% lss 8 goto WAIT_PID
+)
 
-start /wait "" "{download_path}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+start /wait "" "{download_path}" /VERYSILENT /SUPPRESSMSGBOXES /FORCECLOSEAPPLICATIONS /NORESTART
+
+timeout /t 1 /nobreak >nul
 
 if exist "{target_exe}" (
-    start "" "{target_exe}"
+    start "" /d "{target_dir}" "{target_exe}"
 )
 
 del /f /q "{download_path}" >nul 2>&1
@@ -264,12 +282,21 @@ del "%~f0" >nul 2>&1
     else:
         bat_content = f"""@echo off
 setlocal
-powershell -NoProfile -Command "Wait-Process -Id {current_pid} -Timeout 5 -ErrorAction SilentlyContinue"
+set RETRIES=0
+:WAIT_PID
+tasklist /fi "PID eq {current_pid}" 2>nul | find "{current_pid}" >nul
+if not errorlevel 1 (
+    timeout /t 1 /nobreak >nul
+    set /a RETRIES+=1
+    if %RETRIES% lss 8 goto WAIT_PID
+)
 
 copy /y "{download_path}" "{target_exe}" >nul
 
+timeout /t 1 /nobreak >nul
+
 if exist "{target_exe}" (
-    start "" "{target_exe}"
+    start "" /d "{target_dir}" "{target_exe}"
 )
 
 del /f /q "{download_path}" >nul 2>&1
@@ -281,10 +308,11 @@ del "%~f0" >nul 2>&1
 
     # Detached background process with hidden console
     CREATE_NO_WINDOW = 0x08000000
+    DETACHED_PROCESS = 0x00000008
     subprocess.Popen(
         ["cmd.exe", "/c", bat_path],
-        creationflags=CREATE_NO_WINDOW,
+        creationflags=CREATE_NO_WINDOW | DETACHED_PROCESS,
         close_fds=True,
     )
-    time.sleep(0.1)
+    time.sleep(0.3)
     os._exit(0)
