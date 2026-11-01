@@ -39,14 +39,16 @@ echo Tk directory:  %TK_DIR%
 rem Compile with Nuitka native C compiler (Standalone mode)
 uv run --python 3.14.10 python -m nuitka ^
     --standalone ^
+    --jobs=%NUMBER_OF_PROCESSORS% ^
+    --lto=no ^
     --windows-console-mode=disable ^
     --assume-yes-for-downloads ^
     --include-windows-runtime-dlls=yes ^
     --windows-icon-from-ico=assets\icon.ico ^
     --company-name="betterix" ^
     --product-name="League Voice Recorder" ^
-    --file-version=0.3.3.0 ^
-    --product-version=0.3.3.0 ^
+    --file-version=0.3.4.0 ^
+    --product-version=0.3.4.0 ^
     --file-description="League Voice Recorder & Replay Synchronizer" ^
     --copyright="Copyright (c) 2026 betterix. GPL-3.0 License." ^
     --enable-plugin=tk-inter ^
@@ -132,6 +134,6 @@ echo.
 echo ========================================================
 echo Build Succeeded!
 echo Standalone distribution: dist\LeagueVoiceRecorder\
-if defined ISCC_EXE echo Setup Installer:         dist\LeagueVoiceRecorder-Setup-v0.3.3.exe
+if defined ISCC_EXE echo Setup Installer:         dist\LeagueVoiceRecorder-Setup-v0.3.4.exe
 echo ========================================================
 pause

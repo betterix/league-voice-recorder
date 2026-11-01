@@ -4,7 +4,7 @@ title League Voice Recorder - Test Suite
 echo ========================================================
 echo Running League Voice Recorder Automated Test Suite...
 echo ========================================================
-uv run python -m unittest discover tests -v
+uv run pytest
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo Tests finished with errors.

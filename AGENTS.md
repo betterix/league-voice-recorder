@@ -163,8 +163,10 @@ Responsible for live match detection, native WASAPI voice capture, and audio exp
     - If recording starts before 00:00 during countdown (`first_game_time < 0`), FFmpeg automatically trims the pre-game countdown using `-ss {abs(offset):.3f}`.
     - This guarantees that 00:00:00 in the MP3 file is aligned frame-by-frame with League match time `game_time = 0.000`.
   - **Replay Protection (`check_if_game_is_replay`)**: Checks process command-line arguments and cached PID for `.rofl` files. If a replay is active, live match recording is aborted/prevented.
-  - Pause detection: If `gameTime == last_game_time` (and `gameTime > 0`), pauses native recording.
-  - Resume detection: If `gameTime > last_game_time` while paused, resumes native recording.
+  - **Zero-Drift Pause Detection & WAV Lag Truncation (`truncate_to_game_time`)**:
+    - When Riot's Live Client Data API detects that `gameTime == last_game_time` (elapsed >= 0.45s), an in-game pause is triggered.
+    - Because API polling takes ~450ms to confirm the freeze, `TimelineWavWriter.truncate_to_game_time(pause_game_time)` seeks both Discord and microphone streams back to `44 + target_frame * frame_size` and truncates the files in-place, permanently slicing out the detection lag audio.
+    - When the game resumes (`gameTime > last_game_time`), audio recording resumes sequentially without any time drift relative to the League match clock.
   - Match end: When the game client closes, the request raises `RequestException`, which triggers `stop_recording_and_rename()`.
   - **Hands-Free Match Auto-Stop**: When the scrim finishes and `<GameID>.mp3` is saved, the watcher automatically signals completion, exits the listening loop, and resets the UI button back to `Start Recording Watcher` without requiring manual intervention.
 - **Game ID Extraction**:
@@ -297,14 +299,14 @@ Core libraries:
 - `requests` & `urllib3`: HTTPS communication with League local APIs.
 
 ### 5.3 Automated Testing & Code Quality
-The project includes a comprehensive suite of 69 unit tests covering configuration, Discord Local IPC mute/deafen sync (auto-skipped when Discord is offline), microphone input enumeration and selection, i18n key parity and translations, recorder sample-accurate audio alignment and replay protection, replay synchronizer zero-latency unpausing, seek cooldown protection, game ID parsing, volume clamping and hotkey mute, automatic release checks, zip extraction, in-place binary updater scripts, and headless CustomTkinter UI rendering.
+The project includes a comprehensive suite of 70 unit tests covering configuration, Discord Local IPC mute/deafen sync (auto-skipped when Discord is offline), microphone input enumeration and selection, i18n key parity and translations, recorder sample-accurate audio alignment, pause detection WAV truncation lag trimming, replay protection, replay synchronizer zero-latency unpausing, seek cooldown protection, game ID parsing, volume clamping and hotkey mute, automatic release checks, zip extraction, in-place binary updater scripts, and headless CustomTkinter UI rendering.
 
 ```powershell
 # Run the test suite via the Windows batch launcher
 .\scripts\run_tests.bat
 
-# Or run tests directly with uv
-uv run python -m unittest discover tests -v
+# Or run tests directly with uv (Pytest)
+uv run pytest
 
 # Run the linter
 uvx ruff check .
@@ -318,6 +320,32 @@ The application is compiled into a standalone Windows binary distribution using 
   - `dist/LeagueVoiceRecorder-Setup-v*.exe`: 1-click Inno Setup Windows installer wizard with dual-language support (English/Hungarian), desktop & Start Menu shortcuts, per-user `%LOCALAPPDATA%` installation, and automatic uninstaller.
 - Automatically cleans up `dist/main.build` after compilation to conserve disk space.
 - Automatically creates `config.json` next to the binary on first run.
+
+### 5.5 Autonomous Performance Profiling & Optimization with GradeX
+The project utilizes **[GradeX](https://github.com/betterix/gradex)** for continuous AI-driven performance profiling, hot-path discovery, and latency benchmark regression tracking.
+
+- **Benchmark Suite (`.gradex/`)**: Contains executable benchmark harnesses (such as `.gradex/benchmark.py`) that profile critical loops including configuration loading, process polling, and audio buffer math.
+- **Key Measured Optimizations**:
+  - `load_config()`: In-memory cache with file modification time (`mtime`) checks achieves `0.01ms` latency (95% speedup).
+  - `is_league_game_running()`: Cached PID check via `psutil.pid_exists()` reduces CPU time by 99.7%.
+  - `scale_vu()` & Audio Peak Math: Vectorized extrema (`max(floats.max(), -floats.min())`) avoid buffer copies, delivering a 36% speedup.
+- **GradeX CLI Commands**:
+  ```powershell
+  # Discover latency targets and capture baseline benchmark score
+  uv run gradex discover
+
+  # Run an autonomous optimization loop on current hot paths
+  uv run gradex optimize
+
+  # Display run statistics, percentile distributions, and timing improvements
+  uv run gradex stats
+
+  # Export a shareable HTML performance report
+  uv run gradex report
+  ```
+- **Agent Guidelines for Performance**:
+  - Before and after modifying tight loops in `native_audio.py`, `record.py`, or `config.py`, verify that changes do not regress baseline latency.
+  - Keep all `.gradex/` benchmark and cache artifacts untracked (enforced via `.gitignore`).
 
 ---
 

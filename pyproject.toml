@@ -1,6 +1,6 @@
 [project]
 name = "league-scrim-recorder"
-version = "0.3.3"
+version = "0.3.4"
 description = "Record League of Legends scrim voice audio and synchronize it with replay playback."
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -46,6 +46,11 @@ ignore = [
     "I001",     # Import block is un-sorted or un-formatted
     "PLW1510",  # `subprocess.run` without explicit `check` argument
     "SIM102",   # Use a single `if` statement instead of nested `if` statements
+]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::urllib3.exceptions.InsecureRequestWarning",
 ]
 
 [dependency-groups]

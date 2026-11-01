@@ -35,7 +35,15 @@ jobs:
           choco install vlc --no-progress -y
 
       - name: Run automated test suite
-        run: uv run python -m unittest discover tests -v
+        run: uv run pytest
+
+      - name: Cache Nuitka compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\Nuitka\Nuitka\Cache
+          key: nuitka-cache-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            nuitka-cache-${{ runner.os }}-
 
       - name: Compile Windows executable with Nuitka
         shell: pwsh
@@ -50,14 +58,16 @@ jobs:
           uv run --python 3.14.10 python -m nuitka `
             --standalone `
             --msvc=latest `
+            --jobs=$env:NUMBER_OF_PROCESSORS `
+            --lto=no `
             --windows-console-mode=disable `
             --assume-yes-for-downloads `
             --include-windows-runtime-dlls=yes `
             --windows-icon-from-ico=assets/icon.ico `
             --company-name="betterix" `
             --product-name="League Voice Recorder" `
-            --file-version=0.3.3.0 `
-            --product-version=0.3.3.0 `
+            --file-version=0.3.4.0 `
+            --product-version=0.3.4.0 `
             --file-description="League Voice Recorder & Replay Synchronizer" `
             --copyright="Copyright (c) 2026 betterix. GPL-3.0 License." `
             --enable-plugin=tk-inter `

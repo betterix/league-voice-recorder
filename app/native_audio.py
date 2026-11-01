@@ -43,6 +43,7 @@ def get_shared_pyaudio():
 
 _VU_NOISE_THRESHOLD = 0.0002
 _INV_VU_RANGE = 1.0 / (1.0 - _VU_NOISE_THRESHOLD)
+_INV_INT16_MAX = 1.0 / 32767.0
 
 
 def scale_vu(peak):
@@ -415,6 +416,22 @@ class TimelineWavWriter:
                     w = min(gap, len(chunk))
                     self.file.write(chunk[:w])
                     gap -= w
+                self.current_frame = target_frame
+
+    def truncate_to_game_time(self, game_time):
+        """
+        Rewinds and truncates the WAV file back to the exact frame of game_time.
+        Removes any audio frames written during pause-detection lag.
+        """
+        with self.lock:
+            if self.file.closed or game_time is None or game_time < 0:
+                return
+            target_frame = int(game_time * self.sample_rate)
+            target_byte = 44 + target_frame * self.frame_size
+            fsize = self.file_size()
+            if target_byte < fsize:
+                self.file.seek(target_byte)
+                self.file.truncate()
                 self.current_frame = target_frame
 
     def write_frames(self, pcm_bytes):
@@ -885,7 +902,7 @@ class NativeAudioRecorder:
                 if d:
                     floats = np.frombuffer(d, dtype=np.float32)
                     if len(floats) > 0:
-                        peak = float(np.max(np.abs(floats)))
+                        peak = max(float(floats.max()), -float(floats.min()))
                         self.current_app_level = max(peak, self.current_app_level * 0.85)
 
                     if not self.is_paused:
@@ -927,7 +944,7 @@ class NativeAudioRecorder:
                     try:
                         floats = np.frombuffer(chunk, dtype=np.int16)
                         if len(floats) > 0:
-                            peak = float(np.max(np.abs(floats))) / 32767.0
+                            peak = max(int(floats.max()), -int(floats.min())) * _INV_INT16_MAX
                             self.current_mic_level = max(peak, self.current_mic_level * 0.85)
                     except Exception:
                         pass
@@ -938,12 +955,28 @@ class NativeAudioRecorder:
         except Exception as e:
             self.log(f"Mic writer error: {e}")
 
-    def pause(self):
-        """Marks recording paused when match is paused."""
+    def pause(self, pause_game_time=None):
+        """Marks recording paused when match is paused and trims detection lag."""
         with self._buffer_lock:
             self.is_paused = True
             self._discord_staging.clear()
             self._mic_staging.clear()
+
+        # Drain any mic chunks that were queued during the detection lag
+        while not self._mic_queue.empty():
+            try:
+                self._mic_queue.get_nowait()
+            except queue.Empty:
+                break
+
+        # Trim frames written during detection lag back to the moment the game paused
+        if pause_game_time is not None and pause_game_time > 0:
+            self.latest_game_time = pause_game_time
+            if self._discord_writer:
+                self._discord_writer.truncate_to_game_time(pause_game_time)
+            if self._mic_writer:
+                self._mic_writer.truncate_to_game_time(pause_game_time)
+
         self.log("Recording paused.")
 
     def resume(self):

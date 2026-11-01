@@ -397,6 +397,34 @@ class TestRecorderModule(unittest.TestCase):
         self.assertEqual(rec.native_recorder.mic_device, -1)
         self.assertEqual(rec.native_recorder.mic_device_name, "default")
 
+    def test_timeline_wav_writer_pause_truncation_trims_detection_lag(self):
+        """When match pauses, truncate_to_game_time trims audio recorded during pause-detection lag."""
+        from app.native_audio import TimelineWavWriter
+        import wave
+
+        wav_path = os.path.join(self.temp_dir.name, "pause_trim_test.wav")
+        writer = TimelineWavWriter(wav_path, channels=2, sample_rate=48000)
+
+        # 1. Match active up to 10.0s
+        writer.write_frames(b"\x11\x22\x33\x44" * (48000 * 10))
+
+        # 2. Pause detection lag writes 0.45s extra (21600 frames)
+        writer.write_frames(b"\x55\x66\x77\x88" * 21600)
+        self.assertEqual(writer.current_frame, 48000 * 10 + 21600)
+
+        # 3. Pause detected at 10.0s: truncate back to 10.0s
+        writer.truncate_to_game_time(10.0)
+        self.assertEqual(writer.current_frame, 48000 * 10)
+        self.assertEqual(writer.file_size(), 44 + (48000 * 10 * 4))
+
+        # 4. Resume and record 5 more seconds
+        writer.write_frames(b"\x99\xaa\xbb\xcc" * (48000 * 5))
+        writer.close()
+
+        with wave.open(wav_path, "rb") as wf:
+            dur = wf.getnframes() / wf.getframerate()
+            self.assertEqual(dur, 15.0, "Total duration must be exactly 15.0s, with lag cleanly trimmed")
+
 
 if __name__ == "__main__":
     unittest.main()

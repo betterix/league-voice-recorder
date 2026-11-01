@@ -170,10 +170,23 @@ def get_default_config():
     }
 
 
+_CONFIG_CACHE = None
+_CONFIG_MTIME = 0.0
+
+
 def load_config():
     """Load configuration from Documents/League Voice Recorder/config.json and ensure target folders exist."""
-    config = get_default_config()
+    global _CONFIG_CACHE, _CONFIG_MTIME
+
     config_path = get_config_file_path()
+    try:
+        current_mtime = os.path.getmtime(config_path)
+        if _CONFIG_CACHE is not None and current_mtime == _CONFIG_MTIME:
+            return _CONFIG_CACHE.copy()
+    except OSError:
+        current_mtime = 0.0
+
+    config = get_default_config()
     legacy_config_path = os.path.join(PROJECT_ROOT, "config.json")
 
     # Migrate from legacy project root config.json to Documents folder if not yet migrated
@@ -206,11 +219,18 @@ def load_config():
     config["record_folder"] = resolve_path(config.get("record_folder"))
     os.makedirs(config["record_folder"], exist_ok=True)
 
+    _CONFIG_CACHE = config.copy()
+    _CONFIG_MTIME = current_mtime
+
     return config
 
 
 def save_config(config_data):
     """Save configuration dictionary to Documents/League Voice Recorder/config.json and synchronize .env."""
+    global _CONFIG_CACHE, _CONFIG_MTIME
+    _CONFIG_CACHE = None
+    _CONFIG_MTIME = 0.0
+
     success = True
     config_path = get_config_file_path()
     try:

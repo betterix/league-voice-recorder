@@ -265,8 +265,7 @@ class LeagueRecorder:
                     is_rofl = any(arg.lower().endswith(".rofl") for arg in cmdline)
                     self._cached_game_pid = pid
                     self._cached_is_replay = is_rofl
-                    if is_rofl:
-                        return True
+                    return is_rofl
         except Exception:
             pass
 
@@ -288,10 +287,20 @@ class LeagueRecorder:
 
     def is_league_game_running(self):
         """Checks if the League of Legends 3D game client process is currently running."""
+        # Fast-path: query cached game PID directly
+        if self._cached_game_pid:
+            try:
+                p = psutil.Process(self._cached_game_pid)
+                if p.is_running() and "League of Legends.exe" in (p.name() or ""):
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                self._cached_game_pid = None
+
         try:
-            for proc in psutil.process_iter(["name"]):
+            for proc in psutil.process_iter(["pid", "name"]):
                 try:
-                    if "League of Legends.exe" in (proc.info["name"] or ""):
+                    if "League of Legends.exe" in (proc.info.get("name") or ""):
+                        self._cached_game_pid = proc.info.get("pid")
                         return True
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
@@ -427,7 +436,7 @@ class LeagueRecorder:
                         port = data[2]
                         password = data[3]
                         auth = base64.b64encode(f"riot:{password}".encode()).decode()
-                        r = requests.get(
+                        r = self.session.get(
                             f"https://127.0.0.1:{port}/lol-gameflow/v1/session",
                             headers={"Authorization": f"Basic {auth}"},
                             verify=False,
@@ -540,7 +549,7 @@ class LeagueRecorder:
                             if (
                                 self.pause_tick_count >= 20 or elapsed_unchanged >= 0.45
                             ) and not self.is_paused:
-                                self.native_recorder.pause()
+                                self.native_recorder.pause(pause_game_time=self.last_game_time)
                                 self.is_paused = True
                                 self.log(t("logs.pause"))
                                 p_time_val = max(0.0, game_time)
@@ -554,25 +563,28 @@ class LeagueRecorder:
                         elif game_time > self.last_game_time:
                             self.pause_tick_count = 0
                             self.last_advance_time = time.monotonic()
-                            time_val = max(0.0, game_time)
-                            time_str = f"{int(time_val // 60):02d}:{int(time_val % 60):02d}"
-                            if self.real_game_id:
-                                detail_text = t(
-                                    "record.match_time",
-                                    game_id=self.real_game_id,
-                                    time=time_str,
-                                )
-                            else:
-                                detail_text = t("record.live_match_time", time=time_str)
 
                             if self.is_paused:
                                 self.native_recorder.resume()
                                 self.is_paused = False
                                 self.log(t("logs.unpause"))
+                                time_val = max(0.0, game_time)
+                                time_str = f"{int(time_val // 60):02d}:{int(time_val % 60):02d}"
+                                detail_text = (
+                                    t("record.match_time", game_id=self.real_game_id, time=time_str)
+                                    if self.real_game_id
+                                    else t("record.live_match_time", time=time_str)
+                                )
                                 self.update_status("RECORDING", detail_text)
-                            else:
-                                if int(game_time) != int(self.last_game_time):
-                                    self.update_status("RECORDING", detail_text)
+                            elif int(game_time) != int(self.last_game_time):
+                                time_val = max(0.0, game_time)
+                                time_str = f"{int(time_val // 60):02d}:{int(time_val % 60):02d}"
+                                detail_text = (
+                                    t("record.match_time", game_id=self.real_game_id, time=time_str)
+                                    if self.real_game_id
+                                    else t("record.live_match_time", time=time_str)
+                                )
+                                self.update_status("RECORDING", detail_text)
 
                         self.last_game_time = game_time
 
