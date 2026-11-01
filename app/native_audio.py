@@ -41,6 +41,10 @@ def get_shared_pyaudio():
         return _SHARED_PYAUDIO
 
 
+_VU_NOISE_THRESHOLD = 0.0002
+_INV_VU_RANGE = 1.0 / (1.0 - _VU_NOISE_THRESHOLD)
+
+
 def scale_vu(peak):
     """
     Transforms linear peak amplitude (0.0 to 1.0) into a responsive, balanced VU meter value.
@@ -48,9 +52,9 @@ def scale_vu(peak):
     - Balanced power curve (0.42) ensures the visualizer moves actively with normal speech
       without maxing out or being hyper-sensitive to room noise.
     """
-    if peak <= 0.0002:
+    if peak <= _VU_NOISE_THRESHOLD:
         return 0.0
-    val = ((peak - 0.0002) / (1.0 - 0.0002)) ** 0.42
+    val = ((peak - _VU_NOISE_THRESHOLD) * _INV_VU_RANGE) ** 0.42
     return max(0.0, min(1.0, float(val)))
 
 

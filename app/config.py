@@ -1,10 +1,11 @@
+import functools
 import json
 import os
 from pathlib import Path
 import shutil
+import sys
 
 from dotenv import load_dotenv, set_key
-import sys
 
 _KEY_MAPPINGS = (
     ("record_folder", "RECORD_FOLDER"),
@@ -113,6 +114,7 @@ CONFIG_FILE = get_config_file_path()
 load_dotenv(DOTENV_PATH)
 
 
+@functools.lru_cache(maxsize=128)
 def resolve_path(path_str):
     """
     Expands environment variables (like %USERPROFILE%) and user home (~)
@@ -239,6 +241,7 @@ def save_config(config_data):
     return success
 
 
+@functools.lru_cache(maxsize=1)
 def get_ffmpeg_path():
     """Finds the ffmpeg executable (system PATH, local, or winget install)."""
     if shutil.which("ffmpeg"):

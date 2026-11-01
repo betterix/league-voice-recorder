@@ -17,8 +17,16 @@ import requests
 
 if sys.platform.startswith("win"):
     import msvcrt
+
+    try:
+        _PeekNamedPipe = ctypes.windll.kernel32.PeekNamedPipe
+    except Exception:
+        _PeekNamedPipe = None
 else:
     msvcrt = None
+    _PeekNamedPipe = None
+
+_HEADER_STRUCT = struct.Struct("<II")
 
 logger = logging.getLogger(__name__)
 
@@ -249,12 +257,12 @@ class DiscordMuteWatcher:
 
     def _peek_bytes(self, pipe):
         """Returns number of bytes available in the pipe, or -1 if broken."""
-        if msvcrt is None:
+        if msvcrt is None or _PeekNamedPipe is None:
             return 0
         try:
             handle = msvcrt.get_osfhandle(pipe.fileno())
             avail = ctypes.c_ulong(0)
-            res = ctypes.windll.kernel32.PeekNamedPipe(
+            res = _PeekNamedPipe(
                 handle, None, 0, None, ctypes.byref(avail), None
             )
             if not res:
@@ -282,7 +290,7 @@ class DiscordMuteWatcher:
             hdr = pipe.read(8)
             if not hdr or len(hdr) < 8:
                 return None, None
-            op, length = struct.unpack("<II", hdr)
+            op, length = _HEADER_STRUCT.unpack(hdr)
             if length <= 0:
                 return op, {}
 
@@ -310,7 +318,7 @@ class DiscordMuteWatcher:
         """Encodes and writes an IPC frame to the named pipe."""
         try:
             payload_bytes = json.dumps(payload_dict).encode("utf-8")
-            hdr = struct.pack("<II", opcode, len(payload_bytes))
+            hdr = _HEADER_STRUCT.pack(opcode, len(payload_bytes))
             pipe.write(hdr + payload_bytes)
             return True
         except Exception:

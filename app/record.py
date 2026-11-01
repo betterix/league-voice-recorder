@@ -212,7 +212,7 @@ class LeagueRecorder:
                         password = data[3]
                         auth = base64.b64encode(f"riot:{password}".encode()).decode()
 
-                        r = requests.get(
+                        r = self.session.get(
                             f"https://127.0.0.1:{port}/lol-gameflow/v1/session",
                             headers={"Authorization": f"Basic {auth}"},
                             verify=False,
