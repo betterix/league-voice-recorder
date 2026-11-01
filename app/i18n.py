@@ -26,6 +26,7 @@ _current_language: str = DEFAULT_LANGUAGE
 _translations: dict[str, dict] = {}
 _available_languages: dict[str, str] = {}
 _listeners: list[Callable[[], None]] = []
+_resolved_cache: dict[str, str] = {}
 
 
 def _get_locales_search_dirs() -> list[str]:
@@ -146,6 +147,7 @@ def set_language(lang_code: str) -> None:
 
     old_lang = _current_language
     _current_language = lang_code
+    _resolved_cache.clear()
 
     if old_lang != _current_language:
         for cb in list(_listeners):
@@ -185,6 +187,11 @@ def t(key: str, **kwargs) -> str:
     Falls back to English if missing in the active language, or the key string itself.
     Formats placeholders if kwargs are provided.
     """
+    if not kwargs:
+        cached = _resolved_cache.get(key)
+        if cached is not None:
+            return cached
+
     # Ensure current language is loaded
     if _current_language not in _translations:
         load_locale(_current_language)
@@ -211,6 +218,7 @@ def t(key: str, **kwargs) -> str:
         except Exception:
             return val
 
+    _resolved_cache[key] = val
     return val
 
 

@@ -1,4 +1,4 @@
-import glob
+import functools
 import os
 from pathlib import Path
 import sys
@@ -37,10 +37,13 @@ requests.packages.urllib3.disable_warnings()
 DEFAULT_AUDIO_DIRECTORY = os.path.join(PROJECT_ROOT, "recordings")
 
 
+@functools.lru_cache(maxsize=256)
 def parse_rofl_game_id(rofl_path):
     """Extracts the Game ID from the .rofl replay filename."""
     try:
-        filename = os.path.basename(rofl_path).replace(".rofl", "")
+        filename = os.path.basename(rofl_path)
+        if filename.lower().endswith(".rofl"):
+            filename = filename[:-5]
         if "-" in filename:
             raw_id = filename.split("-")[-1]
             if raw_id.isdigit():
@@ -100,21 +103,30 @@ def find_matching_audio_file(audio_directory, game_id):
     if not game_id or not audio_directory or not os.path.exists(audio_directory):
         return None
 
-    pattern = os.path.join(audio_directory, f"{game_id}*.mp3")
-    candidates = glob.glob(pattern)
+    prefix = str(game_id)
+    candidates: list[tuple[str, int, float]] = []
+    try:
+        with os.scandir(audio_directory) as it:
+            for entry in it:
+                if entry.name.startswith(prefix) and entry.name.lower().endswith(".mp3"):
+                    try:
+                        stat = entry.stat()
+                        candidates.append((entry.path, stat.st_size, stat.st_mtime))
+                    except OSError:
+                        pass
+    except OSError:
+        return None
+
     if not candidates:
         return None
 
     # Filter out empty or tiny stubs (< 10 KB, typically failed recordings < 1 sec)
-    valid_candidates = [
-        f for f in candidates if os.path.isfile(f) and os.path.getsize(f) > 10 * 1024
-    ]
-
-    # If all candidates are tiny, fall back to whatever is available
+    valid_candidates = [c for c in candidates if c[1] > 10 * 1024]
     pool = valid_candidates if valid_candidates else candidates
+
     # Sort by file size descending, then modification time descending
-    pool.sort(key=lambda p: (os.path.getsize(p), os.path.getmtime(p)), reverse=True)
-    return pool[0]
+    pool.sort(key=lambda c: (c[1], c[2]), reverse=True)
+    return pool[0][0]
 
 
 def create_vlc_instance():

@@ -48,17 +48,10 @@ ignore = [
     "SIM102",   # Use a single `if` statement instead of nested `if` statements
 ]
 
-[tool.codeflash]
-# All paths are relative to this pyproject.toml's directory.
-module-root = "app"
-tests-root = "tests"
-ignore-paths = []
-disable-telemetry = true
-formatter-cmds = ["ruff check --exit-zero --fix $file", "ruff format $file"]
-
 [dependency-groups]
 dev = [
-    "codeflash>=0.20.6",
+    "gradex>=0.1.1",
     "nuitka>=4.3.1",
+    "pytest>=9.2.0",
     "ruff>=0.17.3",
 ]

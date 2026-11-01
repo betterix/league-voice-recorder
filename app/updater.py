@@ -4,6 +4,7 @@ Queries GitHub Releases for newer semantic versions and handles seamless Windows
 distribution extraction (.zip or standalone .exe), in-place replacement, and relaunch.
 """
 
+import functools
 import os
 import re
 import subprocess
@@ -17,7 +18,10 @@ import requests
 GITHUB_REPO = "betterix/league-voice-recorder"
 RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
+_VERSION_RE = re.compile(r"^(\d+(?:\.\d+)*)")
 
+
+@functools.lru_cache(maxsize=128)
 def parse_version_tuple(version_str):
     """
     Parses a version string like 'v0.3.1', '0.3.2-beta', or '1.0' into an integer tuple.
@@ -26,7 +30,7 @@ def parse_version_tuple(version_str):
     if not version_str:
         return (0, 0, 0)
     cleaned = str(version_str).strip().lstrip("vV")
-    match = re.match(r"^(\d+(?:\.\d+)*)", cleaned)
+    match = _VERSION_RE.match(cleaned)
     if not match:
         return (0, 0, 0)
     parts = match.group(1).split(".")
