@@ -5,6 +5,7 @@
 </p>
 
 <p align="center">
+  <a href="https://betterix.github.io/league-voice-recorder/"><img src="https://img.shields.io/badge/website-live-success?logo=googlechrome&logoColor=white" alt="Live Website" /></a>
   <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.3.2-blue?logo=github" alt="Release Version" /></a>
   <img src="https://img.shields.io/badge/python-3.14.10-blue?logo=python&logoColor=white" alt="Python Version" />
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%2064--bit-0078D6?logo=windows&logoColor=white" alt="Platform" />
@@ -20,6 +21,7 @@
 </p>
 
 <p align="center">
+  <a href="https://betterix.github.io/league-voice-recorder/"><strong>🌐 Live Web Showcase &amp; Simulator</strong></a> &bull;
   <a href="#-key-features">Features</a> &bull;
   <a href="#-quick-start-tutorial">Quick Start Tutorial</a> &bull;
   <a href="#-system-architecture">Architecture</a> &bull;
