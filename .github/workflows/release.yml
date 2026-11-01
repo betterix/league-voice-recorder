@@ -38,7 +38,7 @@ jobs:
         run: uv run pytest
 
       - name: Cache Nuitka compiler cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~\AppData\Local\Nuitka\Nuitka\Cache
           key: nuitka-cache-${{ runner.os }}-${{ hashFiles('uv.lock') }}
