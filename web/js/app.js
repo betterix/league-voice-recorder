@@ -477,7 +477,18 @@ function appendSimLog(msg, level = "info") {
 
   const row = document.createElement("div");
   row.className = "log-entry";
-  row.innerHTML = `<span class="log-time">[${timeStr}]</span> <span class="log-msg ${level}">${msg}</span>`;
+
+  const timeSpan = document.createElement("span");
+  timeSpan.className = "log-time";
+  timeSpan.textContent = `[${timeStr}]`;
+
+  const msgSpan = document.createElement("span");
+  msgSpan.className = `log-msg ${level}`;
+  msgSpan.textContent = msg;
+
+  row.appendChild(timeSpan);
+  row.appendChild(document.createTextNode(" "));
+  row.appendChild(msgSpan);
   logBox.appendChild(row);
   logBox.scrollTop = logBox.scrollHeight;
 }
@@ -486,6 +497,22 @@ function formatSeconds(sec) {
   const m = Math.floor(sec / 60).toString().padStart(2, "0");
   const s = Math.floor(sec % 60).toString().padStart(2, "0");
   return `${m}:${s}`;
+}
+
+function setStatusPill(pill, dotColor, dotShadow, text) {
+  if (!pill) return;
+  pill.replaceChildren();
+  const dot = document.createElement("span");
+  dot.className = "status-dot";
+  dot.style.background = dotColor;
+  if (dotShadow) {
+    dot.style.boxShadow = dotShadow;
+  }
+  const textSpan = document.createElement("span");
+  textSpan.textContent = text;
+  pill.appendChild(dot);
+  pill.appendChild(document.createTextNode(" "));
+  pill.appendChild(textSpan);
 }
 
 function updateSimUI() {
@@ -499,17 +526,17 @@ function updateSimUI() {
   if (recPill && recBtn) {
     if (simState.recording) {
       recPill.className = "sim-status-pill recording";
-      recPill.innerHTML = `<span class="status-dot" style="background:#ef4444;box-shadow:0 0 8px #ef4444"></span> <span>${i18n[currentLang].sim_rec_recording}</span>`;
+      setStatusPill(recPill, "#ef4444", "0 0 8px #ef4444", i18n[currentLang].sim_rec_recording);
       recBtn.textContent = i18n[currentLang].sim_rec_stop_btn;
       recBtn.classList.add("active");
     } else if (simState.listening) {
       recPill.className = "sim-status-pill listening";
-      recPill.innerHTML = `<span class="status-dot" style="background:#0ac8b9;box-shadow:0 0 8px #0ac8b9"></span> <span>${i18n[currentLang].sim_rec_listening}</span>`;
+      setStatusPill(recPill, "#0ac8b9", "0 0 8px #0ac8b9", i18n[currentLang].sim_rec_listening);
       recBtn.textContent = i18n[currentLang].sim_rec_stop_btn;
       recBtn.classList.add("active");
     } else {
       recPill.className = "sim-status-pill";
-      recPill.innerHTML = `<span class="status-dot" style="background:#94a3b8"></span> <span>${i18n[currentLang].sim_rec_idle}</span>`;
+      setStatusPill(recPill, "#94a3b8", "", i18n[currentLang].sim_rec_idle);
       recBtn.textContent = i18n[currentLang].sim_rec_start_btn;
       recBtn.classList.remove("active");
     }
@@ -536,12 +563,12 @@ function updateSimUI() {
   if (repPill && repBtn) {
     if (simState.replaySyncing) {
       repPill.className = "sim-status-pill syncing";
-      repPill.innerHTML = `<span class="status-dot" style="background:#22c55e;box-shadow:0 0 8px #22c55e"></span> <span>${i18n[currentLang].sim_rep_syncing}</span>`;
+      setStatusPill(repPill, "#22c55e", "0 0 8px #22c55e", i18n[currentLang].sim_rep_syncing);
       repBtn.textContent = i18n[currentLang].sim_rep_stop_btn;
       repBtn.classList.add("active");
     } else {
       repPill.className = "sim-status-pill";
-      repPill.innerHTML = `<span class="status-dot" style="background:#94a3b8"></span> <span>${i18n[currentLang].sim_rep_idle}</span>`;
+      setStatusPill(repPill, "#94a3b8", "", i18n[currentLang].sim_rep_idle);
       repBtn.textContent = i18n[currentLang].sim_rep_start_btn;
       repBtn.classList.remove("active");
     }
@@ -732,13 +759,23 @@ function initSimulator() {
     checkUpdateBtn.addEventListener("click", () => {
       const statusEl = document.getElementById("sim-update-status");
       checkUpdateBtn.disabled = true;
-      if (statusEl) statusEl.innerHTML = `<span style="color:#0ac8b9">🔄 Checking GitHub Releases...</span>`;
+      if (statusEl) {
+        statusEl.replaceChildren();
+        const span = document.createElement("span");
+        span.style.color = "#0ac8b9";
+        span.textContent = "🔄 Checking GitHub Releases...";
+        statusEl.appendChild(span);
+      }
       appendSimLog("🔍 [UPDATER] Checking GitHub Releases for updates...", "info");
 
       setTimeout(() => {
         checkUpdateBtn.disabled = false;
         if (statusEl) {
-          statusEl.innerHTML = `<span style="color:#4ade80">● You are running the latest version (v0.3.2)</span>`;
+          statusEl.replaceChildren();
+          const span = document.createElement("span");
+          span.style.color = "#4ade80";
+          span.textContent = "● You are running the latest version (v0.3.2)";
+          statusEl.appendChild(span);
         }
         appendSimLog("✅ [UPDATER] Version check complete. Running latest release v0.3.2.", "success");
       }, 900);
@@ -753,32 +790,77 @@ function initSimulator() {
 function renderRecordingsList() {
   const container = document.getElementById("sim-recordings-list");
   if (!container) return;
-  container.innerHTML = "";
+  container.replaceChildren();
+
+  const svgNS = "http://www.w3.org/2000/svg";
 
   simState.recordings.forEach(rec => {
     const item = document.createElement("div");
     item.className = "recording-item";
-    item.innerHTML = `
-      <div class="rec-item-info">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0ac8b9" stroke-width="2">
-          <path d="M9 18V5l12-2v13"></path>
-          <circle cx="6" cy="18" r="3"></circle>
-          <circle cx="18" cy="16" r="3"></circle>
-        </svg>
-        <div>
-          <div class="rec-item-name">${rec.id}.mp3</div>
-          <div class="rec-item-meta">${rec.duration} • ${rec.size} • ${rec.date}</div>
-        </div>
-      </div>
-      <div class="rec-item-actions">
-        <button class="btn-rec-play" data-rec-id="${rec.id}">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-            <polygon points="5 3 19 12 5 21 5 3"></polygon>
-          </svg>
-          Play
-        </button>
-      </div>
-    `;
+
+    const infoDiv = document.createElement("div");
+    infoDiv.className = "rec-item-info";
+
+    const musicSvg = document.createElementNS(svgNS, "svg");
+    musicSvg.setAttribute("width", "18");
+    musicSvg.setAttribute("height", "18");
+    musicSvg.setAttribute("viewBox", "0 0 24 24");
+    musicSvg.setAttribute("fill", "none");
+    musicSvg.setAttribute("stroke", "#0ac8b9");
+    musicSvg.setAttribute("stroke-width", "2");
+
+    const path = document.createElementNS(svgNS, "path");
+    path.setAttribute("d", "M9 18V5l12-2v13");
+    const circle1 = document.createElementNS(svgNS, "circle");
+    circle1.setAttribute("cx", "6");
+    circle1.setAttribute("cy", "18");
+    circle1.setAttribute("r", "3");
+    const circle2 = document.createElementNS(svgNS, "circle");
+    circle2.setAttribute("cx", "18");
+    circle2.setAttribute("cy", "16");
+    circle2.setAttribute("r", "3");
+    musicSvg.appendChild(path);
+    musicSvg.appendChild(circle1);
+    musicSvg.appendChild(circle2);
+
+    const detailsDiv = document.createElement("div");
+    const nameDiv = document.createElement("div");
+    nameDiv.className = "rec-item-name";
+    nameDiv.textContent = `${rec.id}.mp3`;
+
+    const metaDiv = document.createElement("div");
+    metaDiv.className = "rec-item-meta";
+    metaDiv.textContent = `${rec.duration} • ${rec.size} • ${rec.date}`;
+
+    detailsDiv.appendChild(nameDiv);
+    detailsDiv.appendChild(metaDiv);
+
+    infoDiv.appendChild(musicSvg);
+    infoDiv.appendChild(detailsDiv);
+
+    const actionsDiv = document.createElement("div");
+    actionsDiv.className = "rec-item-actions";
+
+    const playBtn = document.createElement("button");
+    playBtn.className = "btn-rec-play";
+    playBtn.dataset.recId = rec.id;
+
+    const playSvg = document.createElementNS(svgNS, "svg");
+    playSvg.setAttribute("width", "12");
+    playSvg.setAttribute("height", "12");
+    playSvg.setAttribute("viewBox", "0 0 24 24");
+    playSvg.setAttribute("fill", "currentColor");
+    const polygon = document.createElementNS(svgNS, "polygon");
+    polygon.setAttribute("points", "5 3 19 12 5 21 5 3");
+    playSvg.appendChild(polygon);
+
+    playBtn.appendChild(playSvg);
+    playBtn.appendChild(document.createTextNode(" Play"));
+
+    actionsDiv.appendChild(playBtn);
+
+    item.appendChild(infoDiv);
+    item.appendChild(actionsDiv);
     container.appendChild(item);
   });
 
@@ -838,15 +920,18 @@ function initSetupTabs() {
       const codeEl = document.getElementById(targetId);
       if (!codeEl) return;
 
-      const text = codeEl.innerText.trim();
+      const text = codeEl.textContent.trim();
       navigator.clipboard.writeText(text).then(() => {
         btn.classList.add("copied");
-        const originalText = btn.innerHTML;
-        btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg> Copied!`;
-        setTimeout(() => {
-          btn.classList.remove("copied");
-          btn.innerHTML = originalText;
-        }, 2000);
+        const span = btn.querySelector("span");
+        if (span) {
+          const originalText = span.textContent;
+          span.textContent = "Copied!";
+          setTimeout(() => {
+            btn.classList.remove("copied");
+            span.textContent = originalText;
+          }, 2000);
+        }
       });
     });
   });
