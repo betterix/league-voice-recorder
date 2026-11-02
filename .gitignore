@@ -56,6 +56,7 @@ venv.bak/
 # Testing, Coverage & IDEs
 # ==========================================
 .pytest_cache/
+.cache/
 .coverage
 htmlcov/
 .mypy_cache/

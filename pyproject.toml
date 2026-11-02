@@ -49,6 +49,7 @@ ignore = [
 ]
 
 [tool.pytest.ini_options]
+cache_dir = ".cache/pytest"
 filterwarnings = [
     "ignore::urllib3.exceptions.InsecureRequestWarning",
 ]
