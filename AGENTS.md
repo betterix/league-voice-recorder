@@ -71,8 +71,10 @@ League Voice Recorder/
 │   │   ├── bug_report.yml  # Interactive bug report form
 │   │   ├── feature_request.yml # Feature & scrim enhancement request form
 │   │   └── config.yml      # Issue template configuration & security redirect
-│   └── workflows/
-│       └── release.yml     # Automated GitHub Actions release compilation
+│   ├── workflows/
+│   │   └── release.yml     # Automated GitHub Actions release compilation
+│   ├── dependabot.yml      # Automated dependency vulnerability alerts
+│   └── pull_request_template.md # GitHub Pull Request checklist template
 │
 ├── .gitattributes          # Cross-platform LF/CRLF normalization
 ├── .env.example            # Environment variables template
