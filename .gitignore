@@ -69,3 +69,9 @@ htmlcov/
 .DS_Store
 Thumbs.db
 .gradex/
+
+# ==========================================
+# Private Roadmaps & Future Feature Notes
+# ==========================================
+FUTURE_IDEAS.md
+*.local.md
