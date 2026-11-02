@@ -72,6 +72,7 @@ League Voice Recorder/
 │
 ├── .gitattributes          # Cross-platform LF/CRLF normalization
 ├── .env.example            # Environment variables template
+├── CODE_OF_CONDUCT.md     # Community guidelines (Contributor Covenant v2.1)
 ├── SECURITY.md             # Security policy & private vulnerability reporting
 ├── pyproject.toml          # Project dependencies and tool configurations
 ├── ruff.toml               # Linter rules and exclusions
