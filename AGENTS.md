@@ -56,7 +56,7 @@ League Voice Recorder/
 │   ├── index.html          # Semantic showcase landing page
 │   └── README.md           # Web documentation & local preview guide
 │
-├── tests/                  # Automated test suite (69 unittests)
+├── tests/                  # Automated test suite (70 unittests)
 │   ├── __init__.py
 │   ├── test_config.py      # Config defaults, path resolution, and directory creation
 │   ├── test_discord_ipc.py # Discord Local IPC & mute silence injection
@@ -67,12 +67,17 @@ League Voice Recorder/
 │   └── test_updater.py     # Release asset check, zip extraction, and in-place update
 │
 ├── .github/
+│   ├── ISSUE_TEMPLATE/     # Structured GitHub Issue Form templates
+│   │   ├── bug_report.yml  # Interactive bug report form
+│   │   ├── feature_request.yml # Feature & scrim enhancement request form
+│   │   └── config.yml      # Issue template configuration & security redirect
 │   └── workflows/
 │       └── release.yml     # Automated GitHub Actions release compilation
 │
 ├── .gitattributes          # Cross-platform LF/CRLF normalization
 ├── .env.example            # Environment variables template
 ├── CODE_OF_CONDUCT.md     # Community guidelines (Contributor Covenant v2.1)
+├── CONTRIBUTING.md        # Contribution guide (workflow, setup, invariants)
 ├── SECURITY.md             # Security policy & private vulnerability reporting
 ├── pyproject.toml          # Project dependencies and tool configurations
 ├── ruff.toml               # Linter rules and exclusions

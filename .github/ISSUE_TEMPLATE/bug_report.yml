@@ -1,0 +1,103 @@
+name: "🐛 Bug Report"
+description: "Report an issue, audio artifact, or unexpected behavior in League Voice Recorder"
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug! Please fill out the information below to help us diagnose and reproduce the issue quickly.
+        
+        > [!NOTE]
+        > If you believe you have found a security vulnerability, please report it privately according to our [Security Policy](../../SECURITY.md).
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "Bug Description"
+      description: "A clear and concise description of what the bug is."
+      placeholder: "e.g., Recording does not start when match begins, or replay audio has 2 seconds of delay..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: app_version
+    attributes:
+      label: "Application Version"
+      description: "Which version of League Voice Recorder are you using?"
+      options:
+        - "v0.3.4 (Latest Release)"
+        - "v0.3.3"
+        - "v0.3.2"
+        - "Running from source (main branch)"
+        - "Other"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_type
+    attributes:
+      label: "Installation Type"
+      description: "How was League Voice Recorder installed or executed?"
+      options:
+        - "Windows Setup Installer (.exe)"
+        - "Portable Standalone Archive (.zip)"
+        - "Python source via uv (main.py / start_ui.bat)"
+    validations:
+      required: true
+
+  - type: input
+    id: os_version
+    attributes:
+      label: "Windows Operating System"
+      description: "Which version of Windows are you running?"
+      placeholder: "e.g. Windows 11 64-bit (Build 22631) or Windows 10 64-bit (22H2)"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: prerequisites_checklist
+    attributes:
+      label: "Prerequisites Checklist"
+      description: "Please confirm that the required external components are properly installed:"
+      options:
+        - label: "VLC Media Player 64-bit is installed and recognized"
+          required: true
+        - label: "FFmpeg is installed and accessible in system PATH (or next to app)"
+          required: true
+        - label: "League of Legends Replay API is enabled (`EnableReplayApi=1` in `Config/game.cfg`)"
+          required: false
+        - label: "Discord desktop client is running (if capturing team voice chat)"
+          required: false
+
+  - type: textarea
+    id: steps_to_reproduce
+    attributes:
+      label: "Steps to Reproduce"
+      description: "Step-by-step instructions to reproduce the issue:"
+      placeholder: |
+        1. Launch League Voice Recorder
+        2. Click 'Start Recording Watcher'
+        3. Enter a live League of Legends game
+        4. See error in Activity Log...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: "Expected Behavior"
+      description: "What did you expect to happen?"
+      placeholder: "e.g. Recording should start within 1ms and show audio VU levels moving..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: log_output
+    attributes:
+      label: "Relevant Log Output"
+      description: "Paste relevant output from the in-app Activity Log tab or console terminal:"
+      render: text
+      placeholder: |
+        [17:42:15] [RECORDER] Polling Live Client Data...
+        [17:42:18] [ERROR] ...

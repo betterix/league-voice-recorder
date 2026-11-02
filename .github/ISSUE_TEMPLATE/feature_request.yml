@@ -1,0 +1,47 @@
+name: "💡 Feature Request"
+description: "Suggest an idea, enhancement, or new feature for League Voice Recorder"
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a feature! Please provide as much detail as possible to help us understand your vision.
+
+  - type: textarea
+    id: problem_statement
+    attributes:
+      label: "Problem or Opportunity"
+      description: "Is your feature request related to a specific challenge, friction point, or scrim workflow limitation?"
+      placeholder: "e.g., During scrim reviews with international players, having custom hotkeys or automatic discord channel switching would save time..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: "Proposed Solution"
+      description: "Describe the feature, functionality, or workflow enhancement you would like to see:"
+      placeholder: "e.g., Add a configurable global hotkey to mute/unmute audio playback, or an option to auto-export audio as FLAC..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: scrim_context
+    attributes:
+      label: "Competitive / Scrimmage Context"
+      description: "How does this benefit competitive teams, coaches, analysts, or players during live scrims or VOD reviews?"
+      placeholder: "e.g., Coaches frequently jump backward 10 seconds during teamfights, so a quick rewind hotkey would make VOD review faster..."
+
+  - type: textarea
+    id: alternatives_considered
+    attributes:
+      label: "Alternatives Considered"
+      description: "Describe any alternative solutions, third-party workarounds, or features you've considered:"
+      placeholder: "e.g., Manually switching audio tracks in VLC or recording mic with Audacity..."
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: "Additional Context / Mockups"
+      description: "Add any other context, UI mockups, screenshots, or code ideas here:"

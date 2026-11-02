@@ -15,6 +15,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License" /></a>
   <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-policy-brightgreen" alt="Security Policy" /></a>
   <a href="CODE_OF_CONDUCT.md"><img src="https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg" alt="Contributor Covenant" /></a>
+  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/contributions-welcome-brightgreen.svg" alt="Contributions Welcome" /></a>
 </p>
 
 <p align="center">
@@ -402,6 +403,16 @@ uv run gradex stats
 # Export a comprehensive HTML benchmark report
 uv run gradex report
 ```
+
+---
+
+## 🤝 Contributing
+
+Contributions make the esports and open source communities thrive! Any contributions you make are **greatly appreciated**.
+
+Please review our [Contributing Guide](CONTRIBUTING.md) for details on setting up your local environment, running tests, contributing community translations, and following key architectural invariants.
+
+All participants are expected to uphold our [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ---
 
