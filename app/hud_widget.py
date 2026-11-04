@@ -130,6 +130,7 @@ class LeagueHUDWidget:
         self.total_duration = 1800.0
         self.volume = 100
         self.speed = 1.0
+        self.audio_level = 0.0
 
         # Animation state
         self._wave_phase = 0.0
@@ -283,6 +284,7 @@ class LeagueHUDWidget:
         is_paused: bool = False,
         is_muted: bool = False,
         speed: float = 1.0,
+        audio_level: float = 0.0,
     ) -> None:
         """Updates replay playback synchronization state."""
         self.time_str = time_str
@@ -292,6 +294,10 @@ class LeagueHUDWidget:
         self.is_paused = bool(is_paused)
         self.is_muted = bool(is_muted)
         self.speed = float(speed)
+        self.audio_level = max(0.0, min(1.0, float(audio_level)))
+        self._wave_phase += 0.22
+        if self._wave_phase > 200.0:
+            self._wave_phase = 0.0
         if self.is_visible and self.mode == "REPLAY":
             self.render()
 
@@ -436,7 +442,7 @@ class LeagueHUDWidget:
         cursor_x = 68.0 + progress * 126.0
 
         # Draw played portion (Teal)
-        played_pts, upcoming_pts = self._split_waveform(cursor_x)
+        played_pts, upcoming_pts = self._split_waveform(cursor_x, audio_level=self.audio_level)
         if len(played_pts) >= 4:
             self.canvas.create_line(
                 played_pts,
@@ -587,16 +593,28 @@ class LeagueHUDWidget:
             pts.append((x, center_y + h))
         return pts
 
-    def _split_waveform(self, cursor_x: float) -> tuple[list[float], list[float]]:
+    def _split_waveform(
+        self, cursor_x: float, audio_level: float = 0.0
+    ) -> tuple[list[float], list[float]]:
         """Splits the replay waveform into played (left) and upcoming (right) coordinates."""
         pts = self._replay_wave_points
         played = []
         upcoming = []
         split_done = False
 
+        mod_phase = self._wave_phase if audio_level > 0.02 else 0.0
+
         for i in range(len(pts) - 1):
             x1, y1 = pts[i]
             x2, y2 = pts[i + 1]
+
+            if audio_level > 0.02:
+                norm_i = i / max(1, len(pts) - 1)
+                taper = math.sin(norm_i * math.pi)
+                disp1 = math.sin(i * 0.9 + mod_phase) * audio_level * 6.0 * taper if x1 <= cursor_x else 0.0
+                disp2 = math.sin((i + 1) * 0.9 + mod_phase) * audio_level * 6.0 * taper if x2 <= cursor_x else 0.0
+                y1 = y1 + disp1
+                y2 = y2 + disp2
 
             if x2 < cursor_x:
                 if not played:

@@ -71,7 +71,7 @@ class TestLeagueHUDWidget(unittest.TestCase):
         self.assertGreater(self.hud._wave_phase, initial_phase)
 
     def test_replay_state_update(self):
-        """Updating replay state stores playback time, volume, and rate."""
+        """Updating replay state stores playback time, volume, rate, and voice level."""
         self.hud.set_mode("REPLAY")
         self.hud.update_replay_state(
             time_str="08:22",
@@ -81,20 +81,22 @@ class TestLeagueHUDWidget(unittest.TestCase):
             is_paused=False,
             is_muted=False,
             speed=2.0,
+            audio_level=0.64,
         )
         self.assertEqual(self.hud.time_str, "08:22")
         self.assertEqual(self.hud.current_time, 502.0)
         self.assertEqual(self.hud.volume, 85)
         self.assertEqual(self.hud.speed, 2.0)
+        self.assertAlmostEqual(self.hud.audio_level, 0.64)
 
     def test_replay_waveform_splitting(self):
-        """Waveform splits correctly into played and upcoming segments."""
+        """Waveform splits correctly into played and upcoming segments with voice modulation."""
         pts = self.hud._generate_static_waveform()
         self.assertGreater(len(pts), 10)
 
-        # Split at 50%
+        # Split at 50% with voice level
         cursor_x = 68.0 + 0.5 * 126.0
-        played, upcoming = self.hud._split_waveform(cursor_x)
+        played, upcoming = self.hud._split_waveform(cursor_x, audio_level=0.75)
         self.assertGreater(len(played), 0)
         self.assertGreater(len(upcoming), 0)
 

@@ -204,9 +204,36 @@ class ReplaySynchronizer:
         self.last_mute_toggle_time = 0.0
         self.current_replay_pid = None
         self._hotkey_thread = None
+        self.last_game_time = 0.0
+        self.duration = 1800.0
+        self.is_paused = False
+        self.speed = 1.0
+        self._cached_audio_meter = None
         import threading
 
         self.stop_event = threading.Event()
+
+    def get_audio_level(self):
+        """Returns the live peak audio meter value (0.0 to 1.0) of the voice recording playback in VLC."""
+        if not self.current_player or self.is_muted or self.is_paused or not self.running:
+            return 0.0
+        try:
+            if self._cached_audio_meter is None and sys.platform.startswith("win"):
+                from pycaw.pycaw import AudioUtilities, IAudioMeterInformation
+
+                cur_pid = os.getpid()
+                for s in AudioUtilities.GetAllSessions():
+                    if s.ProcessId == cur_pid:
+                        self._cached_audio_meter = s._ctl.QueryInterface(IAudioMeterInformation)
+                        break
+            if self._cached_audio_meter:
+                raw_val = float(self._cached_audio_meter.GetPeakValue())
+                from app.native_audio import scale_vu
+
+                return scale_vu(raw_val)
+        except Exception:
+            pass
+        return 0.0
 
     def set_volume(self, volume):
         """Dynamically update playback volume (0 - 100)."""
@@ -346,6 +373,11 @@ class ReplaySynchronizer:
                     game_time = float(data.get("time", 0))
                     replay_paused = bool(data.get("paused", False))
                     replay_speed = float(data.get("speed", 1.0))
+                    if "length" in data and float(data.get("length", 0)) > 0:
+                        self.duration = float(data["length"])
+                    self.last_game_time = game_time
+                    self.is_paused = replay_paused
+                    self.speed = replay_speed
                     now_wall = time.time()
 
                     # 1. Match playing and not paused (game_time > 0.5s)
@@ -436,6 +468,8 @@ class ReplaySynchronizer:
 
                     # 2. Replay paused or stopped
                     else:
+                        self.last_game_time = game_time
+                        self.is_paused = True
                         if is_playing:
                             player.pause()
                             is_playing = False

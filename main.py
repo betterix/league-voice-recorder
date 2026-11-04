@@ -835,43 +835,48 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                         self.mic_meter_bar.set(mic_l)
                         self._last_rendered_mic_l = mic_l
 
-                # Live HUD wave & status updates
-                if getattr(self, "hud", None) and self.hud.is_visible:
-                    if self.hud.mode == "RECORD":
-                        rec_w = getattr(self, "recorder_worker", None)
-                        game_time = getattr(rec_w, "last_game_time", 0.0) if rec_w else 0.0
+            # Live HUD wave & status updates
+            if getattr(self, "hud", None) and self.hud.is_visible:
+                if self.hud.mode == "RECORD":
+                    rec_w = getattr(self, "recorder_worker", None)
+                    game_time = getattr(rec_w, "last_game_time", 0.0) if rec_w else 0.0
+                    time_str = (
+                        f"{int(game_time // 60):02d}:{int(game_time % 60):02d}"
+                        if game_time > 0
+                        else "00:00"
+                    )
+                    is_p = getattr(rec_w, "is_paused", False) if rec_w else False
+                    cur_mic = mic_l if "mic_l" in locals() else 0.0
+                    cur_app = app_l if "app_l" in locals() else 0.0
+                    cur_muted = is_discord_muted if "is_discord_muted" in locals() else False
+                    self.hud.update_recorder_state(
+                        time_str=time_str,
+                        mic_level=cur_mic,
+                        discord_level=cur_app,
+                        is_paused=is_p,
+                        is_muted=cur_muted,
+                    )
+                elif self.hud.mode == "REPLAY":
+                    rep_w = getattr(self, "replay_worker", None)
+                    if rep_w:
+                        game_time = getattr(rep_w, "last_game_time", 0.0)
                         time_str = (
                             f"{int(game_time // 60):02d}:{int(game_time % 60):02d}"
                             if game_time > 0
                             else "00:00"
                         )
-                        is_p = getattr(rec_w, "is_paused", False) if rec_w else False
-                        self.hud.update_recorder_state(
+                        is_p = getattr(rep_w, "is_paused", False)
+                        audio_l = rep_w.get_audio_level() if hasattr(rep_w, "get_audio_level") else 0.0
+                        self.hud.update_replay_state(
                             time_str=time_str,
-                            mic_level=mic_l,
-                            discord_level=app_l,
+                            current_time=game_time,
+                            total_duration=getattr(rep_w, "duration", 1800.0),
+                            volume=int(self.config.get("replay_volume", 80)),
                             is_paused=is_p,
-                            is_muted=is_discord_muted,
+                            is_muted=getattr(self, "_replay_muted", False),
+                            speed=getattr(rep_w, "speed", 1.0),
+                            audio_level=audio_l,
                         )
-                    elif self.hud.mode == "REPLAY":
-                        rep_w = getattr(self, "replay_worker", None)
-                        if rep_w:
-                            game_time = getattr(rep_w, "last_game_time", 0.0)
-                            time_str = (
-                                f"{int(game_time // 60):02d}:{int(game_time % 60):02d}"
-                                if game_time > 0
-                                else "00:00"
-                            )
-                            is_p = getattr(rep_w, "is_paused", False)
-                            self.hud.update_replay_state(
-                                time_str=time_str,
-                                current_time=game_time,
-                                total_duration=getattr(rep_w, "duration", 1800.0),
-                                volume=self.config.get("replay_volume", 80),
-                                is_paused=is_p,
-                                is_muted=getattr(self, "_replay_muted", False),
-                                speed=getattr(rep_w, "speed", 1.0),
-                            )
         except Exception:
             pass
         self._meter_timer = self.after(75, self._update_audio_meters)
@@ -1711,7 +1716,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                     status, detail = item[1], item[2]
                     self._render_rec_status(status, detail)
                     if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
-                        if status in ("RECORDING", "PAUSED"):
+                        if status in ("RECORDING", "PAUSED", "WATCHING"):
                             self.hud.set_mode("RECORD")
                             self.hud.show()
                         elif status in ("SAVED", "STOPPED", "IDLE") and not self._is_hud_previewing:
@@ -1721,7 +1726,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                     status, detail = item[1], item[2]
                     self._render_replay_status(status, detail)
                     if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
-                        if status in ("SYNCING", "PAUSED"):
+                        if status in ("SYNCING", "PAUSED", "WATCHING"):
                             self.hud.set_mode("REPLAY")
                             self.hud.show()
                             game_time = (
@@ -1737,6 +1742,11 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                             is_p = (status == "PAUSED") or (
                                 self.replay_worker and getattr(self.replay_worker, "is_paused", False)
                             )
+                            audio_l = (
+                                self.replay_worker.get_audio_level()
+                                if self.replay_worker and hasattr(self.replay_worker, "get_audio_level")
+                                else 0.0
+                            )
                             self.hud.update_replay_state(
                                 time_str=time_str,
                                 current_time=game_time,
@@ -1747,6 +1757,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                                 speed=getattr(self.replay_worker, "speed", 1.0)
                                 if self.replay_worker
                                 else 1.0,
+                                audio_level=audio_l,
                             )
                         elif status in ("STOPPED", "IDLE") and not self._is_hud_previewing:
                             self.hud.hide()
@@ -1994,6 +2005,15 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         )
         self.recorder_thread.start()
 
+        if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
+            self.hud.set_mode("RECORD")
+            self.hud.show()
+            self.hud.update_recorder_state(
+                time_str="00:00",
+                mic_level=0.0,
+                discord_level=0.0,
+            )
+
     def _stop_recording(self):
         if self.recorder_worker:
             self.log_message(t("logs.ui_rec_stop"))
@@ -2100,6 +2120,20 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             daemon=True,
         )
         self.replay_thread.start()
+
+        if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
+            self.hud.set_mode("REPLAY")
+            self.hud.show()
+            self.hud.update_replay_state(
+                time_str="00:00",
+                current_time=0.0,
+                total_duration=1800.0,
+                volume=int(self.vol_slider.get()),
+                is_paused=False,
+                is_muted=bool(getattr(self, "_replay_muted", False)),
+                speed=1.0,
+                audio_level=0.0,
+            )
 
     def _update_volume_display(self, current_vol=None):
         vol = int(current_vol if current_vol is not None else self.vol_slider.get())
