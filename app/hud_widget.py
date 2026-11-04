@@ -203,6 +203,19 @@ class LeagueHUDWidget:
         # Default: Top-right corner with 30px margin
         return max(20, screen_w - self.WIDTH - 40), 35
 
+    def get_hwnd(self) -> int:
+        """Returns the Win32 HWND of this HUD overlay window."""
+        try:
+            wid = self.window.winfo_id()
+            if sys.platform == "win32":
+                import ctypes
+
+                parent = ctypes.windll.user32.GetParent(wid)
+                return int(parent if parent else wid)
+            return int(wid)
+        except Exception:
+            return 0
+
     def _apply_click_through(self, enable: bool) -> None:
         """Applies or removes the Windows WS_EX_TRANSPARENT style."""
         try:
