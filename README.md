@@ -321,6 +321,7 @@ Every time a new GitHub Release is published or a tag matching `v*` (e.g., `v1.0
 4. Compiles the standalone distribution with Nuitka using parallel multi-core compilation (`--jobs`) and compiler caching.
 5. Packages both the **Windows Setup Installer** (`LeagueVoiceRecorder-Setup-*.exe`) and the portable **ZIP archive** (`LeagueVoiceRecorder-Windows-x64.zip`).
 6. Attaches both release assets directly to the GitHub Release.
+7. Submits both executables (`LeagueVoiceRecorder.exe` and `LeagueVoiceRecorder-Setup-*.exe`) to VirusTotal via API v3 and automatically appends the verified scan report links and SHA256 checksums directly to the GitHub Release notes.
 
 ---
 
@@ -361,7 +362,8 @@ League Voice Recorder/
 ├── scripts/                # Windows automation & build scripts
 │   ├── start_ui.bat        # Windows quick-launcher for the GUI
 │   ├── run_tests.bat       # Automated test suite runner batch script
-│   └── build_exe.bat       # Standalone Windows .exe compiler batch script
+│   ├── build_exe.bat       # Standalone Windows .exe compiler batch script
+│   └── virustotal_scan.py  # Automated VirusTotal scanner & release verification reporter
 │
 ├── tests/                  # Automated test suite (82 unit tests)
 │   ├── __init__.py

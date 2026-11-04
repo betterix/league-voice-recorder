@@ -28,7 +28,8 @@ League Voice Recorder/
 ├── scripts/                # Windows automation & build scripts
 │   ├── start_ui.bat        # Windows quick-launcher for the GUI
 │   ├── run_tests.bat       # Automated test suite runner batch script
-│   └── build_exe.bat       # Standalone Windows .exe compiler batch script
+│   ├── build_exe.bat       # Standalone Windows .exe compiler batch script
+│   └── virustotal_scan.py  # Automated VirusTotal API v3 scanner & release verification reporter
 │
 ├── app/                    # Core Python application package
 │   ├── __init__.py         # Package marker
