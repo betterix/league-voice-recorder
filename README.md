@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://betterix.github.io/league-voice-recorder/"><img src="https://img.shields.io/badge/website-live-success?logo=googlechrome&logoColor=white" alt="Live Website" /></a>
-  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.3.4-blue?logo=github" alt="Release Version" /></a>
+  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.4.0-blue?logo=github" alt="Release Version" /></a>
   <img src="https://img.shields.io/badge/python-3.14.10-blue?logo=python&logoColor=white" alt="Python Version" />
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%2064--bit-0078D6?logo=windows&logoColor=white" alt="Platform" />
   <img src="https://img.shields.io/badge/build-passing-brightgreen?logo=githubactions&logoColor=white" alt="Build Status" />
@@ -68,6 +68,17 @@ In competitive League of Legends scrimmages and tournament matches, reviewing ga
 - ⚡ **Zero-Latency Unpause & Debounced Scrubbing**: Instant playback resumption without pipeline-flushing seeks; debounced seek cooldown eliminates VLC asynchronous time flutter.
 - 🔇 **In-Game Replay Mute Hotkey (`M`)**: Press **`M`** inside the League replay spectator mode or desktop app to toggle replay voice comms on and off (foreground-window guarded to prevent accidental muting while typing).
 - 🔊 **Dynamic Replay Volume Control**: Adjust replay audio level (0–100%) on the fly via UI slider with persistent user preference.
+
+### 🪟 In-Game Floating HUD Overlay (Hextech Esports Overlay)
+- 🎮 **Game-Exclusive Display & Anti-Bleed Isolation**:
+  - The HUD overlay **ONLY** appears when actively recording a live scrim match (`RECORDING` or `PAUSED`) or synchronizing a replay (`SYNCING` or `PAUSED`) AND the foreground window is the actual League game engine (`League of Legends.exe`).
+  - **Client & Desktop Isolation**: 100% hidden when sitting in the League launcher client (`LeagueClientUx.exe`), Discord, browser, or desktop.
+  - **Alt-Tab Smart Focus Guard**: Instantly hides when Alt-Tabbing away from `League of Legends.exe`, and immediately restores visibility upon refocusing back into the game.
+- 📊 **Dual HUD Modes**:
+  - **Live Scrim HUD**: Animated dual-channel oscilloscopes for player mic (`#3DDCC4` mint) and Discord comms (`#8B93FF` periwinkle), pulsing red `REC` indicator, and live digital match clock.
+  - **Replay HUD**: Full waveform scrubbing view with white playhead needle (`#FFFFFF`), real-time VLC volume slider, and playback status pill (`▶ REPLAY` / `⏸ PAUSED`).
+- 🖱️ **Zero-Interference Draggable Overlay**: Reposition anywhere; coordinates saved in `config.json`. Supports click-through mode (`WS_EX_TRANSPARENT`) so mouse clicks pass straight into League during matches.
+- 🖥️ **Centered App Window**: Clean desktop launch geometry automatically centered on the user's primary monitor.
 
 ### 📦 Windows Distribution, Packaging & Updates
 - 🛠️ **Dual Distribution Options**:
@@ -278,7 +289,7 @@ uv run python -m app.play_replay
 
 ### Running the Automated Test Suite
 
-The project includes an automated test suite with 70 unit tests covering configuration, Discord Local IPC mute/deafen synchronization, microphone input selection, internationalization, sample-accurate recorder alignment, replay parsing and hotkey mute, and headless UI rendering:
+The project includes an automated test suite with 82 unit tests covering configuration, Discord Local IPC mute/deafen synchronization, microphone input selection, internationalization, sample-accurate recorder alignment, replay parsing and hotkey mute, in-game floating HUD game-exclusive visibility guards, and headless UI rendering:
 
 ```powershell
 # Run tests with the Windows launcher script
@@ -287,8 +298,8 @@ The project includes an automated test suite with 70 unit tests covering configu
 # Or run tests directly with uv (Pytest)
 uv run pytest
 
-# Run the Ruff linter
-uvx ruff check .
+# Run the Ruff linter (always use 'uv run' with uv, not 'uvx')
+uv run ruff check .
 ```
 
 ### Compiling Standalone `.EXE` Locally
@@ -306,7 +317,7 @@ Every time a new GitHub Release is published or a tag matching `v*` (e.g., `v1.0
 
 1. Spins up a clean `windows-latest` virtual environment.
 2. Installs Python 3.14.10 and dependencies via `uv`.
-3. Provisions VLC Media Player and runs the complete 70-test suite via `uv run pytest`.
+3. Provisions VLC Media Player and runs the complete 82-test suite via `uv run pytest`.
 4. Compiles the standalone distribution with Nuitka using parallel multi-core compilation (`--jobs`) and compiler caching.
 5. Packages both the **Windows Setup Installer** (`LeagueVoiceRecorder-Setup-*.exe`) and the portable **ZIP archive** (`LeagueVoiceRecorder-Windows-x64.zip`).
 6. Attaches both release assets directly to the GitHub Release.
@@ -327,7 +338,9 @@ League Voice Recorder/
 │   ├── i18n.py             # Internationalization and community translation loader
 │   ├── record.py           # LeagueRecorder engine (WASAPI capture & FFmpeg alignment)
 │   ├── native_audio.py     # Native WASAPI audio capture (Discord loopback & mic)
-│   └── play_replay.py      # ReplaySynchronizer engine (process watcher & VLC sync)
+│   ├── hud_widget.py       # In-Game floating HUD overlay widget (translucent live & replay HUD)
+│   ├── play_replay.py      # ReplaySynchronizer engine (process watcher & VLC sync)
+│   └── updater.py          # Auto-updater (GitHub releases, zip extraction, in-place replace)
 │
 ├── assets/                 # Visual branding assets (icons, logos)
 │   ├── icon.ico            # Windows executable multi-resolution icon
@@ -350,7 +363,7 @@ League Voice Recorder/
 │   ├── run_tests.bat       # Automated test suite runner batch script
 │   └── build_exe.bat       # Standalone Windows .exe compiler batch script
 │
-├── tests/                  # Automated test suite (70 unit tests)
+├── tests/                  # Automated test suite (82 unit tests)
 │   ├── __init__.py
 │   ├── test_config.py      # Config defaults, path resolution, and directory creation
 │   ├── test_discord_ipc.py # Discord Local IPC & mute silence injection

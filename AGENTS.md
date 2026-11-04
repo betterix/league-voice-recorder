@@ -57,7 +57,7 @@ League Voice Recorder/
 │   ├── index.html          # Semantic showcase landing page
 │   └── README.md           # Web documentation & local preview guide
 │
-├── tests/                  # Automated test suite (70 unittests)
+├── tests/                  # Automated test suite (82 unittests)
 │   ├── __init__.py
 │   ├── test_config.py      # Config defaults, path resolution, and directory creation
 │   ├── test_discord_ipc.py # Discord Local IPC & mute silence injection
@@ -151,6 +151,8 @@ flowchart TD
 
 ### 3.1 `main.py`
 The desktop GUI application built using `customtkinter`.
+- **Window Startup Geometry**:
+  - Automatically calculates display geometry and centers the desktop window cleanly in the middle of the user's primary monitor on launch (`(screen_w - win_w) // 2`, `(screen_h - win_h) // 2`).
 - **Primary Controls**:
   - `🔴 Start Recording Watcher` / `⏹ Stop Recording Watcher`: Toggles the recording watcher thread (`LeagueRecorder.run_loop()`).
   - `▶ Start Replay Auto-Sync` / `⏹ Stop Replay Auto-Sync`: Toggles the replay sync watcher thread (`ReplaySynchronizer.run_loop()`). No manual file selection is needed; it detects and synchronizes automatically.
@@ -159,7 +161,7 @@ The desktop GUI application built using `customtkinter`.
 - **Tabbed Center Area**:
   - **Activity Log**: Thread-safe monospace log terminal displaying live events with timestamps and auto-scroll.
   - **Scrim Recordings**: File manager showing recorded `.mp3` files, sizes, creation timestamps, with "Play in VLC" and "Open in Explorer" actions.
-  - **Settings**: Configuration editor for recording folder, VLC directory, microphone device, polling intervals, replay volume, and interface language.
+  - **Settings**: Configuration editor for recording folder, VLC directory, microphone device, polling intervals, replay volume, interface language, and In-Game Floating HUD settings (HUD preview, opacity, click-through toggle, reset position).
 
 ### 3.2 `record.py` (`LeagueRecorder`)
 Responsible for live match detection, native WASAPI voice capture, and audio export.
@@ -262,6 +264,10 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
   - In development mode: returns extracted target directory without modifying the local Python runtime environment.
 
 ### 3.7 In-Game Floating HUD Overlay (`app/hud_widget.py`)
+- **Game-Exclusive Display & Anti-Bleed Isolation**:
+  - The HUD overlay **ONLY** appears when actively recording a live scrim match (`RECORDING` or `PAUSED`) or actively synchronizing a replay (`SYNCING` or `PAUSED`) AND the foreground window is the actual League game engine (`League of Legends.exe`).
+  - **Client & Desktop Isolation**: 100% hidden when sitting in the League launcher client (`LeagueClientUx.exe` / `LeagueClient.exe`), Discord, browser, or desktop.
+  - **Alt-Tab Smart Focus Guard**: Instantly hides when Alt-Tabbing away from `League of Legends.exe`, and immediately restores visibility upon refocusing back into the game.
 - **Translucent & Non-Intrusive Design**:
   - Implements a 280x76 borderless floating HUD with semi-transparent layered opacity (`-alpha 0.85` by default) and transparent corner cutout (`-transparentcolor`) matching the esports Hextech PNG design specifications.
   - Floats topmost over League of Legends in Borderless or Windowed display modes.
@@ -320,7 +326,7 @@ Core libraries:
 - `requests` & `urllib3`: HTTPS communication with League local APIs.
 
 ### 5.3 Automated Testing & Code Quality
-The project includes a comprehensive suite of 70 unit tests covering configuration, Discord Local IPC mute/deafen sync (auto-skipped when Discord is offline), microphone input enumeration and selection, i18n key parity and translations, recorder sample-accurate audio alignment, pause detection WAV truncation lag trimming, replay protection, replay synchronizer zero-latency unpausing, seek cooldown protection, game ID parsing, volume clamping and hotkey mute, automatic release checks, zip extraction, in-place binary updater scripts, and headless CustomTkinter UI rendering.
+The project includes a comprehensive suite of 82 unit tests covering configuration, Discord Local IPC mute/deafen sync (auto-skipped when Discord is offline), microphone input enumeration and selection, i18n key parity and translations, recorder sample-accurate audio alignment, pause detection WAV truncation lag trimming, replay protection, replay synchronizer zero-latency unpausing, seek cooldown protection, game ID parsing, volume clamping and hotkey mute, automatic release checks, zip extraction, in-place binary updater scripts, in-game floating HUD game-exclusive visibility guards, and headless CustomTkinter UI rendering.
 
 ```powershell
 # Run the test suite via the Windows batch launcher
@@ -329,8 +335,8 @@ The project includes a comprehensive suite of 70 unit tests covering configurati
 # Or run tests directly with uv (Pytest)
 uv run pytest
 
-# Run the linter
-uvx ruff check .
+# Run the Ruff linter (always use 'uv run' with uv, not 'uvx')
+uv run ruff check .
 ```
 
 ### 5.4 Standalone Executable & Installer Packaging
