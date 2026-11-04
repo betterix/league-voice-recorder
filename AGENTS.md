@@ -37,6 +37,7 @@ League Voice Recorder/
 │   ├── i18n.py             # Internationalization and community translation loader
 │   ├── record.py           # LeagueRecorder engine (WASAPI capture & FFmpeg alignment)
 │   ├── native_audio.py     # Native WASAPI audio capture (Discord loopback & mic)
+│   ├── hud_widget.py       # In-Game floating HUD overlay widget (translucent live & replay HUD)
 │   ├── play_replay.py      # ReplaySynchronizer engine (process watcher & VLC sync)
 │   └── updater.py          # Auto-updater (GitHub releases, zip extraction, in-place replace)
 │
@@ -259,6 +260,18 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
 - **Silent Background In-Place Replacement**:
   - In compiled Windows binary mode: spawns a detached background updater script (`cmd.exe /c updater.bat` with `CREATE_NO_WINDOW`) that waits for the active application process to exit, copies all updated files cleanly via `robocopy` into the app directory, relaunches `LeagueVoiceRecorder.exe`, and cleans up temporary archives.
   - In development mode: returns extracted target directory without modifying the local Python runtime environment.
+
+### 3.7 In-Game Floating HUD Overlay (`app/hud_widget.py`)
+- **Translucent & Non-Intrusive Design**:
+  - Implements a 280x76 borderless floating HUD with semi-transparent layered opacity (`-alpha 0.85` by default) and transparent corner cutout (`-transparentcolor`) matching the esports Hextech PNG design specifications.
+  - Floats topmost over League of Legends in Borderless or Windowed display modes.
+- **Dual Mode Operation**:
+  - **Recorder HUD Mode**: Renders dynamic animated oscilloscopes for player Microphone (`#3DDCC4` mint/teal) and Discord team chat (`#8B93FF` periwinkle) modulated by real-time WASAPI audio levels, with a pulsing red REC badge and digital match clock.
+  - **Replay HUD Mode**: Displays an audio waveform with a moving playhead needle (`#FFFFFF` cursor, `#3DDCC4` played audio, `#3C4655` upcoming audio), an interactive replay volume slider with real-time VLC volume sync, and playback state indicator (`▶ REPLAY` / `⏸ PAUSED`).
+- **Input Transparency & Positioning**:
+  - Draggable with mouse to reposition anywhere on the desktop; automatically persists `hud_x` and `hud_y` coordinates to `config.json`.
+  - Supports Windows `WS_EX_TRANSPARENT` Click-Through mode so mouse clicks pass straight through into League of Legends during matches.
+  - Settings UI includes preview controls ("Preview Rec HUD", "Preview Replay HUD"), opacity slider (40%-100%), and position reset.
 
 ---
 

@@ -16,6 +16,11 @@ _KEY_MAPPINGS = (
     ("theme", "THEME"),
     ("auto_start_champ_select", "AUTO_START_CHAMP_SELECT"),
     ("auto_start_replay", "AUTO_START_REPLAY"),
+    ("hud_overlay_enabled", "HUD_OVERLAY_ENABLED"),
+    ("hud_click_through", "HUD_CLICK_THROUGH"),
+    ("hud_opacity", "HUD_OPACITY"),
+    ("hud_x", "HUD_X"),
+    ("hud_y", "HUD_Y"),
 )
 
 
@@ -141,6 +146,11 @@ def get_clean_default_config():
         "theme": "dark",
         "auto_start_champ_select": True,
         "auto_start_replay": True,
+        "hud_overlay_enabled": True,
+        "hud_click_through": False,
+        "hud_opacity": 0.85,
+        "hud_x": -1,
+        "hud_y": -1,
     }
 
 
@@ -153,6 +163,18 @@ def get_default_config():
         rec_folder = resolve_path(env_rec_folder)
     else:
         rec_folder = default_rec_dir
+
+    def _parse_int(val, default):
+        try:
+            return int(val)
+        except (ValueError, TypeError):
+            return default
+
+    def _parse_float(val, default):
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return default
 
     return {
         "target_audio_pid": int(os.getenv("TARGET_AUDIO_PID", "-1")),
@@ -167,6 +189,11 @@ def get_default_config():
         "theme": os.getenv("THEME", "dark"),
         "auto_start_champ_select": os.getenv("AUTO_START_CHAMP_SELECT", "true").lower() in ("true", "1", "yes"),
         "auto_start_replay": os.getenv("AUTO_START_REPLAY", "true").lower() in ("true", "1", "yes"),
+        "hud_overlay_enabled": os.getenv("HUD_OVERLAY_ENABLED", "true").lower() in ("true", "1", "yes"),
+        "hud_click_through": os.getenv("HUD_CLICK_THROUGH", "false").lower() in ("true", "1", "yes"),
+        "hud_opacity": _parse_float(os.getenv("HUD_OPACITY", "0.85"), 0.85),
+        "hud_x": _parse_int(os.getenv("HUD_X", "-1"), -1),
+        "hud_y": _parse_int(os.getenv("HUD_Y", "-1"), -1),
     }
 
 

@@ -106,6 +106,23 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.bind("<Key-m>", self._on_key_m)
         self.bind("<Key-M>", self._on_key_m)
 
+        # In-Game Floating HUD Widget (Translucent overlay for live scrim recording & replays)
+        self._is_hud_previewing = False
+        try:
+            from app.hud_widget import LeagueHUDWidget
+
+            self.hud = LeagueHUDWidget(
+                self,
+                opacity=float(self.config.get("hud_opacity", 0.85)),
+                click_through=bool(self.config.get("hud_click_through", False)),
+                initial_x=int(self.config.get("hud_x", -1)),
+                initial_y=int(self.config.get("hud_y", -1)),
+                on_volume_changed=self._on_hud_volume_changed,
+                on_position_changed=self._on_hud_position_changed,
+            )
+        except Exception:
+            self.hud = None
+
         # Handle window close
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -817,6 +834,44 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                             self._last_mic_color = mic_color
                         self.mic_meter_bar.set(mic_l)
                         self._last_rendered_mic_l = mic_l
+
+                # Live HUD wave & status updates
+                if getattr(self, "hud", None) and self.hud.is_visible:
+                    if self.hud.mode == "RECORD":
+                        rec_w = getattr(self, "recorder_worker", None)
+                        game_time = getattr(rec_w, "last_game_time", 0.0) if rec_w else 0.0
+                        time_str = (
+                            f"{int(game_time // 60):02d}:{int(game_time % 60):02d}"
+                            if game_time > 0
+                            else "00:00"
+                        )
+                        is_p = getattr(rec_w, "is_paused", False) if rec_w else False
+                        self.hud.update_recorder_state(
+                            time_str=time_str,
+                            mic_level=mic_l,
+                            discord_level=app_l,
+                            is_paused=is_p,
+                            is_muted=is_discord_muted,
+                        )
+                    elif self.hud.mode == "REPLAY":
+                        rep_w = getattr(self, "replay_worker", None)
+                        if rep_w:
+                            game_time = getattr(rep_w, "last_game_time", 0.0)
+                            time_str = (
+                                f"{int(game_time // 60):02d}:{int(game_time % 60):02d}"
+                                if game_time > 0
+                                else "00:00"
+                            )
+                            is_p = getattr(rep_w, "is_paused", False)
+                            self.hud.update_replay_state(
+                                time_str=time_str,
+                                current_time=game_time,
+                                total_duration=getattr(rep_w, "duration", 1800.0),
+                                volume=self.config.get("replay_volume", 80),
+                                is_paused=is_p,
+                                is_muted=getattr(self, "_replay_muted", False),
+                                speed=getattr(rep_w, "speed", 1.0),
+                            )
         except Exception:
             pass
         self._meter_timer = self.after(75, self._update_audio_meters)
@@ -1165,6 +1220,152 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         )
         self.auto_replay_switch.grid(row=8, column=1, columnspan=2, padx=10, pady=6, sticky="w")
 
+        # --- In-Game HUD Overlay Section ---
+        self.hud_title_lbl = ctk.CTkLabel(
+            scroll,
+            text=t("settings.hud_section_title"),
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=("#0891B2", "#0AC8B9"),
+        )
+        self.hud_title_lbl.grid(row=9, column=0, columnspan=3, padx=10, pady=(16, 6), sticky="w")
+
+        # Enable HUD Overlay Switch
+        self.hud_enable_lbl = ctk.CTkLabel(scroll, text=t("settings.hud_overlay_enabled"), text_color=("#0F172A", "#CBD5E1"))
+        self.hud_enable_lbl.grid(row=10, column=0, padx=10, pady=6, sticky="w")
+        self.hud_enable_var = ctk.BooleanVar(
+            value=bool(self.config.get("hud_overlay_enabled", True))
+        )
+        self.hud_enable_switch = ctk.CTkSwitch(
+            scroll,
+            text=t("settings.hud_overlay_info"),
+            variable=self.hud_enable_var,
+            onvalue=True,
+            offvalue=False,
+            fg_color=("#CBD5E1", "#1E2A4A"),
+            progress_color=("#0891B2", "#0AC8B9"),
+            button_color=("#FFFFFF", "#FFFFFF"),
+            button_hover_color=("#F8FAFC", "#E2E8F0"),
+            text_color=("#334155", "#94A3B8"),
+            command=self._on_hud_enabled_toggled,
+        )
+        self.hud_enable_switch.grid(row=10, column=1, columnspan=2, padx=10, pady=6, sticky="w")
+
+        # Click-Through Mode Switch
+        self.hud_click_through_lbl = ctk.CTkLabel(scroll, text=t("settings.hud_click_through"), text_color=("#0F172A", "#CBD5E1"))
+        self.hud_click_through_lbl.grid(row=11, column=0, padx=10, pady=6, sticky="w")
+        self.hud_click_through_var = ctk.BooleanVar(
+            value=bool(self.config.get("hud_click_through", False))
+        )
+        self.hud_click_through_switch = ctk.CTkSwitch(
+            scroll,
+            text=t("settings.hud_click_through_info"),
+            variable=self.hud_click_through_var,
+            onvalue=True,
+            offvalue=False,
+            fg_color=("#CBD5E1", "#1E2A4A"),
+            progress_color=("#0891B2", "#0AC8B9"),
+            button_color=("#FFFFFF", "#FFFFFF"),
+            button_hover_color=("#F8FAFC", "#E2E8F0"),
+            text_color=("#334155", "#94A3B8"),
+            command=self._on_hud_click_through_toggled,
+        )
+        self.hud_click_through_switch.grid(row=11, column=1, columnspan=2, padx=10, pady=6, sticky="w")
+
+        # HUD Opacity Slider
+        curr_opacity = float(self.config.get("hud_opacity", 0.85))
+        self.hud_opacity_lbl = ctk.CTkLabel(
+            scroll,
+            text=t("settings.hud_opacity", percent=int(curr_opacity * 100)),
+            text_color=("#0F172A", "#CBD5E1"),
+        )
+        self.hud_opacity_lbl.grid(row=12, column=0, padx=10, pady=6, sticky="w")
+
+        hud_slider_frame = ctk.CTkFrame(scroll, fg_color="transparent")
+        hud_slider_frame.grid(row=12, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
+        hud_slider_frame.grid_columnconfigure(0, weight=1)
+
+        self.hud_opacity_slider = ctk.CTkSlider(
+            hud_slider_frame,
+            from_=0.40,
+            to=1.00,
+            number_of_steps=12,
+            fg_color=("#CBD5E1", "#1E2A4A"),
+            progress_color=("#0891B2", "#0AC8B9"),
+            button_color=("#0891B2", "#0AC8B9"),
+            button_hover_color=("#0E7490", "#0397AB"),
+            command=self._on_hud_opacity_slider_changed,
+        )
+        self.hud_opacity_slider.set(curr_opacity)
+        self.hud_opacity_slider.pack(fill="x", expand=True)
+
+        # HUD Action / Preview Buttons
+        hud_btn_frame = ctk.CTkFrame(scroll, fg_color="transparent")
+        hud_btn_frame.grid(row=13, column=0, columnspan=3, padx=10, pady=(8, 12), sticky="w")
+
+        self.hud_preview_rec_btn = ctk.CTkButton(
+            hud_btn_frame,
+            text=t("settings.hud_preview_rec_btn"),
+            font=ctk.CTkFont(size=12, weight="bold"),
+            width=140,
+            height=32,
+            fg_color=("#F1F5F9", "#0F1A36"),
+            hover_color=("#E2E8F0", "#1E2A4A"),
+            border_width=1,
+            border_color=("#CBD5E1", "#1E2A4A"),
+            text_color=("#0F172A", "#E2E8F0"),
+            corner_radius=6,
+            command=self._preview_rec_hud,
+        )
+        self.hud_preview_rec_btn.pack(side="left", padx=(0, 8))
+
+        self.hud_preview_replay_btn = ctk.CTkButton(
+            hud_btn_frame,
+            text=t("settings.hud_preview_replay_btn"),
+            font=ctk.CTkFont(size=12, weight="bold"),
+            width=150,
+            height=32,
+            fg_color=("#F1F5F9", "#0F1A36"),
+            hover_color=("#E2E8F0", "#1E2A4A"),
+            border_width=1,
+            border_color=("#CBD5E1", "#1E2A4A"),
+            text_color=("#0F172A", "#E2E8F0"),
+            corner_radius=6,
+            command=self._preview_replay_hud,
+        )
+        self.hud_preview_replay_btn.pack(side="left", padx=(0, 8))
+
+        self.hud_hide_preview_btn = ctk.CTkButton(
+            hud_btn_frame,
+            text=t("settings.hud_hide_preview_btn"),
+            font=ctk.CTkFont(size=12, weight="bold"),
+            width=120,
+            height=32,
+            fg_color=("#F1F5F9", "#0F1A36"),
+            hover_color=("#E2E8F0", "#1E2A4A"),
+            border_width=1,
+            border_color=("#CBD5E1", "#1E2A4A"),
+            text_color=("#0F172A", "#E2E8F0"),
+            corner_radius=6,
+            command=self._hide_hud_preview,
+        )
+        self.hud_hide_preview_btn.pack(side="left", padx=(0, 8))
+
+        self.hud_reset_pos_btn = ctk.CTkButton(
+            hud_btn_frame,
+            text=t("settings.hud_reset_pos_btn"),
+            font=ctk.CTkFont(size=12, weight="bold"),
+            width=130,
+            height=32,
+            fg_color=("#F1F5F9", "#0F1A36"),
+            hover_color=("#E2E8F0", "#1E2A4A"),
+            border_width=1,
+            border_color=("#CBD5E1", "#1E2A4A"),
+            text_color=("#0F172A", "#E2E8F0"),
+            corner_radius=6,
+            command=self._reset_hud_position,
+        )
+        self.hud_reset_pos_btn.pack(side="left", padx=(0, 8))
+
         # Save Button
         self.save_btn = ctk.CTkButton(
             scroll,
@@ -1177,7 +1378,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             corner_radius=8,
             command=self._save_settings,
         )
-        self.save_btn.grid(row=9, column=0, columnspan=3, padx=10, pady=(20, 10), sticky="ew")
+        self.save_btn.grid(row=14, column=0, columnspan=3, padx=10, pady=(20, 10), sticky="ew")
 
         # --- Software Updates Section ---
         self.updates_title_lbl = ctk.CTkLabel(
@@ -1186,13 +1387,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color=("#0891B2", "#0AC8B9"),
         )
-        self.updates_title_lbl.grid(row=10, column=0, columnspan=3, padx=10, pady=(18, 6), sticky="w")
+        self.updates_title_lbl.grid(row=15, column=0, columnspan=3, padx=10, pady=(18, 6), sticky="w")
 
         self.app_version_lbl = ctk.CTkLabel(scroll, text=t("settings.app_version"), text_color=("#0F172A", "#CBD5E1"))
-        self.app_version_lbl.grid(row=11, column=0, padx=10, pady=6, sticky="w")
+        self.app_version_lbl.grid(row=16, column=0, padx=10, pady=6, sticky="w")
 
         version_frame = ctk.CTkFrame(scroll, fg_color="transparent")
-        version_frame.grid(row=11, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
+        version_frame.grid(row=16, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
 
         self.version_val_lbl = ctk.CTkLabel(
             version_frame,
@@ -1223,7 +1424,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             font=ctk.CTkFont(size=11),
             text_color=("#64748B", "#94A3B8"),
         )
-        self.update_status_lbl.grid(row=12, column=0, columnspan=3, padx=10, pady=(4, 0), sticky="w")
+        self.update_status_lbl.grid(row=17, column=0, columnspan=3, padx=10, pady=(4, 0), sticky="w")
 
         self.update_action_btn = ctk.CTkButton(
             scroll,
@@ -1235,6 +1436,86 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             corner_radius=8,
             command=self._on_perform_update_clicked,
         )
+
+    # ==========================================
+    # IN-GAME FLOATING HUD WIDGET HANDLERS
+    # ==========================================
+    def _on_hud_volume_changed(self, vol_pct):
+        """Called when player interacts with the volume slider on the Replay HUD."""
+        if self.replay_worker and hasattr(self.replay_worker, "set_volume"):
+            self.replay_worker.set_volume(vol_pct)
+        self.config["replay_volume"] = vol_pct
+        if hasattr(self, "vol_slider"):
+            self.vol_slider.set(vol_pct)
+        self._replay_muted = False
+        self._update_volume_display()
+
+    def _on_hud_position_changed(self, x, y):
+        """Saves repositioned HUD coordinates."""
+        self.config["hud_x"] = x
+        self.config["hud_y"] = y
+        save_config({"hud_x": x, "hud_y": y})
+
+    def _on_hud_enabled_toggled(self):
+        enabled = bool(self.hud_enable_var.get())
+        self.config["hud_overlay_enabled"] = enabled
+        if not enabled and self.hud:
+            self.hud.hide()
+
+    def _on_hud_click_through_toggled(self):
+        ct = bool(self.hud_click_through_var.get())
+        self.config["hud_click_through"] = ct
+        if self.hud:
+            self.hud.set_click_through(ct)
+
+    def _on_hud_opacity_slider_changed(self, val):
+        op = round(float(val), 2)
+        self.config["hud_opacity"] = op
+        if hasattr(self, "hud_opacity_lbl"):
+            self.hud_opacity_lbl.configure(
+                text=t("settings.hud_opacity", percent=int(op * 100))
+            )
+        if self.hud:
+            self.hud.set_opacity(op)
+
+    def _preview_rec_hud(self):
+        if not self.hud:
+            return
+        self._is_hud_previewing = True
+        self.hud.set_mode("RECORD")
+        self.hud.show()
+        self.hud.update_recorder_state(
+            time_str="12:48",
+            mic_level=0.75,
+            discord_level=0.45,
+            is_paused=False,
+            is_muted=False,
+        )
+
+    def _preview_replay_hud(self):
+        if not self.hud:
+            return
+        self._is_hud_previewing = True
+        self.hud.set_mode("REPLAY")
+        self.hud.show()
+        self.hud.update_replay_state(
+            time_str="12:48",
+            current_time=768.0,
+            total_duration=2250.0,
+            volume=int(self.config.get("replay_volume", 80)),
+            is_paused=False,
+            is_muted=bool(getattr(self, "_replay_muted", False)),
+            speed=1.0,
+        )
+
+    def _hide_hud_preview(self):
+        self._is_hud_previewing = False
+        if self.hud:
+            self.hud.hide()
+
+    def _reset_hud_position(self):
+        if self.hud:
+            self.hud.reset_position()
 
     # ==========================================
     # I18N DYNAMIC TEXT REFRESH
@@ -1362,6 +1643,19 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 if hasattr(self, "auto_replay_lbl"):
                     self.auto_replay_lbl.configure(text=t("settings.auto_start_replay"))
                     self.auto_replay_switch.configure(text=t("settings.auto_start_replay_info"))
+                if hasattr(self, "hud_title_lbl"):
+                    self.hud_title_lbl.configure(text=t("settings.hud_section_title"))
+                    self.hud_enable_lbl.configure(text=t("settings.hud_overlay_enabled"))
+                    self.hud_enable_switch.configure(text=t("settings.hud_overlay_info"))
+                    self.hud_click_through_lbl.configure(text=t("settings.hud_click_through"))
+                    self.hud_click_through_switch.configure(text=t("settings.hud_click_through_info"))
+                    self.hud_opacity_lbl.configure(
+                        text=t("settings.hud_opacity", percent=int(self.hud_opacity_slider.get() * 100))
+                    )
+                    self.hud_preview_rec_btn.configure(text=t("settings.hud_preview_rec_btn"))
+                    self.hud_preview_replay_btn.configure(text=t("settings.hud_preview_replay_btn"))
+                    self.hud_hide_preview_btn.configure(text=t("settings.hud_hide_preview_btn"))
+                    self.hud_reset_pos_btn.configure(text=t("settings.hud_reset_pos_btn"))
                 self.save_btn.configure(text=t("settings.save_btn"))
                 if hasattr(self, "updates_title_lbl"):
                     self.updates_title_lbl.configure(text=t("settings.updates_title"))
@@ -1416,14 +1710,53 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 elif action == "STATUS_REC":
                     status, detail = item[1], item[2]
                     self._render_rec_status(status, detail)
+                    if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
+                        if status in ("RECORDING", "PAUSED"):
+                            self.hud.set_mode("RECORD")
+                            self.hud.show()
+                        elif status in ("SAVED", "STOPPED", "IDLE") and not self._is_hud_previewing:
+                            self.hud.hide()
 
                 elif action == "STATUS_REPLAY":
                     status, detail = item[1], item[2]
                     self._render_replay_status(status, detail)
+                    if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
+                        if status in ("SYNCING", "PAUSED"):
+                            self.hud.set_mode("REPLAY")
+                            self.hud.show()
+                            game_time = (
+                                getattr(self.replay_worker, "last_game_time", 0.0)
+                                if self.replay_worker
+                                else 0.0
+                            )
+                            time_str = (
+                                f"{int(game_time // 60):02d}:{int(game_time % 60):02d}"
+                                if game_time > 0
+                                else "00:00"
+                            )
+                            is_p = (status == "PAUSED") or (
+                                self.replay_worker and getattr(self.replay_worker, "is_paused", False)
+                            )
+                            self.hud.update_replay_state(
+                                time_str=time_str,
+                                current_time=game_time,
+                                total_duration=getattr(self.replay_worker, "duration", 1800.0),
+                                volume=int(self.config.get("replay_volume", 80)),
+                                is_paused=is_p,
+                                is_muted=getattr(self, "_replay_muted", False),
+                                speed=getattr(self.replay_worker, "speed", 1.0)
+                                if self.replay_worker
+                                else 1.0,
+                            )
+                        elif status in ("STOPPED", "IDLE") and not self._is_hud_previewing:
+                            self.hud.hide()
 
                 elif action == "REPLAY_MUTE":
                     self._replay_muted = bool(item[1])
                     self._update_volume_display()
+                    if getattr(self, "hud", None):
+                        self.hud.is_muted = self._replay_muted
+                        self.hud.render()
 
                 elif action == "AUTO_START_REC":
                     if not self.recorder_worker:
@@ -2230,11 +2563,19 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 "theme": selected_theme_code,
                 "auto_start_champ_select": bool(self.auto_champ_select_var.get()),
                 "auto_start_replay": bool(self.auto_replay_var.get()),
+                "hud_overlay_enabled": bool(self.hud_enable_var.get()) if hasattr(self, "hud_enable_var") else True,
+                "hud_click_through": bool(self.hud_click_through_var.get()) if hasattr(self, "hud_click_through_var") else False,
+                "hud_opacity": round(float(self.hud_opacity_slider.get()), 2) if hasattr(self, "hud_opacity_slider") else 0.85,
             }
             if save_config(new_config):
                 self.config = new_config
                 set_language(selected_lang_code)
                 self._set_theme(selected_theme_code)
+                if self.hud:
+                    self.hud.set_click_through(new_config["hud_click_through"])
+                    self.hud.set_opacity(new_config["hud_opacity"])
+                    if not new_config["hud_overlay_enabled"]:
+                        self.hud.hide()
                 self.vol_slider.set(vol_val)
                 self._on_replay_volume_slider_changed(vol_val)
                 self.rec_scene_lbl.configure(
@@ -2297,6 +2638,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
         # 2. Instant visual responsiveness: hide window and taskbar icon immediately (< 1ms)
         try:
+            if hasattr(self, "hud") and self.hud:
+                self.hud.hide()
             self.withdraw()
             self.update_idletasks()
         except Exception:
@@ -2321,6 +2664,12 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
     def destroy(self):
         self._is_destroyed = True
+        if hasattr(self, "hud") and self.hud:
+            try:
+                self.hud.destroy()
+            except Exception:
+                pass
+            self.hud = None
         if hasattr(self, "_preview_native_recorder") and self._preview_native_recorder:
             try:
                 self._preview_native_recorder.close()

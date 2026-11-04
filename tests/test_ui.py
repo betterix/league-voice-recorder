@@ -197,6 +197,45 @@ class TestUIApp(unittest.TestCase):
         self.app._on_theme_selected(t("settings.theme_dark"))
         self.assertEqual(self.app.current_theme, "dark")
 
+    def test_ui_hud_settings_and_preview(self):
+        """HUD overlay toggle, opacity, preview modes, and volume synchronization."""
+        self.assertIsNotNone(self.app.hud)
+
+        # 1. Preview Recorder HUD
+        self.app._preview_rec_hud()
+        self.assertTrue(self.app._is_hud_previewing)
+        self.assertEqual(self.app.hud.mode, "RECORD")
+        self.assertTrue(self.app.hud.is_visible)
+
+        # 2. Preview Replay HUD
+        self.app._preview_replay_hud()
+        self.assertTrue(self.app._is_hud_previewing)
+        self.assertEqual(self.app.hud.mode, "REPLAY")
+        self.assertTrue(self.app.hud.is_visible)
+
+        # 3. Hide Preview
+        self.app._hide_hud_preview()
+        self.assertFalse(self.app._is_hud_previewing)
+        self.assertFalse(self.app.hud.is_visible)
+
+        # 4. Opacity slider change
+        self.app.hud_opacity_slider.set(0.65)
+        self.app._on_hud_opacity_slider_changed(0.65)
+        self.assertEqual(self.app.config.get("hud_opacity"), 0.65)
+        self.assertEqual(self.app.hud.opacity, 0.65)
+
+        # 5. Click-through toggle
+        self.app.hud_click_through_var.set(True)
+        self.app._on_hud_click_through_toggled()
+        self.assertTrue(self.app.config.get("hud_click_through"))
+        self.assertTrue(self.app.hud.click_through)
+
+        # 6. Volume changed callback from HUD slider
+        self.app._on_hud_volume_changed(92)
+        self.assertEqual(self.app.config.get("replay_volume"), 92)
+        self.assertEqual(self.app.vol_slider.get(), 92)
+        self.assertIn("92%", self.app.vol_label.cget("text"))
+
 
 if __name__ == "__main__":
     unittest.main()
