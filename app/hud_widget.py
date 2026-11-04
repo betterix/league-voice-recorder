@@ -269,7 +269,7 @@ class LeagueHUDWidget:
         self.discord_level = max(0.0, min(1.0, float(discord_level)))
         self.is_paused = bool(is_paused)
         self.is_muted = bool(is_muted)
-        self._wave_phase += 0.22
+        self._wave_phase += 0.14
         if self._wave_phase > 200.0:
             self._wave_phase = 0.0
         if self.is_visible and self.mode == "RECORD":
@@ -295,7 +295,7 @@ class LeagueHUDWidget:
         self.is_muted = bool(is_muted)
         self.speed = float(speed)
         self.audio_level = max(0.0, min(1.0, float(audio_level)))
-        self._wave_phase += 0.22
+        self._wave_phase += 0.14
         if self._wave_phase > 200.0:
             self._wave_phase = 0.0
         if self.is_visible and self.mode == "REPLAY":
@@ -355,12 +355,23 @@ class LeagueHUDWidget:
             phase=self._wave_phase,
             seed=0.0,
         )
+        mic_glow = "#5A1E28" if self.is_muted else "#155E54"
         mic_color = "#EF4444" if self.is_muted else self.COLOR_TEAL
+        self.canvas.create_line(
+            mic_pts,
+            fill=mic_glow,
+            width=3.2,
+            smooth=True,
+            capstyle="round",
+            joinstyle="round",
+        )
         self.canvas.create_line(
             mic_pts,
             fill=mic_color,
             width=1.8,
             smooth=True,
+            capstyle="round",
+            joinstyle="round",
         )
 
         # Row 2: DISCORD Label
@@ -382,9 +393,19 @@ class LeagueHUDWidget:
         )
         self.canvas.create_line(
             discord_pts,
+            fill="#343864",
+            width=3.2,
+            smooth=True,
+            capstyle="round",
+            joinstyle="round",
+        )
+        self.canvas.create_line(
+            discord_pts,
             fill=self.COLOR_PERIWINKLE,
             width=1.8,
             smooth=True,
+            capstyle="round",
+            joinstyle="round",
         )
 
         # Right Section: Status Indicator (REC or PAUSED)
@@ -446,18 +467,38 @@ class LeagueHUDWidget:
         if len(played_pts) >= 4:
             self.canvas.create_line(
                 played_pts,
+                fill="#155E54",
+                width=3.2,
+                smooth=True,
+                capstyle="round",
+                joinstyle="round",
+            )
+            self.canvas.create_line(
+                played_pts,
                 fill=self.COLOR_TEAL,
                 width=1.8,
                 smooth=True,
+                capstyle="round",
+                joinstyle="round",
             )
 
         # Draw upcoming portion (Muted slate)
         if len(upcoming_pts) >= 4:
             self.canvas.create_line(
                 upcoming_pts,
+                fill="#1A2332",
+                width=3.2,
+                smooth=True,
+                capstyle="round",
+                joinstyle="round",
+            )
+            self.canvas.create_line(
+                upcoming_pts,
                 fill=self.COLOR_UPCOMING_WAVE,
                 width=1.8,
                 smooth=True,
+                capstyle="round",
+                joinstyle="round",
             )
 
         # White playhead cursor needle
@@ -468,6 +509,7 @@ class LeagueHUDWidget:
             30,
             fill="#FFFFFF",
             width=2,
+            capstyle="round",
         )
 
         # Row 2: VOLUME Label
@@ -573,23 +615,23 @@ class LeagueHUDWidget:
     # WAVEFORM ALGORITHMS
     # ==========================================
     def _generate_static_waveform(self) -> list[tuple[float, float]]:
-        """Generates the static recorded audio waveform profile for replay."""
+        """Generates a smooth, organic audio waveform track profile for replay."""
         width = 126.0
         start_x = 68.0
         center_y = 22.0
-        num_points = 36
+        num_points = 90
         step = width / (num_points - 1)
         pts = []
 
         for i in range(num_points):
             x = start_x + i * step
-            norm_x = i / (num_points - 1)
-            taper = math.sin(norm_x * math.pi)
+            norm = i / (num_points - 1)
+            envelope = math.sin(norm * math.pi) ** 1.15
             h = (
-                math.sin(i * 1.05)
-                + math.cos(i * 2.2) * 0.7
-                + math.sin(i * 3.6) * 0.35
-            ) * 6.5 * taper
+                math.sin(norm * 4.0 * math.pi)
+                + math.sin(norm * 8.0 * math.pi) * 0.4
+                + math.cos(norm * 2.0 * math.pi) * 0.3
+            ) * 5.8 * envelope
             pts.append((x, center_y + h))
         return pts
 
@@ -608,13 +650,11 @@ class LeagueHUDWidget:
             x1, y1 = pts[i]
             x2, y2 = pts[i + 1]
 
-            if audio_level > 0.02:
-                norm_i = i / max(1, len(pts) - 1)
-                taper = math.sin(norm_i * math.pi)
-                disp1 = math.sin(i * 0.9 + mod_phase) * audio_level * 6.0 * taper if x1 <= cursor_x else 0.0
-                disp2 = math.sin((i + 1) * 0.9 + mod_phase) * audio_level * 6.0 * taper if x2 <= cursor_x else 0.0
-                y1 = y1 + disp1
-                y2 = y2 + disp2
+            if audio_level > 0.02 and x1 <= cursor_x:
+                norm = i / max(1, len(pts) - 1)
+                envelope = math.sin(norm * math.pi) ** 1.15
+                disp = math.sin(norm * 5.0 * math.pi + mod_phase) * audio_level * 5.0 * envelope
+                y1 = y1 + disp
 
             if x2 < cursor_x:
                 if not played:
@@ -644,26 +684,26 @@ class LeagueHUDWidget:
         phase: float = 0.0,
         seed: float = 0.0,
     ) -> list[float]:
-        """Generates a dynamic oscillating audio waveform modulated by live VU levels."""
+        """Generates a silky smooth oscillating audio waveform modulated by live VU levels."""
         width = 126.0
         start_x = 68.0
-        num_points = 32
+        num_points = 90
         step = width / (num_points - 1)
         points = []
 
-        base_amp = 1.0 if level < 0.02 else 1.8
-        active_amp = level * 8.5
+        base_amp = 0.8 if level < 0.02 else 1.2
+        active_amp = level * 7.0
 
         for i in range(num_points):
             x = start_x + i * step
-            norm_x = i / (num_points - 1)
-            taper = math.sin(norm_x * math.pi)
+            norm = i / (num_points - 1)
+            envelope = math.sin(norm * math.pi) ** 1.25
 
-            w1 = math.sin(i * 0.85 + phase + seed)
-            w2 = math.cos(i * 1.6 - phase * 1.2) * 0.55
-            w3 = math.sin(i * 3.2 + phase * 2.0) * 0.3
+            w1 = math.sin(norm * 3.6 * math.pi + phase + seed)
+            w2 = math.sin(norm * 7.2 * math.pi - phase * 0.75 + seed * 1.4) * 0.32
+            w3 = math.cos(norm * 1.8 * math.pi + phase * 0.4) * 0.22
 
-            disp = (w1 + w2 + w3) * (base_amp + active_amp) * taper
+            disp = (w1 + w2 + w3) * (base_amp + active_amp) * envelope
             points.extend([x, center_y + disp])
 
         return points
