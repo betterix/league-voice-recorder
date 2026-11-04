@@ -1671,13 +1671,30 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
             self._last_fg_hwnd = hwnd
 
-            # If user is interacting directly with the HUD overlay itself
+            # 1. If user is interacting directly with the HUD overlay itself
             if getattr(self, "hud", None):
                 hud_hwnd = getattr(self.hud, "get_hwnd", lambda: 0)()
                 if hud_hwnd and hwnd == hud_hwnd:
                     self._last_fg_is_league = True
                     return True
 
+            # 2. Check window class name (RiotWindowClass is the match/replay in-game client)
+            cls_buf = ctypes.create_unicode_buffer(256)
+            ctypes.windll.user32.GetClassNameW(hwnd, cls_buf, 256)
+            cls_name = cls_buf.value
+            if cls_name == "RiotWindowClass":
+                self._last_fg_is_league = True
+                return True
+
+            # 3. Check window title (League of Legends (TM) Client)
+            title_buf = ctypes.create_unicode_buffer(512)
+            ctypes.windll.user32.GetWindowTextW(hwnd, title_buf, 512)
+            title = title_buf.value
+            if "League of Legends" in title and "Client" in title:
+                self._last_fg_is_league = True
+                return True
+
+            # 4. Check process PID
             fg_pid = ctypes.c_ulong()
             ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(fg_pid))
             target_pid = fg_pid.value
@@ -1685,19 +1702,32 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self._last_fg_is_league = False
                 return False
 
-            # Check cached recorder game PID or replay PID
             rec_pid = getattr(getattr(self, "recorder_worker", None), "_cached_game_pid", None)
             rep_pid = getattr(getattr(self, "replay_worker", None), "current_replay_pid", None)
             if (rec_pid and target_pid == rec_pid) or (rep_pid and target_pid == rep_pid):
                 self._last_fg_is_league = True
                 return True
 
-            # Process name check
+            # 5. Check executable name via QueryFullProcessImageNameW (works even when elevated)
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            h_proc = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, target_pid)
+            if h_proc:
+                try:
+                    img_buf = ctypes.create_unicode_buffer(512)
+                    img_size = ctypes.c_ulong(512)
+                    if ctypes.windll.kernel32.QueryFullProcessImageNameW(h_proc, 0, img_buf, ctypes.byref(img_size)):
+                        exe_path = img_buf.value.lower()
+                        if "league of legends.exe" in exe_path:
+                            self._last_fg_is_league = True
+                            return True
+                finally:
+                    ctypes.windll.kernel32.CloseHandle(h_proc)
+
+            # 6. Fallback to psutil
             try:
                 proc = psutil.Process(target_pid)
                 name = (proc.name() or "").lower()
-                # Target specifically the in-game match/replay client
-                if name == "league of legends.exe":
+                if "league of legends" in name:
                     self._last_fg_is_league = True
                     return True
             except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -1725,13 +1755,28 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.hud.show()
             return
 
-        rec_status = getattr(self, "last_rec_status", (None, None))[0]
-        rep_status = getattr(self, "last_replay_status", (None, None))[0]
+        rec_status = (
+            self.last_rec_status[0]
+            if getattr(self, "last_rec_status", None)
+            else "IDLE"
+        )
+        rep_status = (
+            self.last_replay_status[0]
+            if getattr(self, "last_replay_status", None)
+            else "IDLE"
+        )
+        rec_w = getattr(self, "recorder_worker", None)
+        rep_w = getattr(self, "replay_worker", None)
 
-        is_rec_active = (rec_status in ("RECORDING", "PAUSED")) and (self.recorder_worker is not None)
-        is_rep_active = (rep_status in ("SYNCING", "PAUSED")) and (self.replay_worker is not None)
+        is_rep_active = (rep_w is not None) and (
+            rep_status in ("SYNCING", "PAUSED")
+            or (rep_status == "WATCHING" and "(loading in League...)" in str(getattr(self, "last_replay_status", ("", ""))[1]))
+        )
+        is_rec_active = (rec_w is not None) and (
+            rec_status in ("RECORDING", "PAUSED")
+        )
 
-        # Only display HUD during active play or replay match
+        # Only display HUD during active play or replay in game
         if not (is_rec_active or is_rep_active):
             if self.hud.is_visible:
                 self.hud.hide()
@@ -1745,7 +1790,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.hud.hide()
             return
 
-        target_mode = "RECORD" if is_rec_active else "REPLAY"
+        # Prioritize replay mode if replay worker is active, else recording mode
+        target_mode = "REPLAY" if is_rep_active else "RECORD"
         if self.hud.mode != target_mode:
             self.hud.set_mode(target_mode)
 
