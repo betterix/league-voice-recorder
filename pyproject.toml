@@ -19,7 +19,8 @@ classifiers = [
 ]
 dependencies = [
     "customtkinter>=6.0.0",
-    "numpy>=2.4.6",
+    "numpy>=2.5.4; python_version >= '3.12'",
+    "numpy>=2.4.6; python_version < '3.12'",
     "proc-tap>=1.1.1",
     "psutil>=7.2.2",
     "pyaudiowpatch>=0.2.12.9",
@@ -57,7 +58,7 @@ filterwarnings = [
 [dependency-groups]
 dev = [
     "gradex>=0.1.1",
-    "nuitka>=4.3.1",
+    "nuitka>=4.3.4",
     "pytest>=9.2.0",
     "ruff>=0.17.3",
 ]
