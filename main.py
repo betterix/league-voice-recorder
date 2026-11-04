@@ -1660,11 +1660,11 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         if self.hud:
             self.hud.reset_position()
 
-    def _is_league_in_game_foreground(self) -> bool:
+    def _is_league_foreground(self) -> bool:
         """
-        Checks if the active foreground window belongs to the RUNNING
-        League of Legends in-game engine ('League of Legends.exe'),
-        and explicitly EXCLUDES the launcher/lobby client ('LeagueClient.exe').
+        Checks if the active foreground window belongs to League of Legends
+        (in-game match/replay or League client UI) or our HUD overlay,
+        and returns False when the user Alt-Tabs into another application (Discord, Chrome, desktop, etc.).
         """
         if not sys.platform.startswith("win"):
             return True
@@ -1676,41 +1676,49 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             if not hwnd:
                 return False
 
-            # If user is interacting directly with the HUD overlay itself (e.g. dragging or adjusting volume)
+            # If user is directly interacting with or focusing the HUD overlay itself, keep it visible!
             if getattr(self, "hud", None):
                 hud_hwnd = getattr(self.hud, "get_hwnd", lambda: 0)()
                 if hud_hwnd and hwnd == hud_hwnd:
-                    return getattr(self, "_last_fg_is_league_game", False)
+                    return True
 
-            # Check cached result for identical hwnd (100ns per tick)
-            if hwnd == getattr(self, "_last_fg_hwnd", None):
-                return getattr(self, "_last_fg_is_league_game", False)
-
-            self._last_fg_hwnd = hwnd
-
+            # If the user is in our main app window (configuring settings or looking at logs), keep it visible
             fg_pid = ctypes.c_ulong()
             u32.GetWindowThreadProcessId(hwnd, ctypes.byref(fg_pid))
             target_pid = fg_pid.value
-            if not target_pid or target_pid == os.getpid():
-                self._last_fg_is_league_game = False
+            if not target_pid:
                 return False
 
-            # 1. High-speed process check via psutil
+            if target_pid == os.getpid():
+                return True
+
+            # Check cached result for identical hwnd
+            if hwnd == getattr(self, "_last_fg_hwnd", None):
+                return getattr(self, "_last_fg_is_league", False)
+
+            self._last_fg_hwnd = hwnd
+
+            # 1. Fast process name check via psutil
             try:
                 proc = psutil.Process(target_pid)
                 name = (proc.name() or "").lower()
-                # 'League of Legends.exe' is strictly the in-game match/replay process
-                if name == "league of legends.exe":
-                    self._last_fg_is_league_game = True
+                # Check if foreground process belongs to League of Legends
+                if name in (
+                    "league of legends.exe",
+                    "leagueclient.exe",
+                    "leagueclientux.exe",
+                    "leagueclientuxrender.exe",
+                ):
+                    self._last_fg_is_league = True
                     return True
-                # Explicitly reject launcher client processes
-                if "leagueclient" in name or "riotclient" in name:
-                    self._last_fg_is_league_game = False
-                    return False
+
+                # If it's another application (Discord, Chrome, Spotify, Steam, Explorer desktop, etc.) -> NOT League!
+                self._last_fg_is_league = False
+                return False
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
-            # 2. QueryFullProcessImageNameW check (bypasses elevation/Vanguard token protection)
+            # 2. Kernel32 QueryFullProcessImageNameW check (bypasses elevation / token restrictions)
             PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
             h_proc = ctypes.windll.kernel32.OpenProcess(
                 PROCESS_QUERY_LIMITED_INFORMATION, False, target_pid
@@ -1723,37 +1731,36 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                         h_proc, 0, img_buf, ctypes.byref(img_size)
                     ):
                         exe_path = img_buf.value.lower()
-                        if (
-                            "league of legends.exe" in exe_path
-                            and "leagueclient" not in exe_path
-                        ):
-                            self._last_fg_is_league_game = True
+                        if "league of legends.exe" in exe_path or "leagueclient" in exe_path:
+                            self._last_fg_is_league = True
                             return True
-                        if "leagueclient" in exe_path or "riotclient" in exe_path:
-                            self._last_fg_is_league_game = False
-                            return False
+                        # Another application
+                        self._last_fg_is_league = False
+                        return False
                 finally:
                     ctypes.windll.kernel32.CloseHandle(h_proc)
 
-            # 3. Window title check
+            # 3. Window title / text fallback
             length = u32.GetWindowTextLengthW(hwnd)
             if length > 0:
                 title_buf = ctypes.create_unicode_buffer(length + 1)
                 u32.GetWindowTextW(hwnd, title_buf, length + 1)
                 title = title_buf.value
-                if "League of Legends (TM) Client" in title:
-                    self._last_fg_is_league_game = True
+                if "League of Legends" in title:
+                    self._last_fg_is_league = True
                     return True
 
-            self._last_fg_is_league_game = False
+            self._last_fg_is_league = False
             return False
         except Exception:
             return False
 
     def _sync_hud_visibility_and_state(self, mic_l=0.0, app_l=0.0, is_discord_muted=False):
         """
-        Synchronizes HUD overlay state and live meters without Alt-Tab hiding.
-        Stays open while recording or replay watcher is active.
+        Synchronizes HUD overlay:
+        - Visible ONLY when focused on League of Legends.
+        - When Alt-Tabbing into another application (Discord, browser, desktop, etc.), HUD hides.
+        - Reappears immediately when Alt-Tabbing back into League.
         """
         if not getattr(self, "hud", None):
             return
@@ -1776,13 +1783,20 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         is_rep_active = rep_w is not None
         is_rec_active = rec_w is not None
 
-        # 1. If neither match recording nor replay is running -> Hide HUD
+        # 1. If neither match recording nor replay watcher is running -> Hide HUD
         if not (is_rec_active or is_rep_active):
             if self.hud.is_visible:
                 self.hud.hide()
             return
 
-        # 2. Stay visible in League UI without Alt-Tab hiding
+        # 2. Check if League is the active foreground window!
+        # If Alt-Tabbed into another application (Discord, Chrome, desktop, etc.) -> Hide HUD!
+        if not self._is_league_foreground():
+            if self.hud.is_visible:
+                self.hud.hide()
+            return
+
+        # 3. In League -> Show HUD overlay!
         target_mode = "REPLAY" if is_rep_active else "RECORD"
         if self.hud.mode != target_mode:
             self.hud.set_mode(target_mode)

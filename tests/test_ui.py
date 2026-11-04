@@ -236,39 +236,47 @@ class TestUIApp(unittest.TestCase):
         self.assertEqual(self.app.vol_slider.get(), 92)
         self.assertIn("92%", self.app.vol_label.cget("text"))
 
-    def test_ui_hud_stays_in_league_ui_without_alttab_hiding(self):
-        """HUD stays visible in League UI during recording or replay watcher without Alt-Tab hiding."""
+    def test_ui_hud_stays_in_league_and_hides_on_alttab(self):
+        """HUD displays in League UI, auto-hides when Alt-Tabbing into another app, and restores on return."""
         self.assertIsNotNone(self.app.hud)
         self.app.hud.hide()
         self.assertFalse(self.app.hud.is_visible)
 
-        # 1. Start recording watcher -> HUD opens in RECORD mode
+        # 1. In League -> HUD is visible in League UI
         self.app.recorder_worker = MagicMock()
         self.app.last_rec_status = ("RECORDING", "05:20")
-        self.app._sync_hud_visibility_and_state()
-        self.assertTrue(self.app.hud.is_visible)
-        self.assertEqual(self.app.hud.mode, "RECORD")
+        with patch.object(self.app, "_is_league_foreground", return_value=True):
+            self.app._sync_hud_visibility_and_state()
+            self.assertTrue(self.app.hud.is_visible)
+            self.assertEqual(self.app.hud.mode, "RECORD")
 
-        # 2. Switching windows / Alt-Tabbing does NOT hide the HUD (stays in UI)
-        self.app._sync_hud_visibility_and_state()
-        self.assertTrue(self.app.hud.is_visible)
+        # 2. Alt-Tab into another application (Discord, Chrome, desktop) -> HUD hides!
+        with patch.object(self.app, "_is_league_foreground", return_value=False):
+            self.app._sync_hud_visibility_and_state()
+            self.assertFalse(self.app.hud.is_visible)
 
-        # 3. Stop recording -> HUD hides
+        # 3. Alt-Tab back into League -> HUD immediately restores in League UI!
+        with patch.object(self.app, "_is_league_foreground", return_value=True):
+            self.app._sync_hud_visibility_and_state()
+            self.assertTrue(self.app.hud.is_visible)
+
+        # 4. Stop recording -> HUD hides
         self.app.recorder_worker = None
         self.app._sync_hud_visibility_and_state()
         self.assertFalse(self.app.hud.is_visible)
 
-        # 4. Start replay auto-sync -> HUD opens in REPLAY mode
+        # 5. Start replay auto-sync in League -> HUD opens in REPLAY mode
         self.app.replay_worker = MagicMock()
         self.app.last_replay_status = ("SYNCING", "04:12")
-        self.app._sync_hud_visibility_and_state()
-        self.assertTrue(self.app.hud.is_visible)
-        self.assertEqual(self.app.hud.mode, "REPLAY")
+        with patch.object(self.app, "_is_league_foreground", return_value=True):
+            self.app._sync_hud_visibility_and_state()
+            self.assertTrue(self.app.hud.is_visible)
+            self.assertEqual(self.app.hud.mode, "REPLAY")
 
-        # 5. Stop replay -> HUD hides
-        self.app.replay_worker = None
-        self.app._sync_hud_visibility_and_state()
-        self.assertFalse(self.app.hud.is_visible)
+        # 6. Alt-Tab out of replay into another app -> HUD hides
+        with patch.object(self.app, "_is_league_foreground", return_value=False):
+            self.app._sync_hud_visibility_and_state()
+            self.assertFalse(self.app.hud.is_visible)
 
 
 if __name__ == "__main__":
