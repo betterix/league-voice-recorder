@@ -395,6 +395,9 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             text_color=("#0F172A", "#F8FAFC"),
             button_color=("#0891B2", "#0AC8B9"),
             button_hover_color=("#0E7490", "#0397AB"),
+            dropdown_fg_color=("#FFFFFF", "#0B1329"),
+            dropdown_text_color=("#0F172A", "#F8FAFC"),
+            dropdown_hover_color=("#F1F5F9", "#162038"),
             corner_radius=6,
         )
         self.target_prog_menu.grid(row=1, column=0, padx=(10, 4), pady=(0, 8), sticky="ew")
@@ -441,6 +444,9 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             text_color=("#0F172A", "#F8FAFC"),
             button_color=("#0891B2", "#0AC8B9"),
             button_hover_color=("#0E7490", "#0397AB"),
+            dropdown_fg_color=("#FFFFFF", "#0B1329"),
+            dropdown_text_color=("#0F172A", "#F8FAFC"),
+            dropdown_hover_color=("#F1F5F9", "#162038"),
             corner_radius=6,
         )
         self.mic_input_menu.grid(row=1, column=0, padx=(10, 4), pady=(0, 8), sticky="ew")
@@ -632,6 +638,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         tab_recordings = self.tabview.add("recordings")
         tab_settings = self.tabview.add("settings")
 
+        self.tabview._segmented_button.configure(text_color=("#0F172A", "#F8FAFC"))
         self.tabview._segmented_button._buttons_dict["log"].configure(text=t("tabs.log"))
         self.tabview._segmented_button._buttons_dict["recordings"].configure(
             text=t("tabs.recordings")
@@ -946,7 +953,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         parent.grid_columnconfigure(0, weight=1)
         parent.grid_rowconfigure(0, weight=1)
 
-        scroll = ctk.CTkScrollableFrame(parent, fg_color="transparent")
+        scroll = ctk.CTkScrollableFrame(
+            parent,
+            fg_color=("#F8FAFC", "#070D1E"),
+            corner_radius=10,
+            border_width=1,
+            border_color=("#E2E8F0", "#162038"),
+        )
         scroll.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
         scroll.grid_columnconfigure(0, weight=0)
         scroll.grid_columnconfigure(1, weight=1)
@@ -957,7 +970,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             scroll,
             text=t("settings.paths_title"),
             font=ctk.CTkFont(size=14, weight="bold"),
-            text_color=("#A07832", "#C8AA6E"),
+            text_color=("#0891B2", "#0AC8B9"),
         )
         self.dir_title_lbl.grid(row=0, column=0, columnspan=3, padx=10, pady=(12, 8), sticky="w")
 
@@ -966,7 +979,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.rec_folder_lbl.grid(row=1, column=0, padx=10, pady=6, sticky="w")
         self.rec_folder_entry = ctk.CTkEntry(
             scroll,
-            fg_color=("#FFFFFF", "#070D1E"),
+            fg_color=("#FFFFFF", "#0B1329"),
             border_color=("#CBD5E1", "#1E2A4A"),
             border_width=1,
             text_color=("#0F172A", "#F8FAFC"),
@@ -996,7 +1009,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.vlc_dir_lbl.grid(row=2, column=0, padx=10, pady=6, sticky="w")
         self.vlc_dir_entry = ctk.CTkEntry(
             scroll,
-            fg_color=("#FFFFFF", "#070D1E"),
+            fg_color=("#FFFFFF", "#0B1329"),
             border_color=("#CBD5E1", "#1E2A4A"),
             border_width=1,
             text_color=("#0F172A", "#F8FAFC"),
@@ -1026,7 +1039,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.check_time_lbl.grid(row=3, column=0, padx=10, pady=6, sticky="w")
         self.check_time_entry = ctk.CTkEntry(
             scroll,
-            fg_color=("#FFFFFF", "#070D1E"),
+            fg_color=("#FFFFFF", "#0B1329"),
             border_color=("#CBD5E1", "#1E2A4A"),
             border_width=1,
             text_color=("#0F172A", "#F8FAFC"),
@@ -1040,7 +1053,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.replay_vol_lbl.grid(row=4, column=0, padx=10, pady=6, sticky="w")
         self.replay_vol_entry = ctk.CTkEntry(
             scroll,
-            fg_color=("#FFFFFF", "#070D1E"),
+            fg_color=("#FFFFFF", "#0B1329"),
             border_color=("#CBD5E1", "#1E2A4A"),
             border_width=1,
             text_color=("#0F172A", "#F8FAFC"),
@@ -1054,7 +1067,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.sync_offset_lbl.grid(row=5, column=0, padx=10, pady=6, sticky="w")
         self.sync_offset_entry = ctk.CTkEntry(
             scroll,
-            fg_color=("#FFFFFF", "#070D1E"),
+            fg_color=("#FFFFFF", "#0B1329"),
             border_color=("#CBD5E1", "#1E2A4A"),
             border_width=1,
             text_color=("#0F172A", "#F8FAFC"),
@@ -1076,10 +1089,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             scroll,
             values=list(self.lang_name_to_code.keys()),
             command=self._on_language_selected,
-            fg_color=("#FFFFFF", "#070D1E"),
+            fg_color=("#FFFFFF", "#0B1329"),
             text_color=("#0F172A", "#F8FAFC"),
-            button_color=("#0284C7", "#0284C7"),
-            button_hover_color=("#0369A1", "#0369A1"),
+            button_color=("#0891B2", "#0AC8B9"),
+            button_hover_color=("#0E7490", "#0397AB"),
+            dropdown_fg_color=("#FFFFFF", "#0B1329"),
+            dropdown_text_color=("#0F172A", "#F8FAFC"),
+            dropdown_hover_color=("#F1F5F9", "#162038"),
             corner_radius=6,
         )
         self.lang_menu.set(current_display)
@@ -1101,10 +1117,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             scroll,
             values=list(self.theme_options.keys()),
             command=self._on_theme_selected,
-            fg_color=("#FFFFFF", "#070D1E"),
+            fg_color=("#FFFFFF", "#0B1329"),
             text_color=("#0F172A", "#F8FAFC"),
-            button_color=("#0284C7", "#0284C7"),
-            button_hover_color=("#0369A1", "#0369A1"),
+            button_color=("#0891B2", "#0AC8B9"),
+            button_hover_color=("#0E7490", "#0397AB"),
+            dropdown_fg_color=("#FFFFFF", "#0B1329"),
+            dropdown_text_color=("#0F172A", "#F8FAFC"),
+            dropdown_hover_color=("#F1F5F9", "#162038"),
             corner_radius=6,
         )
         self.theme_menu.set(curr_theme_display)
@@ -1118,10 +1137,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             scroll,
             values=[t("record.mic_default")],
             command=self._on_mic_input_selected,
-            fg_color=("#FFFFFF", "#070D1E"),
+            fg_color=("#FFFFFF", "#0B1329"),
             text_color=("#0F172A", "#F8FAFC"),
-            button_color=("#0284C7", "#0284C7"),
-            button_hover_color=("#0369A1", "#0369A1"),
+            button_color=("#0891B2", "#0AC8B9"),
+            button_hover_color=("#0E7490", "#0397AB"),
+            dropdown_fg_color=("#FFFFFF", "#0B1329"),
+            dropdown_text_color=("#0F172A", "#F8FAFC"),
+            dropdown_hover_color=("#F1F5F9", "#162038"),
             corner_radius=6,
         )
         self.settings_mic_menu.grid(row=8, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
@@ -1138,10 +1160,11 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             variable=self.auto_champ_select_var,
             onvalue=True,
             offvalue=False,
+            fg_color=("#CBD5E1", "#1E2A4A"),
             progress_color=("#0891B2", "#0AC8B9"),
-            button_color=("#06B6D4", "#5EEAD4"),
-            button_hover_color=("#0891B2", "#0AC8B9"),
-            text_color=("#64748B", "#94A3B8"),
+            button_color=("#FFFFFF", "#FFFFFF"),
+            button_hover_color=("#F8FAFC", "#E2E8F0"),
+            text_color=("#334155", "#94A3B8"),
         )
         self.auto_champ_select_switch.grid(row=9, column=1, columnspan=2, padx=10, pady=6, sticky="w")
 
@@ -1157,10 +1180,11 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             variable=self.auto_replay_var,
             onvalue=True,
             offvalue=False,
+            fg_color=("#CBD5E1", "#1E2A4A"),
             progress_color=("#0891B2", "#0AC8B9"),
-            button_color=("#06B6D4", "#5EEAD4"),
-            button_hover_color=("#0891B2", "#0AC8B9"),
-            text_color=("#64748B", "#94A3B8"),
+            button_color=("#FFFFFF", "#FFFFFF"),
+            button_hover_color=("#F8FAFC", "#E2E8F0"),
+            text_color=("#334155", "#94A3B8"),
         )
         self.auto_replay_switch.grid(row=10, column=1, columnspan=2, padx=10, pady=6, sticky="w")
 
@@ -1183,7 +1207,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             scroll,
             text=t("settings.updates_title"),
             font=ctk.CTkFont(size=14, weight="bold"),
-            text_color=("#A07832", "#C8AA6E"),
+            text_color=("#0891B2", "#0AC8B9"),
         )
         self.updates_title_lbl.grid(row=12, column=0, columnspan=3, padx=10, pady=(18, 6), sticky="w")
 
