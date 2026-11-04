@@ -859,48 +859,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                         self.mic_meter_bar.set(mic_l)
                         self._last_rendered_mic_l = mic_l
 
-            # Live HUD wave & status updates
-            if getattr(self, "hud", None) and self.hud.is_visible:
-                if self.hud.mode == "RECORD":
-                    rec_w = getattr(self, "recorder_worker", None)
-                    game_time = getattr(rec_w, "last_game_time", 0.0) if rec_w else 0.0
-                    time_str = (
-                        f"{int(game_time // 60):02d}:{int(game_time % 60):02d}"
-                        if game_time > 0
-                        else "00:00"
-                    )
-                    is_p = getattr(rec_w, "is_paused", False) if rec_w else False
-                    cur_mic = mic_l if "mic_l" in locals() else 0.0
-                    cur_app = app_l if "app_l" in locals() else 0.0
-                    cur_muted = is_discord_muted if "is_discord_muted" in locals() else False
-                    self.hud.update_recorder_state(
-                        time_str=time_str,
-                        mic_level=cur_mic,
-                        discord_level=cur_app,
-                        is_paused=is_p,
-                        is_muted=cur_muted,
-                    )
-                elif self.hud.mode == "REPLAY":
-                    rep_w = getattr(self, "replay_worker", None)
-                    if rep_w:
-                        game_time = getattr(rep_w, "last_game_time", 0.0)
-                        time_str = (
-                            f"{int(game_time // 60):02d}:{int(game_time % 60):02d}"
-                            if game_time > 0
-                            else "00:00"
-                        )
-                        is_p = getattr(rep_w, "is_paused", False)
-                        audio_l = rep_w.get_audio_level() if hasattr(rep_w, "get_audio_level") else 0.0
-                        self.hud.update_replay_state(
-                            time_str=time_str,
-                            current_time=game_time,
-                            total_duration=getattr(rep_w, "duration", 1800.0),
-                            volume=int(self.config.get("replay_volume", 80)),
-                            is_paused=is_p,
-                            is_muted=getattr(self, "_replay_muted", False),
-                            speed=getattr(rep_w, "speed", 1.0),
-                            audio_level=audio_l,
-                        )
+            # Live HUD overlay visibility & waveform synchronization (in-game only)
+            cur_mic = mic_l if "mic_l" in locals() else 0.0
+            cur_app = app_l if "app_l" in locals() else 0.0
+            cur_muted = is_discord_muted if "is_discord_muted" in locals() else False
+            self._sync_hud_visibility_and_state(
+                mic_l=cur_mic, app_l=cur_app, is_discord_muted=cur_muted
+            )
         except Exception:
             pass
         self._meter_timer = self.after(75, self._update_audio_meters)
@@ -1695,6 +1660,222 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         if self.hud:
             self.hud.reset_position()
 
+    def _is_league_in_game_foreground(self) -> bool:
+        """
+        Checks if the active foreground window is specifically the RUNNING
+        League of Legends in-game match/replay engine ('League of Legends (TM) Client'),
+        and explicitly EXCLUDES the launcher/lobby client ('LeagueClient.exe' / 'RiotWindowClass').
+        """
+        if not sys.platform.startswith("win"):
+            return True
+        try:
+            import ctypes
+
+            u32 = ctypes.windll.user32
+            hwnd = u32.GetForegroundWindow()
+            if not hwnd:
+                return False
+
+            # If user is interacting directly with the HUD overlay itself (e.g. dragging or adjusting volume)
+            if getattr(self, "hud", None):
+                hud_hwnd = getattr(self.hud, "get_hwnd", lambda: 0)()
+                if hud_hwnd and hwnd == hud_hwnd:
+                    return getattr(self, "_last_fg_is_league_game", False)
+
+            # Check cached result for identical hwnd (prevents repeated Win32 queries within the same tick)
+            if hwnd == getattr(self, "_last_fg_hwnd", None):
+                return getattr(self, "_last_fg_is_league_game", False)
+
+            self._last_fg_hwnd = hwnd
+
+            # 1. Check window class name
+            cls_buf = ctypes.create_unicode_buffer(256)
+            u32.GetClassNameW(hwnd, cls_buf, 256)
+            cls_name = cls_buf.value
+
+            # HARD GUARD: The launcher/lobby client is CEF Chromium with class 'RiotWindowClass'
+            # We strictly reject the launcher/lobby client!
+            if cls_name == "RiotWindowClass":
+                self._last_fg_is_league_game = False
+                return False
+
+            # 2. Check window title
+            length = u32.GetWindowTextLengthW(hwnd)
+            title = ""
+            if length > 0:
+                title_buf = ctypes.create_unicode_buffer(length + 1)
+                u32.GetWindowTextW(hwnd, title_buf, length + 1)
+                title = title_buf.value
+
+            # The in-game match & replay window is titled "League of Legends (TM) Client"
+            # The client is titled "League of Legends" (without "(TM) Client")
+            if "League of Legends (TM) Client" in title:
+                self._last_fg_is_league_game = True
+                return True
+
+            if cls_name == "League of Legends" and "League" in title:
+                self._last_fg_is_league_game = True
+                return True
+
+            # 3. Check executable path via QueryFullProcessImageNameW (Vanguard safe)
+            fg_pid = ctypes.c_ulong()
+            u32.GetWindowThreadProcessId(hwnd, ctypes.byref(fg_pid))
+            if fg_pid.value:
+                # Exclude our own app
+                if fg_pid.value == os.getpid():
+                    self._last_fg_is_league_game = False
+                    return False
+
+                PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+                h_proc = ctypes.windll.kernel32.OpenProcess(
+                    PROCESS_QUERY_LIMITED_INFORMATION, False, fg_pid.value
+                )
+                if h_proc:
+                    try:
+                        img_buf = ctypes.create_unicode_buffer(512)
+                        img_size = ctypes.c_ulong(512)
+                        if ctypes.windll.kernel32.QueryFullProcessImageNameW(
+                            h_proc, 0, img_buf, ctypes.byref(img_size)
+                        ):
+                            exe_path = img_buf.value.lower()
+                            # Check if it is the in-game executable (League of Legends.exe inside Game folder)
+                            # and NOT the launcher client (LeagueClient.exe or LeagueClientUx.exe)
+                            if (
+                                "league of legends.exe" in exe_path
+                                and "leagueclient" not in exe_path
+                            ):
+                                self._last_fg_is_league_game = True
+                                return True
+                    finally:
+                        ctypes.windll.kernel32.CloseHandle(h_proc)
+
+            self._last_fg_is_league_game = False
+            return False
+        except Exception:
+            return False
+
+    def _sync_hud_visibility_and_state(self, mic_l=0.0, app_l=0.0, is_discord_muted=False):
+        """
+        Synchronizes HUD overlay visibility:
+        - ONLY displayed during an active in-game match or replay.
+        - NEVER displayed in the launcher/lobby client or on desktop.
+        - Auto-hides on Alt-Tab and reappears when returning to the running League app.
+        """
+        if not getattr(self, "hud", None):
+            return
+
+        # Check if HUD overlay is disabled in Settings
+        if not self.config.get("hud_overlay_enabled", True):
+            if self.hud.is_visible:
+                self.hud.hide()
+            return
+
+        # If in preview mode from Settings, keep visible
+        if getattr(self, "_is_hud_previewing", False):
+            if not self.hud.is_visible:
+                self.hud.show()
+            return
+
+        rec_status = (
+            self.last_rec_status[0]
+            if getattr(self, "last_rec_status", None)
+            else "IDLE"
+        )
+        rep_status = (
+            self.last_replay_status[0]
+            if getattr(self, "last_replay_status", None)
+            else "IDLE"
+        )
+        rec_w = getattr(self, "recorder_worker", None)
+        rep_w = getattr(self, "replay_worker", None)
+
+        is_rep_active = (rep_w is not None) and (
+            rep_status in ("SYNCING", "PAUSED")
+            or (rep_status == "WATCHING" and "(loading in League...)" in str(getattr(self, "last_replay_status", ("", ""))[1]))
+        )
+        is_rec_active = (rec_w is not None) and (
+            rec_status in ("RECORDING", "PAUSED")
+        )
+
+        # 1. If neither match recording nor replay is running in-game -> Hide HUD!
+        # This guarantees HUD is NEVER shown while watching/waiting in client or on desktop!
+        if not (is_rec_active or is_rep_active):
+            if self.hud.is_visible:
+                self.hud.hide()
+            return
+
+        # 2. Check if the RUNNING League game engine is focused (NOT the client!)
+        is_in_game_focused = self._is_league_in_game_foreground()
+        if not is_in_game_focused:
+            # User is in launcher/client, desktop, Discord, etc. -> Hide HUD!
+            if self.hud.is_visible:
+                self.hud.hide()
+            return
+
+        # 3. Inside the running League game -> Show HUD!
+        target_mode = "REPLAY" if is_rep_active else "RECORD"
+        if self.hud.mode != target_mode:
+            self.hud.set_mode(target_mode)
+
+        if not self.hud.is_visible:
+            self.hud.show()
+
+        if target_mode == "RECORD":
+            try:
+                game_time = float(getattr(rec_w, "last_game_time", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                game_time = 0.0
+            time_str = (
+                f"{int(game_time // 60):02d}:{int(game_time % 60):02d}"
+                if game_time > 0
+                else "00:00"
+            )
+            is_p = (rec_status == "PAUSED") or (
+                getattr(rec_w, "is_paused", False) if rec_w else False
+            )
+            self.hud.update_recorder_state(
+                time_str=time_str,
+                mic_level=mic_l,
+                discord_level=app_l,
+                is_paused=bool(is_p),
+                is_muted=is_discord_muted,
+            )
+        else:
+            if rep_w:
+                try:
+                    game_time = float(getattr(rep_w, "last_game_time", 0.0) or 0.0)
+                except (TypeError, ValueError):
+                    game_time = 0.0
+                time_str = (
+                    f"{int(game_time // 60):02d}:{int(game_time % 60):02d}"
+                    if game_time > 0
+                    else "00:00"
+                )
+                is_p = (rep_status == "PAUSED") or getattr(rep_w, "is_paused", False)
+                audio_l = rep_w.get_audio_level() if hasattr(rep_w, "get_audio_level") else 0.0
+                try:
+                    duration = float(getattr(rep_w, "duration", 1800.0) or 1800.0)
+                except (TypeError, ValueError):
+                    duration = 1800.0
+                try:
+                    speed = float(getattr(rep_w, "speed", 1.0) or 1.0)
+                except (TypeError, ValueError):
+                    speed = 1.0
+                try:
+                    audio_l = float(audio_l or 0.0)
+                except (TypeError, ValueError):
+                    audio_l = 0.0
+                self.hud.update_replay_state(
+                    time_str=time_str,
+                    current_time=game_time,
+                    total_duration=duration,
+                    volume=int(self.config.get("replay_volume", 80)),
+                    is_paused=bool(is_p),
+                    is_muted=getattr(self, "_replay_muted", False),
+                    speed=speed,
+                    audio_level=audio_l,
+                )
+
     # ==========================================
     # I18N DYNAMIC TEXT REFRESH
     # ==========================================
@@ -1893,51 +2074,19 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                     status, detail = item[1], item[2]
                     self._render_rec_status(status, detail)
                     if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
-                        if status in ("RECORDING", "PAUSED", "WATCHING"):
-                            self.hud.set_mode("RECORD")
-                            self.hud.show()
-                        elif status in ("SAVED", "STOPPED", "IDLE") and not self._is_hud_previewing:
+                        if status in ("SAVED", "STOPPED", "IDLE", "WATCHING") and not self._is_hud_previewing:
                             self.hud.hide()
+                        elif status in ("RECORDING", "PAUSED"):
+                            self._sync_hud_visibility_and_state()
 
                 elif action == "STATUS_REPLAY":
                     status, detail = item[1], item[2]
                     self._render_replay_status(status, detail)
                     if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
-                        if status in ("SYNCING", "PAUSED", "WATCHING"):
-                            self.hud.set_mode("REPLAY")
-                            self.hud.show()
-                            game_time = (
-                                getattr(self.replay_worker, "last_game_time", 0.0)
-                                if self.replay_worker
-                                else 0.0
-                            )
-                            time_str = (
-                                f"{int(game_time // 60):02d}:{int(game_time % 60):02d}"
-                                if game_time > 0
-                                else "00:00"
-                            )
-                            is_p = (status == "PAUSED") or (
-                                self.replay_worker and getattr(self.replay_worker, "is_paused", False)
-                            )
-                            audio_l = (
-                                self.replay_worker.get_audio_level()
-                                if self.replay_worker and hasattr(self.replay_worker, "get_audio_level")
-                                else 0.0
-                            )
-                            self.hud.update_replay_state(
-                                time_str=time_str,
-                                current_time=game_time,
-                                total_duration=getattr(self.replay_worker, "duration", 1800.0),
-                                volume=int(self.config.get("replay_volume", 80)),
-                                is_paused=is_p,
-                                is_muted=getattr(self, "_replay_muted", False),
-                                speed=getattr(self.replay_worker, "speed", 1.0)
-                                if self.replay_worker
-                                else 1.0,
-                                audio_level=audio_l,
-                            )
-                        elif status in ("STOPPED", "IDLE") and not self._is_hud_previewing:
+                        if status in ("STOPPED", "IDLE", "WATCHING") and not self._is_hud_previewing:
                             self.hud.hide()
+                        elif status in ("SYNCING", "PAUSED"):
+                            self._sync_hud_visibility_and_state()
 
                 elif action == "REPLAY_MUTE":
                     self._replay_muted = bool(item[1])
@@ -2184,7 +2333,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
         if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
             self.hud.set_mode("RECORD")
-            self.hud.show()
             self.hud.update_recorder_state(
                 time_str="00:00",
                 mic_level=0.0,
@@ -2192,6 +2340,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             )
 
     def _stop_recording(self):
+        if getattr(self, "hud", None) and not getattr(self, "_is_hud_previewing", False):
+            self.hud.hide()
         if self.recorder_worker:
             self.log_message(t("logs.ui_rec_stop"))
             self.rec_btn.configure(state="disabled", text=t("record.stopping_btn"))
@@ -2300,7 +2450,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
         if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
             self.hud.set_mode("REPLAY")
-            self.hud.show()
             self.hud.update_replay_state(
                 time_str="00:00",
                 current_time=0.0,
@@ -2382,6 +2531,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self._save_vol_timer = None
 
     def _stop_replay(self):
+        if getattr(self, "hud", None) and not getattr(self, "_is_hud_previewing", False):
+            self.hud.hide()
         if self.replay_worker:
             self.log_message(t("logs.ui_replay_stop"))
             self.rep_btn.configure(state="disabled", text=t("replay.stopping_btn"))
