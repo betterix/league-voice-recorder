@@ -27,6 +27,7 @@ const i18n = {
     hero_meta_vanguard: "100% Vanguard & Riot API Safe",
     hero_meta_drivers: "No Virtual Audio Cables Needed",
     hero_meta_license: "Free & Open Source (GPL-3.0)",
+    hero_meta_virustotal: "VirusTotal Clean Verified (CI Scan)",
 
     health_discord: "Discord IPC:",
     health_league: "League Client:",
@@ -126,6 +127,8 @@ const i18n = {
     feat_8_desc: "100% isolated to League of Legends.exe. Auto-hides on Alt-Tab and stays hidden in the client launcher, Discord, and desktop.",
     feat_9_title: "Centered UI & Click-Through",
     feat_9_desc: "Desktop window automatically launches centered on your primary monitor. Supports transparent click-through mode (WS_EX_TRANSPARENT) for zero gameplay interference.",
+    feat_10_title: "VirusTotal Clean Verified",
+    feat_10_desc: "Every release executable and setup installer is automatically submitted and verified against 70+ antivirus engines via VirusTotal API v3 in GitHub Actions.",
 
     setup_tag: "INSTALLATION & CONFIGURATION",
     setup_title: "Get Running in Under 2 Minutes",
@@ -138,6 +141,8 @@ const i18n = {
 
     faq_tag: "FREQUENTLY ASKED QUESTIONS",
     faq_title: "Answers & Technical Details",
+    faq_6_q: "Are the Windows binaries safe and verified against viruses / malware?",
+    faq_6_a: "<strong>Yes, 100%.</strong> Every single release binary (<code>LeagueVoiceRecorder.exe</code> and <code>LeagueVoiceRecorder-Setup-*.exe</code>) is automatically analyzed by <strong>70+ antivirus engines</strong> via the official VirusTotal API v3 in our GitHub Actions release pipeline. Every release note includes direct links to the public VirusTotal scan reports and cryptographic SHA256 checksums.",
 
     cta_title: "Ready To Elevate Your Scrim Reviews?",
     cta_desc: "Download League Voice Recorder for Windows 10 & 11 today. Completely free, open source, and built for competitive League.",
@@ -168,6 +173,7 @@ const i18n = {
     hero_meta_vanguard: "100% Vanguard & Riot API Biztonságos",
     hero_meta_drivers: "Nincs szükség virtuális audiokábelre",
     hero_meta_license: "Ingyenes és Nyílt Forráskód (GPL-3.0)",
+    hero_meta_virustotal: "VirusTotal Ellenőrzött (CI Vizsgálat)",
 
     health_discord: "Discord IPC:",
     health_league: "League Kliens:",
@@ -267,6 +273,8 @@ const i18n = {
     feat_8_desc: "100%-ban a League of Legends.exe-re izolálva. Alt-Tab esetén azonnal elrejtőzik, a kliensben és asztalon láthatatlan marad.",
     feat_9_title: "Középre Igazított UI & Átkattintás",
     feat_9_desc: "Az asztali ablak indításkor automatikusan az elsődleges monitor közepén jelenik meg. Támogatja az átkattintási módot a zavartalan játékért.",
+    feat_10_title: "VirusTotal Ellenőrzött Tiszta Binárisok",
+    feat_10_desc: "Minden kiadott futtatható fájlt és telepítőt a GitHub Actions CI automatikusan elküld és ellenőriz több mint 70 vírusirtó motorral a VirusTotal API v3-on keresztül.",
 
     setup_tag: "TELEPÍTÉS ÉS BEÁLLÍTÁS",
     setup_title: "Indulásra Kész Kevesebb Mint 2 Perc Alatt",
@@ -279,6 +287,8 @@ const i18n = {
 
     faq_tag: "GYAKRAN ISMÉTELT KÉRDÉSEK",
     faq_title: "Válaszok és Technikai Részletek",
+    faq_6_q: "Biztonságosak a Windows programok és védettek a vírusok / kártevők ellen?",
+    faq_6_a: "<strong>Igen, 100%-ban.</strong> Minden kiadott programfájlt (<code>LeagueVoiceRecorder.exe</code> és <code>LeagueVoiceRecorder-Setup-*.exe</code>) több mint <strong>70 vírusirtó motor</strong> ellenőriz automatikusan a hivatalos VirusTotal API v3-on keresztül a GitHub Actions kiadási folyamat során. Minden kiadási jegyzék tartalmazza a közvetlen linkeket a nyilvános jelentésekre és a kriptográfiai SHA256 ellenőrző összegekre.",
 
     cta_title: "Készen Állsz Szintre Emelni a Scrim Elemzést?",
     cta_desc: "Töltsd le a League Voice Recorder-t Windows 10 és 11 rendszerekre még ma. Teljesen ingyenes, nyílt forráskódú és esportra szabott.",

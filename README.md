@@ -325,6 +325,21 @@ Every time a new GitHub Release is published or a tag matching `v*` (e.g., `v1.0
 
 ---
 
+## 🛡️ Antivirus & VirusTotal Verified Clean
+
+Desktop gaming tools compiled with Nuitka or PyInstaller occasionally trigger false-positive heuristics on aggressive consumer antivirus software due to binary packaging.
+
+To ensure complete transparency and player safety:
+- **Automated VirusTotal API v3 Scanning**: Every build compiled in our CI pipeline ([`.github/workflows/release.yml`](.github/workflows/release.yml)) is automatically submitted to [VirusTotal](https://www.virustotal.com/) and scanned across **70+ industry-standard antivirus engines** (including Microsoft Defender, BitDefender, Kaspersky, and Avast).
+- **Public Verification Badges**: Every [GitHub Release](https://github.com/betterix/league-voice-recorder/releases) includes direct links to the public VirusTotal scan reports and cryptographic SHA256 checksums.
+- **Independent Local Verification**: You can verify the integrity of any downloaded binary at any time in Windows PowerShell:
+  ```powershell
+  Get-FileHash .\LeagueVoiceRecorder-Setup-v0.4.0.exe -Algorithm SHA256
+  ```
+- **100% Riot Vanguard & Anti-Cheat Safe**: League Voice Recorder strictly utilizes official developer APIs (`127.0.0.1:2999`) and Windows WASAPI audio loopback. It contains **no memory injectors, no DLL hooks, and no game modifications**.
+
+---
+
 ## 📂 Project Structure
 
 ```text

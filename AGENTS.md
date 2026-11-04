@@ -280,6 +280,19 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
   - Supports Windows `WS_EX_TRANSPARENT` Click-Through mode so mouse clicks pass straight through into League of Legends during matches.
   - Settings UI includes preview controls ("Preview Rec HUD", "Preview Replay HUD"), opacity slider (40%-100%), and position reset.
 
+### 3.8 Automated VirusTotal CI Scanner & Security Verification (`scripts/virustotal_scan.py`)
+- **Automated Antivirus CI Pipeline**:
+  - Automatically invoked during GitHub Actions release compilation (`.github/workflows/release.yml`) whenever a new release or version tag is built.
+  - Interacts with **VirusTotal API v3** (`https://www.virustotal.com/api/v3`) to analyze both the standalone compiled binary (`LeagueVoiceRecorder.exe`) and the Inno Setup installer wizard (`LeagueVoiceRecorder-Setup-*.exe`).
+- **Streaming SHA256 Checksum Calculation**:
+  - Computes chunked (1MB blocks) SHA256 hashes of build artifacts to query existing VirusTotal analyses prior to upload (`GET /api/v3/files/{sha256}`).
+- **Large Binary Upload Handling**:
+  - Automatically discriminates between binaries ≤ 32 MB and large packages > 32 MB. For large installers, requests a dedicated high-capacity upload URL (`GET /api/v3/files/upload_url`).
+- **Rate-Limit Guard**:
+  - Implements a built-in 16-second sleep delay between submissions to stay strictly within the VirusTotal free tier quota (4 requests/minute) without hitting HTTP 429 rate limits.
+- **GitHub Release Markdown Decoration**:
+  - Uses the `gh` CLI (`gh release view` / `gh release edit`) to automatically append a verified security section (`### 🛡️ VirusTotal Clean Security Verification`) with engine detection ratios (e.g. `0/72 Clean`), public report URLs, and cryptographic SHA256 hashes.
+
 ---
 
 ## 4. League of Legends APIs Reference
