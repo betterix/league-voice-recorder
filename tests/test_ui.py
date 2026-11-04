@@ -172,5 +172,31 @@ class TestUIApp(unittest.TestCase):
             self.assertTrue(self.app._replay_muted)
 
 
+    def test_ui_theme_toggle_and_selection(self):
+        """Theme toggle and selection switch appearance mode and persist config."""
+        # Baseline is dark
+        self.app._set_theme("dark")
+        self.assertEqual(self.app.current_theme, "dark")
+        self.assertEqual(self.app.theme_toggle_btn.cget("text"), "🌙")
+
+        # Toggle to light
+        self.app._toggle_theme()
+        self.assertEqual(self.app.current_theme, "light")
+        self.assertEqual(self.app.theme_toggle_btn.cget("text"), "☀️")
+        self.assertEqual(self.app.config.get("theme"), "light")
+
+        # Toggle back to dark
+        self.app._toggle_theme()
+        self.assertEqual(self.app.current_theme, "dark")
+        self.assertEqual(self.app.theme_toggle_btn.cget("text"), "🌙")
+        self.assertEqual(self.app.config.get("theme"), "dark")
+
+        # Select via options menu
+        self.app._on_theme_selected(t("settings.theme_light"))
+        self.assertEqual(self.app.current_theme, "light")
+        self.app._on_theme_selected(t("settings.theme_dark"))
+        self.assertEqual(self.app.current_theme, "dark")
+
+
 if __name__ == "__main__":
     unittest.main()

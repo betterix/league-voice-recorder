@@ -14,6 +14,7 @@ _KEY_MAPPINGS = (
     ("replay_volume", "REPLAY_VOLUME"),
     ("sync_offset_ms", "SYNC_OFFSET_MS"),
     ("language", "LANGUAGE"),
+    ("theme", "THEME"),
     ("auto_start_champ_select", "AUTO_START_CHAMP_SELECT"),
     ("auto_start_replay", "AUTO_START_REPLAY"),
 )
@@ -139,6 +140,7 @@ def get_clean_default_config():
         "replay_volume": 100,
         "sync_offset_ms": 0,
         "language": "en",
+        "theme": "dark",
         "auto_start_champ_select": True,
         "auto_start_replay": True,
     }
@@ -165,6 +167,7 @@ def get_default_config():
         "replay_volume": int(os.getenv("REPLAY_VOLUME", "100")),
         "sync_offset_ms": int(os.getenv("SYNC_OFFSET_MS", "0")),
         "language": os.getenv("LANGUAGE", "en"),
+        "theme": os.getenv("THEME", "dark"),
         "auto_start_champ_select": os.getenv("AUTO_START_CHAMP_SELECT", "true").lower() in ("true", "1", "yes"),
         "auto_start_replay": os.getenv("AUTO_START_REPLAY", "true").lower() in ("true", "1", "yes"),
     }
