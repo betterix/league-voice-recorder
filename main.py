@@ -54,8 +54,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         on_language_change(self._update_ui_texts)
 
         self.title(f"{t('app.window_title')} v{__version__}")
-        self.geometry("1040x960")
-        self.minsize(850, 750)
+        self.geometry("1100x960")
+        self.minsize(920, 750)
         self.configure(fg_color=("#F1F5F9", "#060B18"))
 
         # Set Window & Taskbar Icon
@@ -202,20 +202,21 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         header_frame = ctk.CTkFrame(
             self,
             fg_color=("#FFFFFF", "#0B1329"),
-            corner_radius=14,
+            corner_radius=12,
             border_width=1,
             border_color=("#E2E8F0", "#1E2A4A"),
         )
-        header_frame.grid(row=0, column=0, padx=15, pady=(15, 8), sticky="ew")
+        header_frame.grid(row=0, column=0, padx=15, pady=(10, 6), sticky="ew")
         header_frame.grid_columnconfigure(0, weight=1)
+        header_frame.grid_columnconfigure(1, weight=0)
 
         title_box = ctk.CTkFrame(header_frame, fg_color="transparent")
-        title_box.grid(row=0, column=0, padx=18, pady=(14, 8), sticky="w")
+        title_box.grid(row=0, column=0, padx=14, pady=8, sticky="w")
 
         self.title_lbl = ctk.CTkLabel(
             title_box,
             text=t("app.title"),
-            font=ctk.CTkFont(family="Segoe UI", size=21, weight="bold"),
+            font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
             text_color=("#A07832", "#C8AA6E"),
         )
         self.title_lbl.pack(anchor="w")
@@ -223,7 +224,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.sub_lbl = ctk.CTkLabel(
             title_box,
             text=t("app.subtitle"),
-            font=ctk.CTkFont(size=12),
+            font=ctk.CTkFont(size=11),
             text_color=("#64748B", "#94A3B8"),
         )
         self.sub_lbl.pack(anchor="w")
@@ -232,11 +233,11 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         health_frame = ctk.CTkFrame(
             header_frame,
             fg_color=("#F8FAFC", "#070D1E"),
-            corner_radius=10,
+            corner_radius=8,
             border_width=1,
             border_color=("#E2E8F0", "#162038"),
         )
-        health_frame.grid(row=1, column=0, padx=18, pady=(0, 14), sticky="ew")
+        health_frame.grid(row=0, column=1, padx=12, pady=8, sticky="e")
 
         self.discord_badge = ctk.CTkLabel(
             health_frame,
@@ -244,7 +245,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color=("#64748B", "#CBD5E1"),
         )
-        self.discord_badge.pack(side="left", padx=14, pady=8)
+        self.discord_badge.pack(side="left", padx=(10, 6), pady=6)
 
         self.lol_badge = ctk.CTkLabel(
             health_frame,
@@ -252,7 +253,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color=("#64748B", "#CBD5E1"),
         )
-        self.lol_badge.pack(side="left", padx=14, pady=8)
+        self.lol_badge.pack(side="left", padx=6, pady=6)
 
         self.vlc_badge = ctk.CTkLabel(
             health_frame,
@@ -260,7 +261,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color=("#64748B", "#CBD5E1"),
         )
-        self.vlc_badge.pack(side="left", padx=14, pady=8)
+        self.vlc_badge.pack(side="left", padx=6, pady=6)
 
         self.ffmpeg_badge = ctk.CTkLabel(
             health_frame,
@@ -268,14 +269,14 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color=("#64748B", "#CBD5E1"),
         )
-        self.ffmpeg_badge.pack(side="left", padx=14, pady=8)
+        self.ffmpeg_badge.pack(side="left", padx=6, pady=6)
 
         self.theme_toggle_btn = ctk.CTkButton(
             health_frame,
             text="☀️" if self.current_theme == "light" else "🌙",
-            width=36,
-            height=28,
-            font=ctk.CTkFont(family="Segoe UI Emoji", size=14),
+            width=32,
+            height=26,
+            font=ctk.CTkFont(family="Segoe UI Emoji", size=13),
             text_color=("#D97706", "#FBBF24"),
             fg_color=("#F1F5F9", "#0F1A36"),
             hover_color=("#E2E8F0", "#1E2A4A"),
@@ -284,13 +285,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             corner_radius=6,
             command=self._toggle_theme,
         )
-        self.theme_toggle_btn.pack(side="right", padx=(4, 10), pady=6)
+        self.theme_toggle_btn.pack(side="right", padx=(4, 8), pady=4)
 
         self.refresh_health_btn = ctk.CTkButton(
             health_frame,
             text=t("health.refresh"),
-            width=85,
-            height=28,
+            width=75,
+            height=26,
             font=ctk.CTkFont(size=11, weight="bold"),
             fg_color=("#F1F5F9", "#0F1A36"),
             hover_color=("#E2E8F0", "#1E2A4A"),
@@ -300,12 +301,12 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             corner_radius=6,
             command=self._check_system_health,
         )
-        self.refresh_health_btn.pack(side="right", padx=(4, 6), pady=6)
+        self.refresh_health_btn.pack(side="right", padx=(4, 4), pady=4)
 
         self.update_header_badge = ctk.CTkButton(
             health_frame,
             text="",
-            height=28,
+            height=26,
             font=ctk.CTkFont(size=11, weight="bold"),
             fg_color="#059669",
             hover_color="#047857",
@@ -319,7 +320,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         # 2. MAIN ACTION BUTTONS SECTION (2 CARDS)
         # ==========================================
         action_frame = ctk.CTkFrame(self, fg_color="transparent")
-        action_frame.grid(row=1, column=0, padx=15, pady=8, sticky="ew")
+        action_frame.grid(row=1, column=0, padx=15, pady=(2, 6), sticky="ew")
         action_frame.grid_columnconfigure(0, weight=1)
         action_frame.grid_columnconfigure(1, weight=1)
 
@@ -327,88 +328,80 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         rec_card = ctk.CTkFrame(
             action_frame,
             fg_color=("#FFFFFF", "#0B1329"),
-            corner_radius=14,
+            corner_radius=12,
             border_width=1,
             border_color=("#E2E8F0", "#1E2A4A"),
         )
-        rec_card.grid(row=0, column=0, padx=(0, 8), pady=0, sticky="nsew")
+        rec_card.grid(row=0, column=0, padx=(0, 6), pady=0, sticky="nsew")
+
+        rec_top_row = ctk.CTkFrame(rec_card, fg_color="transparent")
+        rec_top_row.pack(fill="x", padx=14, pady=(10, 6))
 
         self.rec_header_lbl = ctk.CTkLabel(
-            rec_card,
+            rec_top_row,
             text=t("record.title"),
-            font=ctk.CTkFont(size=15, weight="bold"),
+            font=ctk.CTkFont(size=14, weight="bold"),
             text_color=("#E11D48", "#F43F5E"),
         )
-        self.rec_header_lbl.pack(anchor="w", padx=18, pady=(14, 6))
+        self.rec_header_lbl.pack(side="left")
 
         self.rec_status_pill = ctk.CTkLabel(
-            rec_card,
+            rec_top_row,
             text=t("record.status_idle"),
-            font=ctk.CTkFont(size=12, weight="bold"),
+            font=ctk.CTkFont(size=11, weight="bold"),
             text_color=("#64748B", "#94A3B8"),
             fg_color=("#F8FAFC", "#070D1E"),
-            corner_radius=8,
-            padx=12,
-            pady=6,
+            corner_radius=6,
+            padx=10,
+            pady=4,
         )
-        self.rec_status_pill.pack(anchor="w", padx=18, pady=(0, 12))
+        self.rec_status_pill.pack(side="right")
 
         self.rec_btn = ctk.CTkButton(
             rec_card,
             text=t("record.start_btn"),
-            font=ctk.CTkFont(size=14, weight="bold"),
-            height=52,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            height=42,
             fg_color="#E11D48",
             hover_color="#BE123C",
             border_width=1,
             border_color=("#BE123C", "#F43F5E"),
-            corner_radius=10,
+            corner_radius=8,
             command=self._toggle_recording,
         )
-        self.rec_btn.pack(fill="x", padx=18, pady=(0, 12))
+        self.rec_btn.pack(fill="x", padx=14, pady=(0, 6))
 
-        # Target Voice Capture Pill
-        rec_scene_pill = ctk.CTkFrame(
-            rec_card,
-            fg_color=("#F8FAFC", "#070D1E"),
-            corner_radius=8,
-            border_width=1,
-            border_color=("#E2E8F0", "#162038"),
-        )
-        rec_scene_pill.pack(fill="x", padx=18, pady=(0, 10))
-        self.rec_scene_lbl = ctk.CTkLabel(
-            rec_scene_pill,
-            text=self._get_engine_display_text(),
-            font=ctk.CTkFont(size=12, weight="bold"),
-            text_color=("#E11D48", "#F43F5E"),
-        )
-        self.rec_scene_lbl.pack(padx=12, pady=7, anchor="w")
+        # Selectors side-by-side row (Target program + Microphone)
+        selectors_frame = ctk.CTkFrame(rec_card, fg_color="transparent")
+        selectors_frame.pack(fill="x", padx=14, pady=(0, 6))
+        selectors_frame.grid_columnconfigure(0, weight=1)
+        selectors_frame.grid_columnconfigure(1, weight=1)
 
-        # Program selector frame
         prog_frame = ctk.CTkFrame(
-            rec_card,
+            selectors_frame,
             fg_color=("#F8FAFC", "#070D1E"),
-            corner_radius=8,
+            corner_radius=6,
             border_width=1,
             border_color=("#E2E8F0", "#162038"),
         )
-        prog_frame.pack(fill="x", padx=18, pady=(0, 10))
+        prog_frame.grid(row=0, column=0, padx=(0, 4), sticky="nsew")
         prog_frame.grid_columnconfigure(0, weight=1)
         prog_frame.grid_columnconfigure(1, weight=0)
 
         self.target_prog_lbl = ctk.CTkLabel(
             prog_frame,
             text=t("record.target_app"),
-            font=ctk.CTkFont(size=11, weight="bold"),
+            font=ctk.CTkFont(size=10, weight="bold"),
             text_color=("#0891B2", "#0AC8B9"),
         )
-        self.target_prog_lbl.grid(row=0, column=0, columnspan=2, padx=12, pady=(6, 2), sticky="w")
+        self.target_prog_lbl.grid(row=0, column=0, columnspan=2, padx=8, pady=(4, 1), sticky="w")
 
         self.available_targets = []
         self.target_prog_menu = ctk.CTkOptionMenu(
             prog_frame,
             values=["Discord (Auto Detect Active Audio) 🎯"],
             command=self._on_target_prog_selected,
+            height=28,
             fg_color=("#FFFFFF", "#0B1329"),
             text_color=("#0F172A", "#F8FAFC"),
             button_color=("#0891B2", "#0AC8B9"),
@@ -418,13 +411,14 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             dropdown_hover_color=("#F1F5F9", "#162038"),
             corner_radius=6,
         )
-        self.target_prog_menu.grid(row=1, column=0, padx=(10, 4), pady=(0, 8), sticky="ew")
+        self.target_prog_menu.grid(row=1, column=0, padx=(6, 3), pady=(0, 6), sticky="ew")
 
         self.refresh_progs_btn = ctk.CTkButton(
             prog_frame,
             text="🔄",
-            width=36,
-            font=ctk.CTkFont(family="Segoe UI Emoji", size=13),
+            width=28,
+            height=28,
+            font=ctk.CTkFont(family="Segoe UI Emoji", size=12),
             text_color=("#0F172A", "#E2E8F0"),
             fg_color=("#F1F5F9", "#0F1A36"),
             hover_color=("#E2E8F0", "#1E2A4A"),
@@ -433,33 +427,33 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             corner_radius=6,
             command=self._refresh_audio_targets,
         )
-        self.refresh_progs_btn.grid(row=1, column=1, padx=(0, 10), pady=(0, 8))
+        self.refresh_progs_btn.grid(row=1, column=1, padx=(0, 6), pady=(0, 6))
 
-        # Microphone selector frame
         mic_frame = ctk.CTkFrame(
-            rec_card,
+            selectors_frame,
             fg_color=("#F8FAFC", "#070D1E"),
-            corner_radius=8,
+            corner_radius=6,
             border_width=1,
             border_color=("#E2E8F0", "#162038"),
         )
-        mic_frame.pack(fill="x", padx=18, pady=(0, 10))
+        mic_frame.grid(row=0, column=1, padx=(4, 0), sticky="nsew")
         mic_frame.grid_columnconfigure(0, weight=1)
         mic_frame.grid_columnconfigure(1, weight=0)
 
         self.mic_input_lbl = ctk.CTkLabel(
             mic_frame,
             text=t("record.mic_input"),
-            font=ctk.CTkFont(size=11, weight="bold"),
+            font=ctk.CTkFont(size=10, weight="bold"),
             text_color=("#0891B2", "#0AC8B9"),
         )
-        self.mic_input_lbl.grid(row=0, column=0, columnspan=2, padx=12, pady=(6, 2), sticky="w")
+        self.mic_input_lbl.grid(row=0, column=0, columnspan=2, padx=8, pady=(4, 1), sticky="w")
 
         self.available_mics = []
         self.mic_input_menu = ctk.CTkOptionMenu(
             mic_frame,
             values=[t("record.mic_default")],
             command=self._on_mic_input_selected,
+            height=28,
             fg_color=("#FFFFFF", "#0B1329"),
             text_color=("#0F172A", "#F8FAFC"),
             button_color=("#0891B2", "#0AC8B9"),
@@ -469,13 +463,14 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             dropdown_hover_color=("#F1F5F9", "#162038"),
             corner_radius=6,
         )
-        self.mic_input_menu.grid(row=1, column=0, padx=(10, 4), pady=(0, 8), sticky="ew")
+        self.mic_input_menu.grid(row=1, column=0, padx=(6, 3), pady=(0, 6), sticky="ew")
 
         self.refresh_mics_btn = ctk.CTkButton(
             mic_frame,
             text="🔄",
-            width=36,
-            font=ctk.CTkFont(family="Segoe UI Emoji", size=13),
+            width=28,
+            height=28,
+            font=ctk.CTkFont(family="Segoe UI Emoji", size=12),
             text_color=("#0F172A", "#E2E8F0"),
             fg_color=("#F1F5F9", "#0F1A36"),
             hover_color=("#E2E8F0", "#1E2A4A"),
@@ -484,17 +479,17 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             corner_radius=6,
             command=self._refresh_microphones,
         )
-        self.refresh_mics_btn.grid(row=1, column=1, padx=(0, 10), pady=(0, 8))
+        self.refresh_mics_btn.grid(row=1, column=1, padx=(0, 6), pady=(0, 6))
 
         # Live Audio VU Meter Frame (Hangcsik)
         meter_frame = ctk.CTkFrame(
             rec_card,
             fg_color=("#F8FAFC", "#070D1E"),
-            corner_radius=8,
+            corner_radius=6,
             border_width=1,
             border_color=("#E2E8F0", "#162038"),
         )
-        meter_frame.pack(fill="x", padx=18, pady=(0, 10))
+        meter_frame.pack(fill="x", padx=14, pady=(0, 6))
         meter_frame.grid_columnconfigure(1, weight=1)
 
         # App Audio Meter
@@ -504,17 +499,17 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             font=ctk.CTkFont(size=10, weight="bold"),
             text_color=("#64748B", "#94A3B8"),
         )
-        self.app_meter_title.grid(row=0, column=0, padx=(12, 6), pady=(8, 3), sticky="w")
+        self.app_meter_title.grid(row=0, column=0, padx=(10, 6), pady=(4, 2), sticky="w")
 
         self.app_meter_bar = ctk.CTkProgressBar(
             meter_frame,
-            height=8,
-            corner_radius=4,
+            height=6,
+            corner_radius=3,
             fg_color=("#E2E8F0", "#0B1329"),
             progress_color="#10B981",
         )
         self.app_meter_bar.set(0.0)
-        self.app_meter_bar.grid(row=0, column=1, padx=(0, 12), pady=(8, 3), sticky="ew")
+        self.app_meter_bar.grid(row=0, column=1, padx=(0, 10), pady=(4, 2), sticky="ew")
 
         # Mic Meter
         self.mic_meter_title = ctk.CTkLabel(
@@ -523,80 +518,94 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             font=ctk.CTkFont(size=10, weight="bold"),
             text_color=("#64748B", "#94A3B8"),
         )
-        self.mic_meter_title.grid(row=1, column=0, padx=(12, 6), pady=(3, 10), sticky="w")
+        self.mic_meter_title.grid(row=1, column=0, padx=(10, 6), pady=(2, 6), sticky="w")
 
         self.mic_meter_bar = ctk.CTkProgressBar(
             meter_frame,
-            height=8,
-            corner_radius=4,
+            height=6,
+            corner_radius=3,
             fg_color=("#E2E8F0", "#0B1329"),
             progress_color=("#0891B2", "#0AC8B9"),
         )
         self.mic_meter_bar.set(0.0)
-        self.mic_meter_bar.grid(row=1, column=1, padx=(0, 12), pady=(3, 10), sticky="ew")
+        self.mic_meter_bar.grid(row=1, column=1, padx=(0, 10), pady=(2, 6), sticky="ew")
+
+        rec_footer_frame = ctk.CTkFrame(rec_card, fg_color="transparent")
+        rec_footer_frame.pack(fill="x", padx=14, pady=(0, 8))
+
+        self.rec_scene_lbl = ctk.CTkLabel(
+            rec_footer_frame,
+            text=self._get_engine_display_text(),
+            font=ctk.CTkFont(size=10, weight="bold"),
+            text_color=("#E11D48", "#F43F5E"),
+        )
+        self.rec_scene_lbl.pack(side="left")
 
         self.rec_info_lbl = ctk.CTkLabel(
-            rec_card,
+            rec_footer_frame,
             text=t("record.info"),
-            font=ctk.CTkFont(size=11),
+            font=ctk.CTkFont(size=10),
             text_color="#64748B",
-            justify="left",
+            justify="right",
         )
-        self.rec_info_lbl.pack(anchor="w", padx=18, pady=(0, 14))
+        self.rec_info_lbl.pack(side="right")
 
         # --- CARD 2: PLAY REPLAY ---
         rep_card = ctk.CTkFrame(
             action_frame,
             fg_color=("#FFFFFF", "#0B1329"),
-            corner_radius=14,
+            corner_radius=12,
             border_width=1,
             border_color=("#E2E8F0", "#1E2A4A"),
         )
-        rep_card.grid(row=0, column=1, padx=(8, 0), pady=0, sticky="nsew")
+        rep_card.grid(row=0, column=1, padx=(6, 0), pady=0, sticky="nsew")
+
+        rep_top_row = ctk.CTkFrame(rep_card, fg_color="transparent")
+        rep_top_row.pack(fill="x", padx=14, pady=(10, 6))
 
         self.rep_header_lbl = ctk.CTkLabel(
-            rep_card,
+            rep_top_row,
             text=t("replay.title"),
-            font=ctk.CTkFont(size=15, weight="bold"),
+            font=ctk.CTkFont(size=14, weight="bold"),
             text_color=("#0891B2", "#0AC8B9"),
         )
-        self.rep_header_lbl.pack(anchor="w", padx=18, pady=(14, 6))
+        self.rep_header_lbl.pack(side="left")
 
         self.rep_status_pill = ctk.CTkLabel(
-            rep_card,
+            rep_top_row,
             text=t("replay.status_idle"),
-            font=ctk.CTkFont(size=12, weight="bold"),
+            font=ctk.CTkFont(size=11, weight="bold"),
             text_color=("#64748B", "#94A3B8"),
             fg_color=("#F8FAFC", "#070D1E"),
-            corner_radius=8,
-            padx=12,
-            pady=6,
+            corner_radius=6,
+            padx=10,
+            pady=4,
         )
-        self.rep_status_pill.pack(anchor="w", padx=18, pady=(0, 12))
+        self.rep_status_pill.pack(side="right")
 
         self.rep_btn = ctk.CTkButton(
             rep_card,
             text=t("replay.start_btn"),
-            font=ctk.CTkFont(size=14, weight="bold"),
-            height=52,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            height=42,
             fg_color="#0284C7",
             hover_color="#0369A1",
             border_width=1,
             border_color=("#0284C7", "#38BDF8"),
-            corner_radius=10,
+            corner_radius=8,
             command=self._toggle_replay,
         )
-        self.rep_btn.pack(fill="x", padx=18, pady=(0, 12))
+        self.rep_btn.pack(fill="x", padx=14, pady=(0, 6))
 
         # Replay Volume Slider Control
         vol_frame = ctk.CTkFrame(
             rep_card,
             fg_color=("#F8FAFC", "#070D1E"),
-            corner_radius=8,
+            corner_radius=6,
             border_width=1,
             border_color=("#E2E8F0", "#162038"),
         )
-        vol_frame.pack(fill="x", padx=18, pady=(0, 12))
+        vol_frame.pack(fill="x", padx=14, pady=(0, 6))
         vol_frame.grid_columnconfigure(1, weight=1)
 
         self.current_vol = int(self.config.get("replay_volume", 80))
@@ -608,13 +617,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.vol_label = ctk.CTkLabel(
             vol_frame,
             text=f"{vol_icon} {self.current_vol}%",
-            font=ctk.CTkFont(size=12, weight="bold"),
+            font=ctk.CTkFont(size=11, weight="bold"),
             text_color=("#0891B2", "#0AC8B9"),
-            width=80,
+            width=75,
             cursor="hand2",
         )
         self.vol_label.bind("<Button-1>", lambda e: self._toggle_replay_mute())
-        self.vol_label.grid(row=0, column=0, padx=(12, 4), pady=8, sticky="w")
+        self.vol_label.grid(row=0, column=0, padx=(10, 4), pady=6, sticky="w")
 
         self.vol_slider = ctk.CTkSlider(
             vol_frame,
@@ -626,19 +635,28 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             button_color=("#06B6D4", "#5EEAD4"),
             button_hover_color=("#0891B2", "#0AC8B9"),
             fg_color=("#E2E8F0", "#0B1329"),
-            height=16,
+            height=14,
         )
         self.vol_slider.set(self.current_vol)
-        self.vol_slider.grid(row=0, column=1, padx=(4, 12), pady=8, sticky="ew")
+        self.vol_slider.grid(row=0, column=1, padx=(4, 10), pady=6, sticky="ew")
+
+        rep_info_frame = ctk.CTkFrame(
+            rep_card,
+            fg_color=("#F8FAFC", "#070D1E"),
+            corner_radius=6,
+            border_width=1,
+            border_color=("#E2E8F0", "#162038"),
+        )
+        rep_info_frame.pack(fill="both", expand=True, padx=14, pady=(0, 8))
 
         self.rep_info_lbl = ctk.CTkLabel(
-            rep_card,
+            rep_info_frame,
             text=f"{t('replay.info')}\n• {t('replay.hotkey_hint')}",
-            font=ctk.CTkFont(size=11),
+            font=ctk.CTkFont(size=10),
             text_color="#64748B",
             justify="left",
         )
-        self.rep_info_lbl.pack(anchor="w", padx=18, pady=(0, 14))
+        self.rep_info_lbl.pack(padx=10, pady=6, anchor="w")
 
         # ==========================================
         # 3. TABBED VIEW (ACTIVITY LOG, RECORDINGS, SETTINGS)
@@ -1025,26 +1043,45 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             border_width=1,
             border_color=("#E2E8F0", "#162038"),
         )
-        scroll.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
-        scroll.grid_columnconfigure(0, weight=0)
-        scroll.grid_columnconfigure(1, weight=1)
-        scroll.grid_columnconfigure(2, weight=0)
+        scroll.grid(row=0, column=0, padx=8, pady=8, sticky="nsew")
+        scroll.grid_columnconfigure(0, weight=1)
 
-        # --- Directory Settings ---
-        self.dir_title_lbl = ctk.CTkLabel(
-            scroll,
-            text=t("settings.paths_title"),
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color=("#0891B2", "#0AC8B9"),
-        )
-        self.dir_title_lbl.grid(row=0, column=0, columnspan=3, padx=10, pady=(12, 8), sticky="w")
-
-        # Recordings Folder
-        self.rec_folder_lbl = ctk.CTkLabel(scroll, text=t("settings.rec_folder"), text_color=("#0F172A", "#CBD5E1"))
-        self.rec_folder_lbl.grid(row=1, column=0, padx=10, pady=6, sticky="w")
-        self.rec_folder_entry = ctk.CTkEntry(
+        # -------------------------------------------------------------
+        # CARD 1: DIRECTORIES & STORAGE
+        # -------------------------------------------------------------
+        card_storage = ctk.CTkFrame(
             scroll,
             fg_color=("#FFFFFF", "#0B1329"),
+            corner_radius=10,
+            border_width=1,
+            border_color=("#E2E8F0", "#1E2A4A"),
+        )
+        card_storage.pack(fill="x", padx=10, pady=(6, 10))
+        card_storage.grid_columnconfigure(0, weight=0)
+        card_storage.grid_columnconfigure(1, weight=1)
+        card_storage.grid_columnconfigure(2, weight=0)
+
+        self.dir_title_lbl = ctk.CTkLabel(
+            card_storage,
+            text=f"📁 {t('settings.paths_title')}",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=("#0891B2", "#0AC8B9"),
+        )
+        self.dir_title_lbl.grid(row=0, column=0, columnspan=3, padx=14, pady=(10, 8), sticky="w")
+
+        # Recordings Folder
+        self.rec_folder_lbl = ctk.CTkLabel(
+            card_storage,
+            text=t("settings.rec_folder"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0F172A", "#CBD5E1"),
+        )
+        self.rec_folder_lbl.grid(row=1, column=0, padx=(14, 8), pady=6, sticky="w")
+
+        self.rec_folder_entry = ctk.CTkEntry(
+            card_storage,
+            height=32,
+            fg_color=("#F8FAFC", "#070D1E"),
             border_color=("#CBD5E1", "#1E2A4A"),
             border_width=1,
             text_color=("#0F172A", "#F8FAFC"),
@@ -1053,12 +1090,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.rec_folder_entry.insert(
             0, str(self.config.get("record_folder", os.path.abspath("recordings")))
         )
-        self.rec_folder_entry.grid(row=1, column=1, padx=(10, 4), pady=6, sticky="ew")
+        self.rec_folder_entry.grid(row=1, column=1, padx=6, pady=6, sticky="ew")
 
         self.browse_rec_btn = ctk.CTkButton(
-            scroll,
+            card_storage,
             text=t("settings.browse"),
             width=80,
+            height=32,
             fg_color=("#F1F5F9", "#0F1A36"),
             hover_color=("#E2E8F0", "#1E2A4A"),
             border_width=1,
@@ -1067,14 +1105,21 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             corner_radius=6,
             command=self._browse_rec_folder,
         )
-        self.browse_rec_btn.grid(row=1, column=2, padx=(4, 10), pady=6, sticky="w")
+        self.browse_rec_btn.grid(row=1, column=2, padx=(4, 14), pady=6, sticky="w")
 
         # VLC Directory
-        self.vlc_dir_lbl = ctk.CTkLabel(scroll, text=t("settings.vlc_dir"), text_color=("#0F172A", "#CBD5E1"))
-        self.vlc_dir_lbl.grid(row=2, column=0, padx=10, pady=6, sticky="w")
+        self.vlc_dir_lbl = ctk.CTkLabel(
+            card_storage,
+            text=t("settings.vlc_dir"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0F172A", "#CBD5E1"),
+        )
+        self.vlc_dir_lbl.grid(row=2, column=0, padx=(14, 8), pady=6, sticky="w")
+
         self.vlc_dir_entry = ctk.CTkEntry(
-            scroll,
-            fg_color=("#FFFFFF", "#0B1329"),
+            card_storage,
+            height=32,
+            fg_color=("#F8FAFC", "#070D1E"),
             border_color=("#CBD5E1", "#1E2A4A"),
             border_width=1,
             text_color=("#0F172A", "#F8FAFC"),
@@ -1083,12 +1128,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.vlc_dir_entry.insert(
             0, str(self.config.get("vlc_dir", r"C:\Program Files\VideoLAN\VLC"))
         )
-        self.vlc_dir_entry.grid(row=2, column=1, padx=(10, 4), pady=6, sticky="ew")
+        self.vlc_dir_entry.grid(row=2, column=1, padx=6, pady=6, sticky="ew")
 
         self.browse_vlc_btn = ctk.CTkButton(
-            scroll,
+            card_storage,
             text=t("settings.browse"),
             width=80,
+            height=32,
             fg_color=("#F1F5F9", "#0F1A36"),
             hover_color=("#E2E8F0", "#1E2A4A"),
             border_width=1,
@@ -1097,21 +1143,51 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             corner_radius=6,
             command=self._browse_vlc_folder,
         )
-        self.browse_vlc_btn.grid(row=2, column=2, padx=(4, 10), pady=6, sticky="w")
+        self.browse_vlc_btn.grid(row=2, column=2, padx=(4, 14), pady=6, sticky="w")
 
         # Replay Volume
-        self.replay_vol_lbl = ctk.CTkLabel(scroll, text=t("settings.replay_volume"), text_color=("#0F172A", "#CBD5E1"))
-        self.replay_vol_lbl.grid(row=3, column=0, padx=10, pady=6, sticky="w")
+        self.replay_vol_lbl = ctk.CTkLabel(
+            card_storage,
+            text=t("settings.replay_volume"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0F172A", "#CBD5E1"),
+        )
+        self.replay_vol_lbl.grid(row=3, column=0, padx=(14, 8), pady=(6, 12), sticky="w")
+
         self.replay_vol_entry = ctk.CTkEntry(
-            scroll,
-            fg_color=("#FFFFFF", "#0B1329"),
+            card_storage,
+            height=32,
+            width=100,
+            fg_color=("#F8FAFC", "#070D1E"),
             border_color=("#CBD5E1", "#1E2A4A"),
             border_width=1,
             text_color=("#0F172A", "#F8FAFC"),
             corner_radius=6,
         )
         self.replay_vol_entry.insert(0, str(self.config.get("replay_volume", 80)))
-        self.replay_vol_entry.grid(row=3, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
+        self.replay_vol_entry.grid(row=3, column=1, padx=6, pady=(6, 12), sticky="w")
+
+        # -------------------------------------------------------------
+        # CARD 2: INTERFACE & AUDIO INPUT
+        # -------------------------------------------------------------
+        card_interface = ctk.CTkFrame(
+            scroll,
+            fg_color=("#FFFFFF", "#0B1329"),
+            corner_radius=10,
+            border_width=1,
+            border_color=("#E2E8F0", "#1E2A4A"),
+        )
+        card_interface.pack(fill="x", padx=10, pady=(0, 10))
+        card_interface.grid_columnconfigure(0, weight=0)
+        card_interface.grid_columnconfigure(1, weight=1)
+
+        self.interface_title_lbl = ctk.CTkLabel(
+            card_interface,
+            text=f"🌐 {t('settings.interface_title')}",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=("#0891B2", "#0AC8B9"),
+        )
+        self.interface_title_lbl.grid(row=0, column=0, columnspan=2, padx=14, pady=(10, 8), sticky="w")
 
         # Language Selector
         self.lang_code_to_name = get_available_languages()
@@ -1119,14 +1195,20 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         current_code = self.config.get("language", "en")
         current_display = self.lang_code_to_name.get(current_code, "English")
 
-        self.lang_lbl = ctk.CTkLabel(scroll, text=t("settings.language"), text_color=("#0F172A", "#CBD5E1"))
-        self.lang_lbl.grid(row=4, column=0, padx=10, pady=6, sticky="w")
+        self.lang_lbl = ctk.CTkLabel(
+            card_interface,
+            text=t("settings.language"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0F172A", "#CBD5E1"),
+        )
+        self.lang_lbl.grid(row=1, column=0, padx=(14, 8), pady=6, sticky="w")
 
         self.lang_menu = ctk.CTkOptionMenu(
-            scroll,
+            card_interface,
             values=list(self.lang_name_to_code.keys()),
             command=self._on_language_selected,
-            fg_color=("#FFFFFF", "#0B1329"),
+            height=32,
+            fg_color=("#F8FAFC", "#070D1E"),
             text_color=("#0F172A", "#F8FAFC"),
             button_color=("#0891B2", "#0AC8B9"),
             button_hover_color=("#0E7490", "#0397AB"),
@@ -1136,11 +1218,16 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             corner_radius=6,
         )
         self.lang_menu.set(current_display)
-        self.lang_menu.grid(row=4, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
+        self.lang_menu.grid(row=1, column=1, padx=(6, 14), pady=6, sticky="ew")
 
         # Appearance Theme Selector
-        self.theme_lbl = ctk.CTkLabel(scroll, text=t("settings.theme"), text_color=("#0F172A", "#CBD5E1"))
-        self.theme_lbl.grid(row=5, column=0, padx=10, pady=6, sticky="w")
+        self.theme_lbl = ctk.CTkLabel(
+            card_interface,
+            text=t("settings.theme"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0F172A", "#CBD5E1"),
+        )
+        self.theme_lbl.grid(row=2, column=0, padx=(14, 8), pady=6, sticky="w")
 
         self.theme_options = {
             t("settings.theme_dark"): "dark",
@@ -1151,10 +1238,11 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         curr_theme_display = self.theme_code_to_display.get(self.current_theme, t("settings.theme_dark"))
 
         self.theme_menu = ctk.CTkOptionMenu(
-            scroll,
+            card_interface,
             values=list(self.theme_options.keys()),
             command=self._on_theme_selected,
-            fg_color=("#FFFFFF", "#0B1329"),
+            height=32,
+            fg_color=("#F8FAFC", "#070D1E"),
             text_color=("#0F172A", "#F8FAFC"),
             button_color=("#0891B2", "#0AC8B9"),
             button_hover_color=("#0E7490", "#0397AB"),
@@ -1164,17 +1252,23 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             corner_radius=6,
         )
         self.theme_menu.set(curr_theme_display)
-        self.theme_menu.grid(row=5, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
+        self.theme_menu.grid(row=2, column=1, padx=(6, 14), pady=6, sticky="ew")
 
         # Microphone Input
-        self.settings_mic_lbl = ctk.CTkLabel(scroll, text=t("settings.mic_device"), text_color=("#0F172A", "#CBD5E1"))
-        self.settings_mic_lbl.grid(row=6, column=0, padx=10, pady=6, sticky="w")
+        self.settings_mic_lbl = ctk.CTkLabel(
+            card_interface,
+            text=t("settings.mic_device"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0F172A", "#CBD5E1"),
+        )
+        self.settings_mic_lbl.grid(row=3, column=0, padx=(14, 8), pady=(6, 12), sticky="w")
 
         self.settings_mic_menu = ctk.CTkOptionMenu(
-            scroll,
+            card_interface,
             values=[t("record.mic_default")],
             command=self._on_mic_input_selected,
-            fg_color=("#FFFFFF", "#0B1329"),
+            height=32,
+            fg_color=("#F8FAFC", "#070D1E"),
             text_color=("#0F172A", "#F8FAFC"),
             button_color=("#0891B2", "#0AC8B9"),
             button_hover_color=("#0E7490", "#0397AB"),
@@ -1183,16 +1277,44 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             dropdown_hover_color=("#F1F5F9", "#162038"),
             corner_radius=6,
         )
-        self.settings_mic_menu.grid(row=6, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
+        self.settings_mic_menu.grid(row=3, column=1, padx=(6, 14), pady=(6, 12), sticky="ew")
+
+        # -------------------------------------------------------------
+        # CARD 3: MATCH AUTOMATION & WORKFLOW
+        # -------------------------------------------------------------
+        card_auto = ctk.CTkFrame(
+            scroll,
+            fg_color=("#FFFFFF", "#0B1329"),
+            corner_radius=10,
+            border_width=1,
+            border_color=("#E2E8F0", "#1E2A4A"),
+        )
+        card_auto.pack(fill="x", padx=10, pady=(0, 10))
+        card_auto.grid_columnconfigure(0, weight=0)
+        card_auto.grid_columnconfigure(1, weight=1)
+
+        self.automation_title_lbl = ctk.CTkLabel(
+            card_auto,
+            text=f"⚡ {t('settings.automation_title')}",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=("#0891B2", "#0AC8B9"),
+        )
+        self.automation_title_lbl.grid(row=0, column=0, columnspan=2, padx=14, pady=(10, 8), sticky="w")
 
         # Auto-Start in Champion Select
-        self.auto_champ_select_lbl = ctk.CTkLabel(scroll, text=t("settings.auto_start_champ_select"), text_color=("#0F172A", "#CBD5E1"))
-        self.auto_champ_select_lbl.grid(row=7, column=0, padx=10, pady=6, sticky="w")
+        self.auto_champ_select_lbl = ctk.CTkLabel(
+            card_auto,
+            text=t("settings.auto_start_champ_select"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0F172A", "#CBD5E1"),
+        )
+        self.auto_champ_select_lbl.grid(row=1, column=0, padx=(14, 8), pady=6, sticky="w")
+
         self.auto_champ_select_var = ctk.BooleanVar(
             value=bool(self.config.get("auto_start_champ_select", True))
         )
         self.auto_champ_select_switch = ctk.CTkSwitch(
-            scroll,
+            card_auto,
             text=t("settings.auto_start_champ_select_info"),
             variable=self.auto_champ_select_var,
             onvalue=True,
@@ -1203,16 +1325,22 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             button_hover_color=("#F8FAFC", "#E2E8F0"),
             text_color=("#334155", "#94A3B8"),
         )
-        self.auto_champ_select_switch.grid(row=7, column=1, columnspan=2, padx=10, pady=6, sticky="w")
+        self.auto_champ_select_switch.grid(row=1, column=1, padx=(6, 14), pady=6, sticky="w")
 
         # Auto-Start Replay Sync
-        self.auto_replay_lbl = ctk.CTkLabel(scroll, text=t("settings.auto_start_replay"), text_color=("#0F172A", "#CBD5E1"))
-        self.auto_replay_lbl.grid(row=8, column=0, padx=10, pady=6, sticky="w")
+        self.auto_replay_lbl = ctk.CTkLabel(
+            card_auto,
+            text=t("settings.auto_start_replay"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0F172A", "#CBD5E1"),
+        )
+        self.auto_replay_lbl.grid(row=2, column=0, padx=(14, 8), pady=(6, 12), sticky="w")
+
         self.auto_replay_var = ctk.BooleanVar(
             value=bool(self.config.get("auto_start_replay", True))
         )
         self.auto_replay_switch = ctk.CTkSwitch(
-            scroll,
+            card_auto,
             text=t("settings.auto_start_replay_info"),
             variable=self.auto_replay_var,
             onvalue=True,
@@ -1223,25 +1351,44 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             button_hover_color=("#F8FAFC", "#E2E8F0"),
             text_color=("#334155", "#94A3B8"),
         )
-        self.auto_replay_switch.grid(row=8, column=1, columnspan=2, padx=10, pady=6, sticky="w")
+        self.auto_replay_switch.grid(row=2, column=1, padx=(6, 14), pady=(6, 12), sticky="w")
 
-        # --- In-Game HUD Overlay Section ---
-        self.hud_title_lbl = ctk.CTkLabel(
+        # -------------------------------------------------------------
+        # CARD 4: IN-GAME FLOATING HUD OVERLAY
+        # -------------------------------------------------------------
+        card_hud = ctk.CTkFrame(
             scroll,
-            text=t("settings.hud_section_title"),
-            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color=("#FFFFFF", "#0B1329"),
+            corner_radius=10,
+            border_width=1,
+            border_color=("#E2E8F0", "#1E2A4A"),
+        )
+        card_hud.pack(fill="x", padx=10, pady=(0, 10))
+        card_hud.grid_columnconfigure(0, weight=0)
+        card_hud.grid_columnconfigure(1, weight=1)
+
+        self.hud_title_lbl = ctk.CTkLabel(
+            card_hud,
+            text=f"🎮 {t('settings.hud_section_title')}",
+            font=ctk.CTkFont(size=13, weight="bold"),
             text_color=("#0891B2", "#0AC8B9"),
         )
-        self.hud_title_lbl.grid(row=9, column=0, columnspan=3, padx=10, pady=(16, 6), sticky="w")
+        self.hud_title_lbl.grid(row=0, column=0, columnspan=2, padx=14, pady=(10, 8), sticky="w")
 
         # Enable HUD Overlay Switch
-        self.hud_enable_lbl = ctk.CTkLabel(scroll, text=t("settings.hud_overlay_enabled"), text_color=("#0F172A", "#CBD5E1"))
-        self.hud_enable_lbl.grid(row=10, column=0, padx=10, pady=6, sticky="w")
+        self.hud_enable_lbl = ctk.CTkLabel(
+            card_hud,
+            text=t("settings.hud_overlay_enabled"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0F172A", "#CBD5E1"),
+        )
+        self.hud_enable_lbl.grid(row=1, column=0, padx=(14, 8), pady=6, sticky="w")
+
         self.hud_enable_var = ctk.BooleanVar(
             value=bool(self.config.get("hud_overlay_enabled", True))
         )
         self.hud_enable_switch = ctk.CTkSwitch(
-            scroll,
+            card_hud,
             text=t("settings.hud_overlay_info"),
             variable=self.hud_enable_var,
             onvalue=True,
@@ -1253,16 +1400,22 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             text_color=("#334155", "#94A3B8"),
             command=self._on_hud_enabled_toggled,
         )
-        self.hud_enable_switch.grid(row=10, column=1, columnspan=2, padx=10, pady=6, sticky="w")
+        self.hud_enable_switch.grid(row=1, column=1, padx=(6, 14), pady=6, sticky="w")
 
         # Click-Through Mode Switch
-        self.hud_click_through_lbl = ctk.CTkLabel(scroll, text=t("settings.hud_click_through"), text_color=("#0F172A", "#CBD5E1"))
-        self.hud_click_through_lbl.grid(row=11, column=0, padx=10, pady=6, sticky="w")
+        self.hud_click_through_lbl = ctk.CTkLabel(
+            card_hud,
+            text=t("settings.hud_click_through"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0F172A", "#CBD5E1"),
+        )
+        self.hud_click_through_lbl.grid(row=2, column=0, padx=(14, 8), pady=6, sticky="w")
+
         self.hud_click_through_var = ctk.BooleanVar(
             value=bool(self.config.get("hud_click_through", False))
         )
         self.hud_click_through_switch = ctk.CTkSwitch(
-            scroll,
+            card_hud,
             text=t("settings.hud_click_through_info"),
             variable=self.hud_click_through_var,
             onvalue=True,
@@ -1274,23 +1427,20 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             text_color=("#334155", "#94A3B8"),
             command=self._on_hud_click_through_toggled,
         )
-        self.hud_click_through_switch.grid(row=11, column=1, columnspan=2, padx=10, pady=6, sticky="w")
+        self.hud_click_through_switch.grid(row=2, column=1, padx=(6, 14), pady=6, sticky="w")
 
         # HUD Opacity Slider
         curr_opacity = float(self.config.get("hud_opacity", 0.85))
         self.hud_opacity_lbl = ctk.CTkLabel(
-            scroll,
+            card_hud,
             text=t("settings.hud_opacity", percent=int(curr_opacity * 100)),
+            font=ctk.CTkFont(size=11, weight="bold"),
             text_color=("#0F172A", "#CBD5E1"),
         )
-        self.hud_opacity_lbl.grid(row=12, column=0, padx=10, pady=6, sticky="w")
-
-        hud_slider_frame = ctk.CTkFrame(scroll, fg_color="transparent")
-        hud_slider_frame.grid(row=12, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
-        hud_slider_frame.grid_columnconfigure(0, weight=1)
+        self.hud_opacity_lbl.grid(row=3, column=0, padx=(14, 8), pady=6, sticky="w")
 
         self.hud_opacity_slider = ctk.CTkSlider(
-            hud_slider_frame,
+            card_hud,
             from_=0.40,
             to=1.00,
             number_of_steps=12,
@@ -1299,20 +1449,20 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             button_color=("#0891B2", "#0AC8B9"),
             button_hover_color=("#0E7490", "#0397AB"),
             command=self._on_hud_opacity_slider_changed,
+            height=16,
         )
         self.hud_opacity_slider.set(curr_opacity)
-        self.hud_opacity_slider.pack(fill="x", expand=True)
+        self.hud_opacity_slider.grid(row=3, column=1, padx=(6, 14), pady=6, sticky="ew")
 
         # HUD Action / Preview Buttons
-        hud_btn_frame = ctk.CTkFrame(scroll, fg_color="transparent")
-        hud_btn_frame.grid(row=13, column=0, columnspan=3, padx=10, pady=(8, 12), sticky="w")
+        hud_btn_frame = ctk.CTkFrame(card_hud, fg_color="transparent")
+        hud_btn_frame.grid(row=4, column=0, columnspan=2, padx=14, pady=(10, 12), sticky="ew")
 
         self.hud_preview_rec_btn = ctk.CTkButton(
             hud_btn_frame,
             text=t("settings.hud_preview_rec_btn"),
-            font=ctk.CTkFont(size=12, weight="bold"),
-            width=140,
-            height=32,
+            font=ctk.CTkFont(size=11, weight="bold"),
+            height=30,
             fg_color=("#F1F5F9", "#0F1A36"),
             hover_color=("#E2E8F0", "#1E2A4A"),
             border_width=1,
@@ -1326,9 +1476,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.hud_preview_replay_btn = ctk.CTkButton(
             hud_btn_frame,
             text=t("settings.hud_preview_replay_btn"),
-            font=ctk.CTkFont(size=12, weight="bold"),
-            width=150,
-            height=32,
+            font=ctk.CTkFont(size=11, weight="bold"),
+            height=30,
             fg_color=("#F1F5F9", "#0F1A36"),
             hover_color=("#E2E8F0", "#1E2A4A"),
             border_width=1,
@@ -1342,9 +1491,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.hud_hide_preview_btn = ctk.CTkButton(
             hud_btn_frame,
             text=t("settings.hud_hide_preview_btn"),
-            font=ctk.CTkFont(size=12, weight="bold"),
-            width=120,
-            height=32,
+            font=ctk.CTkFont(size=11, weight="bold"),
+            height=30,
             fg_color=("#F1F5F9", "#0F1A36"),
             hover_color=("#E2E8F0", "#1E2A4A"),
             border_width=1,
@@ -1358,9 +1506,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.hud_reset_pos_btn = ctk.CTkButton(
             hud_btn_frame,
             text=t("settings.hud_reset_pos_btn"),
-            font=ctk.CTkFont(size=12, weight="bold"),
-            width=130,
-            height=32,
+            font=ctk.CTkFont(size=11, weight="bold"),
+            height=30,
             fg_color=("#F1F5F9", "#0F1A36"),
             hover_color=("#E2E8F0", "#1E2A4A"),
             border_width=1,
@@ -1371,34 +1518,38 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         )
         self.hud_reset_pos_btn.pack(side="left", padx=(0, 8))
 
-        # Save Button
-        self.save_btn = ctk.CTkButton(
+        # -------------------------------------------------------------
+        # CARD 5: SOFTWARE & UPDATES
+        # -------------------------------------------------------------
+        card_updates = ctk.CTkFrame(
             scroll,
-            text=t("settings.save_btn"),
-            height=40,
-            font=ctk.CTkFont(size=13, weight="bold"),
-            fg_color=("#0891B2", "#0AC8B9"),
-            hover_color=("#0E7490", "#0397AB"),
-            text_color=("#FFFFFF", "#030712"),
-            corner_radius=8,
-            command=self._save_settings,
+            fg_color=("#FFFFFF", "#0B1329"),
+            corner_radius=10,
+            border_width=1,
+            border_color=("#E2E8F0", "#1E2A4A"),
         )
-        self.save_btn.grid(row=14, column=0, columnspan=3, padx=10, pady=(20, 10), sticky="ew")
+        card_updates.pack(fill="x", padx=10, pady=(0, 10))
+        card_updates.grid_columnconfigure(0, weight=0)
+        card_updates.grid_columnconfigure(1, weight=1)
 
-        # --- Software Updates Section ---
         self.updates_title_lbl = ctk.CTkLabel(
-            scroll,
-            text=t("settings.updates_title"),
-            font=ctk.CTkFont(size=14, weight="bold"),
+            card_updates,
+            text=f"🔄 {t('settings.updates_title')}",
+            font=ctk.CTkFont(size=13, weight="bold"),
             text_color=("#0891B2", "#0AC8B9"),
         )
-        self.updates_title_lbl.grid(row=15, column=0, columnspan=3, padx=10, pady=(18, 6), sticky="w")
+        self.updates_title_lbl.grid(row=0, column=0, columnspan=2, padx=14, pady=(10, 8), sticky="w")
 
-        self.app_version_lbl = ctk.CTkLabel(scroll, text=t("settings.app_version"), text_color=("#0F172A", "#CBD5E1"))
-        self.app_version_lbl.grid(row=16, column=0, padx=10, pady=6, sticky="w")
+        self.app_version_lbl = ctk.CTkLabel(
+            card_updates,
+            text=t("settings.app_version"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0F172A", "#CBD5E1"),
+        )
+        self.app_version_lbl.grid(row=1, column=0, padx=(14, 8), pady=6, sticky="w")
 
-        version_frame = ctk.CTkFrame(scroll, fg_color="transparent")
-        version_frame.grid(row=16, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
+        version_frame = ctk.CTkFrame(card_updates, fg_color="transparent")
+        version_frame.grid(row=1, column=1, padx=(6, 14), pady=6, sticky="w")
 
         self.version_val_lbl = ctk.CTkLabel(
             version_frame,
@@ -1412,7 +1563,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             version_frame,
             text=t("settings.check_updates_btn"),
             height=28,
-            font=ctk.CTkFont(size=12),
+            font=ctk.CTkFont(size=11, weight="bold"),
             fg_color=("#F1F5F9", "#0F1A36"),
             hover_color=("#E2E8F0", "#1E2A4A"),
             border_width=1,
@@ -1424,23 +1575,39 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.check_update_btn.pack(side="left")
 
         self.update_status_lbl = ctk.CTkLabel(
-            scroll,
+            card_updates,
             text="",
             font=ctk.CTkFont(size=11),
             text_color=("#64748B", "#94A3B8"),
         )
-        self.update_status_lbl.grid(row=17, column=0, columnspan=3, padx=10, pady=(4, 0), sticky="w")
+        self.update_status_lbl.grid(row=2, column=0, columnspan=2, padx=14, pady=(4, 0), sticky="w")
 
         self.update_action_btn = ctk.CTkButton(
-            scroll,
+            card_updates,
             text="",
-            height=36,
+            height=34,
             font=ctk.CTkFont(size=12, weight="bold"),
             fg_color="#10B981",
             hover_color="#059669",
-            corner_radius=8,
+            corner_radius=6,
             command=self._on_perform_update_clicked,
         )
+
+        # -------------------------------------------------------------
+        # BOTTOM SAVE SETTINGS BUTTON
+        # -------------------------------------------------------------
+        self.save_btn = ctk.CTkButton(
+            scroll,
+            text=t("settings.save_btn"),
+            height=42,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            fg_color=("#0891B2", "#0AC8B9"),
+            hover_color=("#0E7490", "#0397AB"),
+            text_color=("#FFFFFF", "#030712"),
+            corner_radius=8,
+            command=self._save_settings,
+        )
+        self.save_btn.pack(fill="x", padx=10, pady=(10, 16))
 
     # ==========================================
     # IN-GAME FLOATING HUD WIDGET HANDLERS
@@ -1621,12 +1788,14 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.rec_scene_lbl.configure(text=self._get_engine_display_text())
 
             if hasattr(self, "dir_title_lbl"):
-                self.dir_title_lbl.configure(text=t("settings.paths_title"))
+                self.dir_title_lbl.configure(text=f"📁 {t('settings.paths_title')}")
                 self.rec_folder_lbl.configure(text=t("settings.rec_folder"))
                 self.browse_rec_btn.configure(text=t("settings.browse"))
                 self.vlc_dir_lbl.configure(text=t("settings.vlc_dir"))
                 self.browse_vlc_btn.configure(text=t("settings.browse"))
                 self.replay_vol_lbl.configure(text=t("settings.replay_volume"))
+                if hasattr(self, "interface_title_lbl"):
+                    self.interface_title_lbl.configure(text=f"🌐 {t('settings.interface_title')}")
                 self.lang_lbl.configure(text=t("settings.language"))
                 if hasattr(self, "theme_lbl"):
                     self.theme_lbl.configure(text=t("settings.theme"))
@@ -1642,6 +1811,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                         self.theme_menu.set(curr_theme_disp)
                 if hasattr(self, "settings_mic_lbl"):
                     self.settings_mic_lbl.configure(text=t("settings.mic_device"))
+                if hasattr(self, "automation_title_lbl"):
+                    self.automation_title_lbl.configure(text=f"⚡ {t('settings.automation_title')}")
                 if hasattr(self, "auto_champ_select_lbl"):
                     self.auto_champ_select_lbl.configure(text=t("settings.auto_start_champ_select"))
                     self.auto_champ_select_switch.configure(text=t("settings.auto_start_champ_select_info"))
@@ -1649,7 +1820,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                     self.auto_replay_lbl.configure(text=t("settings.auto_start_replay"))
                     self.auto_replay_switch.configure(text=t("settings.auto_start_replay_info"))
                 if hasattr(self, "hud_title_lbl"):
-                    self.hud_title_lbl.configure(text=t("settings.hud_section_title"))
+                    self.hud_title_lbl.configure(text=f"🎮 {t('settings.hud_section_title')}")
                     self.hud_enable_lbl.configure(text=t("settings.hud_overlay_enabled"))
                     self.hud_enable_switch.configure(text=t("settings.hud_overlay_info"))
                     self.hud_click_through_lbl.configure(text=t("settings.hud_click_through"))
@@ -1663,7 +1834,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                     self.hud_reset_pos_btn.configure(text=t("settings.hud_reset_pos_btn"))
                 self.save_btn.configure(text=t("settings.save_btn"))
                 if hasattr(self, "updates_title_lbl"):
-                    self.updates_title_lbl.configure(text=t("settings.updates_title"))
+                    self.updates_title_lbl.configure(text=f"🔄 {t('settings.updates_title')}")
                 if hasattr(self, "app_version_lbl"):
                     self.app_version_lbl.configure(text=t("settings.app_version"))
                 if hasattr(self, "check_update_btn"):
@@ -2404,7 +2575,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                     text=t("settings.update_now_btn", version=ver),
                     state="normal",
                 )
-                self.update_action_btn.grid(row=14, column=0, columnspan=3, padx=10, pady=(6, 12), sticky="ew")
+                self.update_action_btn.grid(row=3, column=0, columnspan=2, padx=14, pady=(6, 12), sticky="ew")
 
         elif manual:
             if res.get("error"):

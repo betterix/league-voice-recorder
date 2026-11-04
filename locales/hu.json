@@ -97,6 +97,8 @@
         "vlc_dir": "VLC könyvtár:",
         "browse": "Tallózás...",
         "replay_volume": "Visszajátszási hangerő (%):",
+        "interface_title": "Kezelőfelület és hangbemenet",
+        "automation_title": "Meccs automatizálás és munkafolyamat",
         "language": "Kezelőfelület nyelve:",
         "theme": "Megjelenés témája:",
         "theme_dark": "Sötét 🌙",

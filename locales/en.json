@@ -97,6 +97,8 @@
         "vlc_dir": "VLC Directory:",
         "browse": "Browse...",
         "replay_volume": "Replay Volume (%):",
+        "interface_title": "Interface & Audio Input",
+        "automation_title": "Match Automation & Workflow",
         "language": "Interface Language:",
         "theme": "Appearance Theme:",
         "theme_dark": "Dark 🌙",
