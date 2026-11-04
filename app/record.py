@@ -160,7 +160,7 @@ class LeagueRecorder:
             pid=int(self.config.get("target_audio_pid", -1)),
             name=self.config.get("target_audio_name", "Discord"),
         )
-        self.check_time = float(self.config.get("check_time", 0.2))
+        self.check_time = 0.05
 
         os.makedirs(self.record_folder, exist_ok=True)
 

@@ -2557,7 +2557,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 "recording_mode": "native",
                 "record_folder": self.rec_folder_entry.get().strip(),
                 "vlc_dir": self.vlc_dir_entry.get().strip(),
-                "check_time": float(self.config.get("check_time", 0.2)),
                 "replay_volume": vol_val,
                 "language": selected_lang_code,
                 "theme": selected_theme_code,

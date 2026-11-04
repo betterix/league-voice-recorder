@@ -20,11 +20,13 @@ class TestConfigModule(unittest.TestCase):
         self.assertIn("mic_device_name", cfg)
         self.assertIn("record_folder", cfg)
         self.assertIn("vlc_dir", cfg)
-        self.assertIn("check_time", cfg)
         self.assertIn("replay_volume", cfg)
         self.assertIn("language", cfg)
         self.assertIn("auto_start_champ_select", cfg)
         self.assertIn("auto_start_replay", cfg)
+        self.assertIn("hud_overlay_enabled", cfg)
+        self.assertIn("hud_click_through", cfg)
+        self.assertIn("hud_opacity", cfg)
 
     def test_recordings_dir_in_user_documents(self):
         rec_dir = get_current_user_documents_recordings_dir()

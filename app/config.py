@@ -10,7 +10,6 @@ from dotenv import load_dotenv, set_key
 _KEY_MAPPINGS = (
     ("record_folder", "RECORD_FOLDER"),
     ("vlc_dir", "VLC_DIR"),
-    ("check_time", "CHECK_TIME"),
     ("replay_volume", "REPLAY_VOLUME"),
     ("language", "LANGUAGE"),
     ("theme", "THEME"),
@@ -140,7 +139,6 @@ def get_clean_default_config():
         "mic_device_name": "default",
         "record_folder": get_current_user_documents_recordings_dir(),
         "vlc_dir": r"C:\Program Files\VideoLAN\VLC",
-        "check_time": 0.2,
         "replay_volume": 100,
         "language": "en",
         "theme": "dark",
@@ -183,7 +181,6 @@ def get_default_config():
         "mic_device_name": os.getenv("MIC_DEVICE_NAME", "default"),
         "record_folder": rec_folder,
         "vlc_dir": resolve_path(os.getenv("VLC_DIR", r"C:\Program Files\VideoLAN\VLC")),
-        "check_time": float(os.getenv("CHECK_TIME", "0.2")),
         "replay_volume": int(os.getenv("REPLAY_VOLUME", "100")),
         "language": os.getenv("LANGUAGE", "en"),
         "theme": os.getenv("THEME", "dark"),

@@ -13,7 +13,6 @@ class TestRecorderModule(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.config = {
             "record_folder": self.temp_dir.name,
-            "check_time": 0.2,
         }
         self.recorder = LeagueRecorder(self.config, log_callback=lambda msg: None)
 
