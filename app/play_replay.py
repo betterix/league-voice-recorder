@@ -372,7 +372,7 @@ class ReplaySynchronizer:
 
                     game_time = float(data.get("time", 0))
                     replay_paused = bool(data.get("paused", False))
-                    replay_speed = float(data.get("speed", 1.0))
+                    replay_speed = min(float(data.get("speed", 1.0)), 4.0)
                     if "length" in data and float(data.get("length", 0)) > 0:
                         self.duration = float(data["length"])
                     self.last_game_time = game_time

@@ -1897,3 +1897,155 @@ a:hover {
     padding: 20px;
   }
 }
+
+/* ==========================================================================
+   IN-GAME FLOATING HUD SIMULATOR OVERLAY (v0.4.0)
+   ========================================================================== */
+.sim-hud-overlay {
+  position: absolute;
+  top: 52px;
+  right: 24px;
+  width: 280px;
+  background: rgba(11, 18, 30, 0.92);
+  border: 1px solid rgba(60, 70, 85, 0.85);
+  border-radius: 8px;
+  padding: 10px 14px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 20px rgba(61, 220, 196, 0.2);
+  z-index: 100;
+  animation: hudFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+}
+
+@keyframes hudFadeIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.sim-hud-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-family: var(--font-mono);
+}
+
+.sim-hud-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #ff4655;
+  letter-spacing: 0.05em;
+}
+
+.sim-hud-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff4655;
+  box-shadow: 0 0 8px #ff4655;
+  animation: hudPulse 1.2s infinite;
+}
+
+@keyframes hudPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.sim-hud-clock {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.sim-hud-close {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-size: 1.1rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 2px;
+  transition: color 0.15s;
+}
+
+.sim-hud-close:hover {
+  color: #f87171;
+}
+
+.sim-hud-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sim-hud-rec-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sim-hud-channel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sim-hud-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  width: 36px;
+}
+
+.sim-hud-wave-bar {
+  flex: 1;
+  height: 6px;
+  background: rgba(30, 41, 59, 0.8);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.sim-hud-wave-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.1s ease;
+}
+
+.sim-hud-rep-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sim-hud-wave-track {
+  position: relative;
+  height: 14px;
+  background: #1e293b;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.sim-hud-wave-played {
+  height: 100%;
+  background: #3ddcc4;
+  border-radius: 4px 0 0 4px;
+}
+
+.sim-hud-wave-needle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #ffffff;
+  box-shadow: 0 0 6px #ffffff;
+}
+
+.sim-hud-vol-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+}

@@ -64,7 +64,7 @@ In competitive League of Legends scrimmages and tournament matches, reviewing ga
 
 ### ▶️ Intelligent Replay Synchronization (Replay Engine)
 - 🎬 **Autonomous .ROFL Detection & Game ID Parsing**: Scans active processes for `League of Legends.exe` replay instances, parses Game ID from filenames (e.g. `EUW1-8018190134.rofl`), and automatically locates the matching `<GameID>.mp3`.
-- ⏩ **Continuous Clock & Variable Speed Lock (0.5x – 8x)**: Continuously polls the League Replay API (`:2999/replay/playback`) to synchronize playback speed (0.5x, 1x, 2x, 4x, 8x), pauses, and timeline scrubs.
+- ⏩ **Continuous Clock & Variable Speed Lock (0.5x – 4x)**: Continuously polls the League Replay API (`:2999/replay/playback`) to synchronize playback speed (0.5x, 1x, 2x, 4x), pauses, and timeline scrubs.
 - ⚡ **Zero-Latency Unpause & Debounced Scrubbing**: Instant playback resumption without pipeline-flushing seeks; debounced seek cooldown eliminates VLC asynchronous time flutter.
 - 🔇 **In-Game Replay Mute Hotkey (`M`)**: Press **`M`** inside the League replay spectator mode or desktop app to toggle replay voice comms on and off (foreground-window guarded to prevent accidental muting while typing).
 - 🔊 **Dynamic Replay Volume Control**: Adjust replay audio level (0–100%) on the fly via UI slider with persistent user preference.

@@ -215,6 +215,46 @@
 
         <!-- Windows Frame Mockup -->
         <div class="app-window-frame">
+          <!-- In-Game Floating HUD Simulator Overlay (v0.4.0) -->
+          <div class="sim-hud-overlay" id="sim-hud-overlay" style="display: none;">
+            <div class="sim-hud-header">
+              <div class="sim-hud-status-badge" id="sim-hud-badge">
+                <span class="sim-hud-dot" id="sim-hud-dot"></span>
+                <span id="sim-hud-status-text">REC</span>
+              </div>
+              <div class="sim-hud-clock" id="sim-hud-clock">03:45</div>
+              <button class="sim-hud-close" id="sim-hud-close" title="Hide HUD Overlay">×</button>
+            </div>
+            <div class="sim-hud-body" id="sim-hud-body">
+              <!-- Recorder Mode Oscilloscopes -->
+              <div class="sim-hud-rec-content" id="sim-hud-rec-content">
+                <div class="sim-hud-channel">
+                  <span class="sim-hud-label" style="color: #3ddcc4;">MIC</span>
+                  <div class="sim-hud-wave-bar">
+                    <div class="sim-hud-wave-fill" id="sim-hud-mic-fill" style="width: 55%; background: #3ddcc4;"></div>
+                  </div>
+                </div>
+                <div class="sim-hud-channel">
+                  <span class="sim-hud-label" style="color: #8b93ff;">TEAM</span>
+                  <div class="sim-hud-wave-bar">
+                    <div class="sim-hud-wave-fill" id="sim-hud-team-fill" style="width: 70%; background: #8b93ff;"></div>
+                  </div>
+                </div>
+              </div>
+              <!-- Replay Mode Waveform & Volume -->
+              <div class="sim-hud-rep-content" id="sim-hud-rep-content" style="display: none;">
+                <div class="sim-hud-wave-track">
+                  <div class="sim-hud-wave-played" id="sim-hud-played" style="width: 42%;"></div>
+                  <div class="sim-hud-wave-needle" style="left: 42%;"></div>
+                </div>
+                <div class="sim-hud-vol-row">
+                  <span style="color: #94a3b8; font-size: 0.72rem;">VOL</span>
+                  <span style="color: #3ddcc4; font-size: 0.75rem; font-weight: 600;" id="sim-hud-vol-label">85%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Titlebar -->
           <div class="app-titlebar">
             <div class="titlebar-left">
@@ -400,6 +440,16 @@
                   <div style="color: #fff; font-weight: 600; margin-bottom: 4px;">Auto-Start in Champ Select:</div>
                   <div style="font-family: var(--font-mono); color: #4ade80;">ENABLED (Auto monitors LCU Gameflow)</div>
                 </div>
+                <div style="grid-column: span 2; border-top: 1px solid #1e293b; padding-top: 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                  <div>
+                    <div style="color: #fff; font-weight: 600; margin-bottom: 2px;" data-i18n="sim_settings_hud">In-Game Floating HUD Overlay:</div>
+                    <div style="color: #38bdf8; font-size: 0.8rem;" data-i18n="sim_settings_hud_desc">● Opacity 85% • WS_EX_TRANSPARENT Click-Through • LoL.exe Auto-Focus</div>
+                  </div>
+                  <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-secondary btn-sm" id="sim-hud-rec-preview-btn" data-i18n="sim_btn_preview_rec">👁️ Preview Rec HUD</button>
+                    <button class="btn btn-secondary btn-sm" id="sim-hud-rep-preview-btn" data-i18n="sim_btn_preview_rep">👁️ Preview Replay HUD</button>
+                  </div>
+                </div>
                 <div style="grid-column: span 2; border-top: 1px solid #1e293b; padding-top: 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: gap: 8px;">
                   <div>
                     <div style="color: #fff; font-weight: 600; margin-bottom: 2px;" data-i18n="sim_settings_update">Software Updates:</div>
@@ -480,7 +530,7 @@
               <li class="engine-step-item">
                 <span class="step-number">2</span>
                 <div class="step-content">
-                  <h4 data-i18n="engine_rep_s2_title">Dynamic Variable Rate Sync (0.5x - 8x)</h4>
+                  <h4 data-i18n="engine_rep_s2_title">Dynamic Variable Rate Sync (0.5x - 4x)</h4>
                   <p data-i18n="engine_rep_s2_desc">Fast forward or rewind during review; VLC dynamically adjusts voice playback speed in microsecond intervals.</p>
                 </div>
               </li>
@@ -655,6 +705,49 @@
             <h3 class="feature-title" data-i18n="feat_6_title">Drop-In Translations (i18n)</h3>
             <p class="feature-text" data-i18n="feat_6_desc">
               Full internationalization support. English &amp; Hungarian built-in; add any language via a simple JSON file.
+            </p>
+          </div>
+
+          <!-- Feat 7: In-Game Floating HUD Overlay -->
+          <div class="feature-card">
+            <div class="feature-icon-box" style="color: #3ddcc4; background: rgba(61, 220, 196, 0.1);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                <line x1="8" y1="21" x2="16" y2="21"></line>
+                <line x1="12" y1="17" x2="12" y2="21"></line>
+              </svg>
+            </div>
+            <h3 class="feature-title" data-i18n="feat_7_title">In-Game Floating HUD Overlay</h3>
+            <p class="feature-text" data-i18n="feat_7_desc">
+              Hextech translucent HUD floating directly over League of Legends matches. Live dual oscilloscopes for Mic &amp; Discord, match clock, replay waveform, and live volume slider.
+            </p>
+          </div>
+
+          <!-- Feat 8: Game-Exclusive Focus Guard -->
+          <div class="feature-card">
+            <div class="feature-icon-box gold">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </div>
+            <h3 class="feature-title" data-i18n="feat_8_title">Game-Exclusive Focus Guard</h3>
+            <p class="feature-text" data-i18n="feat_8_desc">
+              100% isolated to League of Legends.exe. Auto-hides on Alt-Tab and stays hidden in the client launcher, Discord, and desktop.
+            </p>
+          </div>
+
+          <!-- Feat 9: Centered Window & Click-Through -->
+          <div class="feature-card">
+            <div class="feature-icon-box">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="9" y1="3" x2="9" y2="21"></line>
+              </svg>
+            </div>
+            <h3 class="feature-title" data-i18n="feat_9_title">Centered UI &amp; Click-Through</h3>
+            <p class="feature-text" data-i18n="feat_9_desc">
+              Desktop window automatically launches centered on your primary monitor. Supports transparent click-through mode (WS_EX_TRANSPARENT) for zero gameplay interference.
             </p>
           </div>
         </div>

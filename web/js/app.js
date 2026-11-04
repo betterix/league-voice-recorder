@@ -70,6 +70,10 @@ const i18n = {
     sim_settings_update: "Software Updates:",
     sim_settings_update_status: "● You are running the latest version (v0.4.0)",
     sim_settings_update_btn: "🔄 Check for Updates",
+    sim_settings_hud: "In-Game Floating HUD Overlay:",
+    sim_settings_hud_desc: "● Opacity 85% • WS_EX_TRANSPARENT Click-Through • LoL.exe Auto-Focus",
+    sim_btn_preview_rec: "👁️ Preview Rec HUD",
+    sim_btn_preview_rep: "👁️ Preview Replay HUD",
 
     engines_tag: "THE DUAL-ENGINE ARCHITECTURE",
     engines_title: "Engineered For Competitive Esports",
@@ -90,7 +94,7 @@ const i18n = {
     engine_rep_desc: "Hooks into the League Replay Playback API (:2999/replay/playback) and synchronizes audio via VLC Media Player.",
     engine_rep_s1_title: "Instant .ROFL Detection",
     engine_rep_s1_desc: "Opening any match replay in League automatically locates the matching <GameID>.mp3 in your recordings.",
-    engine_rep_s2_title: "Dynamic Variable Rate Sync (0.5x - 8x)",
+    engine_rep_s2_title: "Dynamic Variable Rate Sync (0.5x - 4x)",
     engine_rep_s2_desc: "Fast forward or rewind during review; VLC dynamically adjusts voice playback speed in microsecond intervals.",
     engine_rep_s3_title: "In-Game Observer Mute ('M' Hotkey)",
     engine_rep_s3_desc: "Press 'M' while watching in League to instantly silence voice comms to hear important in-game audio cues.",
@@ -116,6 +120,12 @@ const i18n = {
     feat_5_desc: "Browse, audit, and play recordings directly inside the app with instant metadata, file sizes, and timestamps.",
     feat_6_title: "Drop-In Translations (i18n)",
     feat_6_desc: "Full internationalization support. English & Hungarian built-in; add any language via a simple JSON file.",
+    feat_7_title: "In-Game Floating HUD Overlay",
+    feat_7_desc: "Hextech translucent HUD floating directly over League of Legends matches. Live dual oscilloscopes for Mic & Discord, match clock, replay waveform, and live volume slider.",
+    feat_8_title: "Game-Exclusive Focus Guard",
+    feat_8_desc: "100% isolated to League of Legends.exe. Auto-hides on Alt-Tab and stays hidden in the client launcher, Discord, and desktop.",
+    feat_9_title: "Centered UI & Click-Through",
+    feat_9_desc: "Desktop window automatically launches centered on your primary monitor. Supports transparent click-through mode (WS_EX_TRANSPARENT) for zero gameplay interference.",
 
     setup_tag: "INSTALLATION & CONFIGURATION",
     setup_title: "Get Running in Under 2 Minutes",
@@ -201,6 +211,10 @@ const i18n = {
     sim_settings_update: "Szoftverfrissítések:",
     sim_settings_update_status: "● A legfrissebb verziót használod (v0.4.0)",
     sim_settings_update_btn: "🔄 Frissítések keresése",
+    sim_settings_hud: "Játékon Belüli Lebegő HUD:",
+    sim_settings_hud_desc: "● Átlátszóság 85% • WS_EX_TRANSPARENT Átkattintás • LoL.exe Auto-Fókusz",
+    sim_btn_preview_rec: "👁️ Rec HUD Előnézet",
+    sim_btn_preview_rep: "👁️ Replay HUD Előnézet",
 
     engines_tag: "A KETTŐS MOTOR ARCHITEKTÚRA",
     engines_title: "Versenyszintű Esportra Tervezve",
@@ -221,7 +235,7 @@ const i18n = {
     engine_rep_desc: "Rácsatlakozik a League Replay Playback API-ra (:2999/replay/playback) és VLC-n keresztül szinkronizálja a hangot.",
     engine_rep_s1_title: "Azonnali .ROFL Felismerés",
     engine_rep_s1_desc: "Bármely meccs visszajátszásának megnyitásakor automatikusan megkeresi a hozzá tartozó <GameID>.mp3 fájlt.",
-    engine_rep_s2_title: "Dinamikus Változó Sebesség (0.5x - 8x)",
+    engine_rep_s2_title: "Dinamikus Változó Sebesség (0.5x - 4x)",
     engine_rep_s2_desc: "Tekerj előre vagy vissza; a VLC mikromásodperces időközökkel igazítja a hangsebességet a képkockákhoz.",
     engine_rep_s3_title: "Játékon Belüli Némítás ('M' Billentyű)",
     engine_rep_s3_desc: "Nyomd meg az 'M' billentyűt a League-ben az azonnali némításhoz, ha fontos in-game hangeffekteket figyelnél.",
@@ -247,6 +261,12 @@ const i18n = {
     feat_5_desc: "Böngészd és játszd le a rögzített meccseket közvetlenül az appban részletes metaadatokkal és fájlméretekkel.",
     feat_6_title: "Könnyű Bővíthetőség (i18n)",
     feat_6_desc: "Teljes nemzetköziesítés. Angol és Magyar beépítve; bármilyen nyelv hozzáadható egyetlen JSON fájllal.",
+    feat_7_title: "Játékon Belüli Lebegő HUD",
+    feat_7_desc: "Hextech dizájnú HUD a meccsek és visszajátszások felett. Élő mikrofon és Discord oszcilloszkópok, digitális meccsóra és hangerőszabályzó.",
+    feat_8_title: "Exkluzív Játék Fókuszvédelem",
+    feat_8_desc: "100%-ban a League of Legends.exe-re izolálva. Alt-Tab esetén azonnal elrejtőzik, a kliensben és asztalon láthatatlan marad.",
+    feat_9_title: "Középre Igazított UI & Átkattintás",
+    feat_9_desc: "Az asztali ablak indításkor automatikusan az elsődleges monitor közepén jelenik meg. Támogatja az átkattintási módot a zavartalan játékért.",
 
     setup_tag: "TELEPÍTÉS ÉS BEÁLLÍTÁS",
     setup_title: "Indulásra Kész Kevesebb Mint 2 Perc Alatt",
@@ -597,6 +617,11 @@ function startVuMeters() {
 
       if (discordBar) discordBar.style.width = discordVol + "%";
       if (micBar && !simState.discordMuted) micBar.style.width = micVol + "%";
+
+      const hudMic = document.getElementById("sim-hud-mic-fill");
+      const hudTeam = document.getElementById("sim-hud-team-fill");
+      if (hudMic) hudMic.style.width = micVol + "%";
+      if (hudTeam) hudTeam.style.width = discordVol + "%";
     } else {
       if (discordBar) discordBar.style.width = "4%";
       if (micBar) micBar.style.width = "2%";
@@ -605,6 +630,61 @@ function startVuMeters() {
 }
 
 function initSimulator() {
+  // In-Game Floating HUD Overlay Controls (v0.4.0)
+  const hudOverlay = document.getElementById("sim-hud-overlay");
+  const hudBadge = document.getElementById("sim-hud-badge");
+  const hudDot = document.getElementById("sim-hud-dot");
+  const hudStatusText = document.getElementById("sim-hud-status-text");
+  const hudClock = document.getElementById("sim-hud-clock");
+  const hudClose = document.getElementById("sim-hud-close");
+  const hudRecContent = document.getElementById("sim-hud-rec-content");
+  const hudRepContent = document.getElementById("sim-hud-rep-content");
+  const hudVolLabel = document.getElementById("sim-hud-vol-label");
+  const btnPrevRec = document.getElementById("sim-hud-rec-preview-btn");
+  const btnPrevRep = document.getElementById("sim-hud-rep-preview-btn");
+
+  function showHudRec(isAuto = false) {
+    if (!hudOverlay) return;
+    hudOverlay.style.display = "block";
+    if (hudRecContent) hudRecContent.style.display = "flex";
+    if (hudRepContent) hudRepContent.style.display = "none";
+    if (hudBadge) hudBadge.style.color = "#ff4655";
+    if (hudDot) {
+      hudDot.style.background = "#ff4655";
+      hudDot.style.boxShadow = "0 0 8px #ff4655";
+    }
+    if (hudStatusText) hudStatusText.textContent = "REC";
+    if (hudClock) hudClock.textContent = "03:45";
+    if (!isAuto) appendSimLog("🪟 [HUD] In-Game Recorder HUD Preview displayed (Match clock & oscilloscopes).", "info");
+  }
+
+  function showHudRep(isAuto = false) {
+    if (!hudOverlay) return;
+    hudOverlay.style.display = "block";
+    if (hudRecContent) hudRecContent.style.display = "none";
+    if (hudRepContent) hudRepContent.style.display = "flex";
+    if (hudBadge) hudBadge.style.color = "#3ddcc4";
+    if (hudDot) {
+      hudDot.style.background = "#3ddcc4";
+      hudDot.style.boxShadow = "0 0 8px #3ddcc4";
+    }
+    if (hudStatusText) hudStatusText.textContent = "REPLAY";
+    if (hudClock) hudClock.textContent = "12:30";
+    if (hudVolLabel) hudVolLabel.textContent = `${simState.replayVolume}%`;
+    if (!isAuto) appendSimLog("🪟 [HUD] In-Game Replay HUD Preview displayed (Waveform & volume slider).", "info");
+  }
+
+  function hideHud() {
+    if (hudOverlay) hudOverlay.style.display = "none";
+  }
+
+  if (btnPrevRec) btnPrevRec.addEventListener("click", () => showHudRec(false));
+  if (btnPrevRep) btnPrevRep.addEventListener("click", () => showHudRep(false));
+  if (hudClose) hudClose.addEventListener("click", () => {
+    hideHud();
+    appendSimLog("🪟 [HUD] Floating in-game HUD hidden.", "info");
+  });
+
   // Recorder Toggle
   const recBtn = document.getElementById("sim-rec-toggle-btn");
   if (recBtn) {
@@ -613,6 +693,7 @@ function initSimulator() {
       if (simState.recording || simState.listening) {
         simState.recording = false;
         simState.listening = false;
+        hideHud();
         appendSimLog("⏹ Match ended — stopping recording and finalizing audio...", "info");
         setTimeout(() => {
           const newId = "EUN1_" + Math.floor(3000000000 + Math.random() * 900000000);
@@ -639,9 +720,11 @@ function initSimulator() {
           if (simState.listening) {
             simState.listening = false;
             simState.recording = true;
+            showHudRec(true);
             appendSimLog("🎯 Match launched! Riot Live Client Data API (:2999) detected active game.", "success");
             appendSimLog("🔴 Match started (GameTime: 0.000s) — direct WASAPI recording started.", "success");
             appendSimLog("⏱ Time alignment buffer prepended (+0.000s). Frame accurate 00:00:00 lock established.", "info");
+            appendSimLog("🪟 [HUD] Floating in-game overlay active on League of Legends.exe (Alt-Tab auto-hide enabled).", "info");
             updateSimUI();
           }
         }, 1800);
@@ -672,11 +755,14 @@ function initSimulator() {
       playSynthesizedChime("start");
       simState.replaySyncing = !simState.replaySyncing;
       if (simState.replaySyncing) {
+        showHudRep(true);
         appendSimLog("▶ [UI] Starting Replay Auto-Sync...", "info");
         appendSimLog("🎬 Detected replay file: EUN1_3194821034.rofl in League Client", "info");
         appendSimLog("🎵 Matched audio recording: EUN1_3194821034.mp3", "success");
         appendSimLog("🔊 Loaded in 64-bit VLC engine. Lock established with :2999/replay/playback", "success");
+        appendSimLog("🪟 [HUD] Replay HUD overlay activated with live waveform scrubbing & volume sync.", "info");
       } else {
+        hideHud();
         appendSimLog("⏹ Replay closed in League. Stopping synchronized VLC playback...", "info");
       }
       updateSimUI();
@@ -692,6 +778,7 @@ function initSimulator() {
       if (simState.replayMuted && newVol > 0) {
         simState.replayMuted = false;
       }
+      if (hudVolLabel) hudVolLabel.textContent = `${newVol}%`;
       updateSimUI();
     });
     repVolSlider.addEventListener("change", e => {
