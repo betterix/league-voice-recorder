@@ -15,6 +15,14 @@ import subprocess
 import sys
 import time
 
+# Ensure Windows consoles don't crash on unicode emojis (e.g. 🛡️)
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 try:
     import requests
 except ImportError:
@@ -250,7 +258,13 @@ def main() -> None:
     # Format Markdown
     report_md = format_markdown_report(results)
     print("\n--- Generated Markdown ---")
-    print(report_md)
+    try:
+        print(report_md)
+    except Exception:
+        try:
+            sys.stdout.buffer.write((report_md + "\n").encode("utf-8", errors="replace"))
+        except Exception:
+            pass
 
     # Update release if tag is specified
     if args.tag:
