@@ -1752,10 +1752,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
     def _sync_hud_visibility_and_state(self, mic_l=0.0, app_l=0.0, is_discord_muted=False):
         """
-        Synchronizes HUD overlay visibility:
-        - ONLY displayed during an active in-game match or replay.
-        - NEVER displayed in the launcher/lobby client or on desktop.
-        - Auto-hides on Alt-Tab and reappears when returning to the running League app.
+        Synchronizes HUD overlay state and live meters without Alt-Tab hiding.
+        Stays open while recording or replay watcher is active.
         """
         if not getattr(self, "hud", None):
             return
@@ -1772,66 +1770,19 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.hud.show()
             return
 
-        rec_status = (
-            self.last_rec_status[0]
-            if getattr(self, "last_rec_status", None)
-            else "IDLE"
-        )
-        rep_status = (
-            self.last_replay_status[0]
-            if getattr(self, "last_replay_status", None)
-            else "IDLE"
-        )
         rec_w = getattr(self, "recorder_worker", None)
         rep_w = getattr(self, "replay_worker", None)
 
-        rep_player = getattr(rep_w, "current_player", None)
-        if hasattr(rep_player, "_mock_name"):
-            rep_player = None
+        is_rep_active = rep_w is not None
+        is_rec_active = rec_w is not None
 
-        is_rep_active = (rep_w is not None) and (
-            rep_status in ("SYNCING", "PAUSED")
-            or rep_player is not None
-            or (rep_status == "WATCHING" and "(loading in League...)" in str(getattr(self, "last_replay_status", ("", ""))[1]))
-        )
-
-        rec_recording = getattr(rec_w, "recording", False)
-        if hasattr(rec_recording, "_mock_name"):
-            rec_recording = False
-        else:
-            rec_recording = bool(rec_recording)
-
-        rec_gt = getattr(rec_w, "last_game_time", 0.0)
-        if hasattr(rec_gt, "_mock_name"):
-            rec_gt = 0.0
-        else:
-            try:
-                rec_gt = float(rec_gt or 0.0)
-            except (TypeError, ValueError):
-                rec_gt = 0.0
-
-        is_rec_active = (rec_w is not None) and (
-            rec_status in ("RECORDING", "PAUSED")
-            or rec_recording
-            or rec_gt > 0.0
-        )
-
-        # 1. If neither match recording nor replay is running in-game -> Hide HUD!
-        # This guarantees HUD is NEVER shown while watching/waiting in client or on desktop!
+        # 1. If neither match recording nor replay is running -> Hide HUD
         if not (is_rec_active or is_rep_active):
             if self.hud.is_visible:
                 self.hud.hide()
             return
 
-        # 2. Check if the RUNNING League game engine is focused (NOT the client!)
-        is_in_game_focused = self._is_league_in_game_foreground()
-        if not is_in_game_focused:
-            # User is in launcher/client, desktop, Discord, etc. -> Hide HUD!
-            if self.hud.is_visible:
-                self.hud.hide()
-            return
-
-        # 3. Inside the running League game -> Show HUD!
+        # 2. Stay visible in League UI without Alt-Tab hiding
         target_mode = "REPLAY" if is_rep_active else "RECORD"
         if self.hud.mode != target_mode:
             self.hud.set_mode(target_mode)
@@ -1848,6 +1799,11 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 f"{int(game_time // 60):02d}:{int(game_time % 60):02d}"
                 if game_time > 0
                 else "00:00"
+            )
+            rec_status = (
+                self.last_rec_status[0]
+                if getattr(self, "last_rec_status", None)
+                else "IDLE"
             )
             is_p = (rec_status == "PAUSED") or (
                 getattr(rec_w, "is_paused", False) if rec_w else False
@@ -1869,6 +1825,11 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                     f"{int(game_time // 60):02d}:{int(game_time % 60):02d}"
                     if game_time > 0
                     else "00:00"
+                )
+                rep_status = (
+                    self.last_replay_status[0]
+                    if getattr(self, "last_replay_status", None)
+                    else "IDLE"
                 )
                 is_p = (rep_status == "PAUSED") or getattr(rep_w, "is_paused", False)
                 audio_l = rep_w.get_audio_level() if hasattr(rep_w, "get_audio_level") else 0.0
@@ -2093,19 +2054,23 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                     status, detail = item[1], item[2]
                     self._render_rec_status(status, detail)
                     if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
-                        if status in ("SAVED", "STOPPED", "IDLE", "WATCHING") and not self._is_hud_previewing:
+                        if status in ("SAVED", "STOPPED", "IDLE") and not self._is_hud_previewing:
                             self.hud.hide()
-                        elif status in ("RECORDING", "PAUSED"):
-                            self._sync_hud_visibility_and_state()
+                        elif status in ("RECORDING", "PAUSED", "WATCHING"):
+                            self.hud.set_mode("RECORD")
+                            if not self.hud.is_visible:
+                                self.hud.show()
 
                 elif action == "STATUS_REPLAY":
                     status, detail = item[1], item[2]
                     self._render_replay_status(status, detail)
                     if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
-                        if status in ("STOPPED", "IDLE", "WATCHING") and not self._is_hud_previewing:
+                        if status in ("STOPPED", "IDLE") and not self._is_hud_previewing:
                             self.hud.hide()
-                        elif status in ("SYNCING", "PAUSED"):
-                            self._sync_hud_visibility_and_state()
+                        elif status in ("SYNCING", "PAUSED", "WATCHING"):
+                            self.hud.set_mode("REPLAY")
+                            if not self.hud.is_visible:
+                                self.hud.show()
 
                 elif action == "REPLAY_MUTE":
                     self._replay_muted = bool(item[1])
@@ -2352,6 +2317,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
         if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
             self.hud.set_mode("RECORD")
+            self.hud.show()
             self.hud.update_recorder_state(
                 time_str="00:00",
                 mic_level=0.0,
@@ -2482,6 +2448,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
         if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
             self.hud.set_mode("REPLAY")
+            self.hud.show()
             self.hud.update_replay_state(
                 time_str="00:00",
                 current_time=0.0,

@@ -236,60 +236,39 @@ class TestUIApp(unittest.TestCase):
         self.assertEqual(self.app.vol_slider.get(), 92)
         self.assertIn("92%", self.app.vol_label.cget("text"))
 
-    def test_ui_hud_only_in_running_league_game_and_not_client(self):
-        """HUD only displays in running League game (NOT launcher client), and auto-hides on Alt-Tab."""
+    def test_ui_hud_stays_in_league_ui_without_alttab_hiding(self):
+        """HUD stays visible in League UI during recording or replay watcher without Alt-Tab hiding."""
         self.assertIsNotNone(self.app.hud)
         self.app.hud.hide()
         self.assertFalse(self.app.hud.is_visible)
 
-        # 1. Watching/waiting: HUD must stay hidden even if focused
+        # 1. Start recording watcher -> HUD opens in RECORD mode
         self.app.recorder_worker = MagicMock()
-        self.app.last_rec_status = ("WATCHING", "Waiting for League match...")
-        with patch.object(self.app, "_is_league_in_game_foreground", return_value=True):
-            self.app._sync_hud_visibility_and_state()
-            self.assertFalse(self.app.hud.is_visible)
-
-        # 2. When launcher client (RiotWindowClass) is foreground -> HUD must stay hidden
         self.app.last_rec_status = ("RECORDING", "05:20")
-        with patch.object(self.app, "_is_league_in_game_foreground", return_value=False):
-            self.app._sync_hud_visibility_and_state()
-            self.assertFalse(self.app.hud.is_visible)
+        self.app._sync_hud_visibility_and_state()
+        self.assertTrue(self.app.hud.is_visible)
+        self.assertEqual(self.app.hud.mode, "RECORD")
 
-        # 3. When in running League game -> HUD displays in RECORD mode
-        with patch.object(self.app, "_is_league_in_game_foreground", return_value=True):
-            self.app._sync_hud_visibility_and_state()
-            self.assertTrue(self.app.hud.is_visible)
-            self.assertEqual(self.app.hud.mode, "RECORD")
+        # 2. Switching windows / Alt-Tabbing does NOT hide the HUD (stays in UI)
+        self.app._sync_hud_visibility_and_state()
+        self.assertTrue(self.app.hud.is_visible)
 
-        # 4. When player Alt-Tabs out (to Discord, desktop, or client) -> HUD hides
-        with patch.object(self.app, "_is_league_in_game_foreground", return_value=False):
-            self.app._sync_hud_visibility_and_state()
-            self.assertFalse(self.app.hud.is_visible)
-
-        # 5. When player Alt-Tabs back into running League game -> HUD reappears
-        with patch.object(self.app, "_is_league_in_game_foreground", return_value=True):
-            self.app._sync_hud_visibility_and_state()
-            self.assertTrue(self.app.hud.is_visible)
-
-        # 6. Match ends (SAVED) -> HUD hides
-        self.app.last_rec_status = ("SAVED", "12345.mp3")
-        with patch.object(self.app, "_is_league_in_game_foreground", return_value=True):
-            self.app._sync_hud_visibility_and_state()
-            self.assertFalse(self.app.hud.is_visible)
-
-        # 7. Replay: In running replay in League -> HUD displays in REPLAY mode
+        # 3. Stop recording -> HUD hides
         self.app.recorder_worker = None
+        self.app._sync_hud_visibility_and_state()
+        self.assertFalse(self.app.hud.is_visible)
+
+        # 4. Start replay auto-sync -> HUD opens in REPLAY mode
         self.app.replay_worker = MagicMock()
         self.app.last_replay_status = ("SYNCING", "04:12")
-        with patch.object(self.app, "_is_league_in_game_foreground", return_value=True):
-            self.app._sync_hud_visibility_and_state()
-            self.assertTrue(self.app.hud.is_visible)
-            self.assertEqual(self.app.hud.mode, "REPLAY")
+        self.app._sync_hud_visibility_and_state()
+        self.assertTrue(self.app.hud.is_visible)
+        self.assertEqual(self.app.hud.mode, "REPLAY")
 
-        # 8. Replay: Alt-Tab out of replay -> HUD hides
-        with patch.object(self.app, "_is_league_in_game_foreground", return_value=False):
-            self.app._sync_hud_visibility_and_state()
-            self.assertFalse(self.app.hud.is_visible)
+        # 5. Stop replay -> HUD hides
+        self.app.replay_worker = None
+        self.app._sync_hud_visibility_and_state()
+        self.assertFalse(self.app.hud.is_visible)
 
 
 if __name__ == "__main__":
