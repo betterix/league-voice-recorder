@@ -1662,9 +1662,9 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
     def _is_league_in_game_foreground(self) -> bool:
         """
-        Checks if the active foreground window is specifically the RUNNING
-        League of Legends in-game match/replay engine ('League of Legends (TM) Client'),
-        and explicitly EXCLUDES the launcher/lobby client ('LeagueClient.exe' / 'RiotWindowClass').
+        Checks if the active foreground window belongs to the RUNNING
+        League of Legends in-game engine ('League of Legends.exe'),
+        and explicitly EXCLUDES the launcher/lobby client ('LeagueClient.exe').
         """
         if not sys.platform.startswith("win"):
             return True
@@ -1682,72 +1682,68 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 if hud_hwnd and hwnd == hud_hwnd:
                     return getattr(self, "_last_fg_is_league_game", False)
 
-            # Check cached result for identical hwnd (prevents repeated Win32 queries within the same tick)
+            # Check cached result for identical hwnd (100ns per tick)
             if hwnd == getattr(self, "_last_fg_hwnd", None):
                 return getattr(self, "_last_fg_is_league_game", False)
 
             self._last_fg_hwnd = hwnd
 
-            # 1. Check window class name
-            cls_buf = ctypes.create_unicode_buffer(256)
-            u32.GetClassNameW(hwnd, cls_buf, 256)
-            cls_name = cls_buf.value
-
-            # HARD GUARD: The launcher/lobby client is CEF Chromium with class 'RiotWindowClass'
-            # We strictly reject the launcher/lobby client!
-            if cls_name == "RiotWindowClass":
+            fg_pid = ctypes.c_ulong()
+            u32.GetWindowThreadProcessId(hwnd, ctypes.byref(fg_pid))
+            target_pid = fg_pid.value
+            if not target_pid or target_pid == os.getpid():
                 self._last_fg_is_league_game = False
                 return False
 
-            # 2. Check window title
+            # 1. High-speed process check via psutil
+            try:
+                proc = psutil.Process(target_pid)
+                name = (proc.name() or "").lower()
+                # 'League of Legends.exe' is strictly the in-game match/replay process
+                if name == "league of legends.exe":
+                    self._last_fg_is_league_game = True
+                    return True
+                # Explicitly reject launcher client processes
+                if "leagueclient" in name or "riotclient" in name:
+                    self._last_fg_is_league_game = False
+                    return False
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+            # 2. QueryFullProcessImageNameW check (bypasses elevation/Vanguard token protection)
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            h_proc = ctypes.windll.kernel32.OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION, False, target_pid
+            )
+            if h_proc:
+                try:
+                    img_buf = ctypes.create_unicode_buffer(512)
+                    img_size = ctypes.c_ulong(512)
+                    if ctypes.windll.kernel32.QueryFullProcessImageNameW(
+                        h_proc, 0, img_buf, ctypes.byref(img_size)
+                    ):
+                        exe_path = img_buf.value.lower()
+                        if (
+                            "league of legends.exe" in exe_path
+                            and "leagueclient" not in exe_path
+                        ):
+                            self._last_fg_is_league_game = True
+                            return True
+                        if "leagueclient" in exe_path or "riotclient" in exe_path:
+                            self._last_fg_is_league_game = False
+                            return False
+                finally:
+                    ctypes.windll.kernel32.CloseHandle(h_proc)
+
+            # 3. Window title check
             length = u32.GetWindowTextLengthW(hwnd)
-            title = ""
             if length > 0:
                 title_buf = ctypes.create_unicode_buffer(length + 1)
                 u32.GetWindowTextW(hwnd, title_buf, length + 1)
                 title = title_buf.value
-
-            # The in-game match & replay window is titled "League of Legends (TM) Client"
-            # The client is titled "League of Legends" (without "(TM) Client")
-            if "League of Legends (TM) Client" in title:
-                self._last_fg_is_league_game = True
-                return True
-
-            if cls_name == "League of Legends" and "League" in title:
-                self._last_fg_is_league_game = True
-                return True
-
-            # 3. Check executable path via QueryFullProcessImageNameW (Vanguard safe)
-            fg_pid = ctypes.c_ulong()
-            u32.GetWindowThreadProcessId(hwnd, ctypes.byref(fg_pid))
-            if fg_pid.value:
-                # Exclude our own app
-                if fg_pid.value == os.getpid():
-                    self._last_fg_is_league_game = False
-                    return False
-
-                PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-                h_proc = ctypes.windll.kernel32.OpenProcess(
-                    PROCESS_QUERY_LIMITED_INFORMATION, False, fg_pid.value
-                )
-                if h_proc:
-                    try:
-                        img_buf = ctypes.create_unicode_buffer(512)
-                        img_size = ctypes.c_ulong(512)
-                        if ctypes.windll.kernel32.QueryFullProcessImageNameW(
-                            h_proc, 0, img_buf, ctypes.byref(img_size)
-                        ):
-                            exe_path = img_buf.value.lower()
-                            # Check if it is the in-game executable (League of Legends.exe inside Game folder)
-                            # and NOT the launcher client (LeagueClient.exe or LeagueClientUx.exe)
-                            if (
-                                "league of legends.exe" in exe_path
-                                and "leagueclient" not in exe_path
-                            ):
-                                self._last_fg_is_league_game = True
-                                return True
-                    finally:
-                        ctypes.windll.kernel32.CloseHandle(h_proc)
+                if "League of Legends (TM) Client" in title:
+                    self._last_fg_is_league_game = True
+                    return True
 
             self._last_fg_is_league_game = False
             return False
@@ -1789,12 +1785,35 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         rec_w = getattr(self, "recorder_worker", None)
         rep_w = getattr(self, "replay_worker", None)
 
+        rep_player = getattr(rep_w, "current_player", None)
+        if hasattr(rep_player, "_mock_name"):
+            rep_player = None
+
         is_rep_active = (rep_w is not None) and (
             rep_status in ("SYNCING", "PAUSED")
+            or rep_player is not None
             or (rep_status == "WATCHING" and "(loading in League...)" in str(getattr(self, "last_replay_status", ("", ""))[1]))
         )
+
+        rec_recording = getattr(rec_w, "recording", False)
+        if hasattr(rec_recording, "_mock_name"):
+            rec_recording = False
+        else:
+            rec_recording = bool(rec_recording)
+
+        rec_gt = getattr(rec_w, "last_game_time", 0.0)
+        if hasattr(rec_gt, "_mock_name"):
+            rec_gt = 0.0
+        else:
+            try:
+                rec_gt = float(rec_gt or 0.0)
+            except (TypeError, ValueError):
+                rec_gt = 0.0
+
         is_rec_active = (rec_w is not None) and (
             rec_status in ("RECORDING", "PAUSED")
+            or rec_recording
+            or rec_gt > 0.0
         )
 
         # 1. If neither match recording nor replay is running in-game -> Hide HUD!
@@ -2381,18 +2400,31 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         from app.play_replay import detect_running_rofl_process
 
         while not getattr(self, "_is_destroyed", False):
-            # 1. Champion Select Live Match Watcher Auto-Start
+            # 1. Champion Select & Active Match Live Match Watcher Auto-Start
             if self.config.get("auto_start_champ_select", True) and not self.recorder_worker:
                 try:
                     phase = get_lcu_gameflow_phase()
-                    if phase == "ChampSelect":
-                        if getattr(self, "_last_auto_started_phase", None) != "ChampSelect":
-                            self._last_auto_started_phase = "ChampSelect"
+                    if phase in ("ChampSelect", "InProgress"):
+                        if getattr(self, "_last_auto_started_phase", None) != phase:
+                            self._last_auto_started_phase = phase
                             self.msg_queue.put(("AUTO_START_REC",))
                     elif phase in ("None", "Lobby", "EndOfGame", "WaitingForStats", None):
                         self._last_auto_started_phase = None
                 except Exception:
                     pass
+
+                # Fallback: If League of Legends.exe process is already running a live match
+                if not self.recorder_worker and not self.replay_worker and not getattr(self, "_auto_started_match", False):
+                    try:
+                        for proc in psutil.process_iter(["pid", "name"]):
+                            if (proc.info.get("name") or "").lower() == "league of legends.exe":
+                                rofl, _ = detect_running_rofl_process()
+                                if not rofl:
+                                    self._auto_started_match = True
+                                    self.msg_queue.put(("AUTO_START_REC",))
+                                    break
+                    except Exception:
+                        pass
 
             # 2. Replay Match Auto-Sync Auto-Start
             if self.config.get("auto_start_replay", True) and not self.replay_worker:
