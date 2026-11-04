@@ -258,7 +258,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             text="☀️" if self.current_theme == "light" else "🌙",
             width=36,
             height=28,
-            font=ctk.CTkFont(size=13),
+            font=ctk.CTkFont(family="Segoe UI Emoji", size=14),
+            text_color=("#D97706", "#FBBF24"),
             fg_color=("#F1F5F9", "#0F1A36"),
             hover_color=("#E2E8F0", "#1E2A4A"),
             border_width=1,
@@ -406,6 +407,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             prog_frame,
             text="🔄",
             width=36,
+            font=ctk.CTkFont(family="Segoe UI Emoji", size=13),
+            text_color=("#0F172A", "#E2E8F0"),
             fg_color=("#F1F5F9", "#0F1A36"),
             hover_color=("#E2E8F0", "#1E2A4A"),
             border_width=1,
@@ -455,6 +458,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             mic_frame,
             text="🔄",
             width=36,
+            font=ctk.CTkFont(family="Segoe UI Emoji", size=13),
+            text_color=("#0F172A", "#E2E8F0"),
             fg_color=("#F1F5F9", "#0F1A36"),
             hover_color=("#E2E8F0", "#1E2A4A"),
             border_width=1,
@@ -1062,20 +1067,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.replay_vol_entry.insert(0, str(self.config.get("replay_volume", 80)))
         self.replay_vol_entry.grid(row=4, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
 
-        # Audio Sync Offset (ms)
-        self.sync_offset_lbl = ctk.CTkLabel(scroll, text=t("settings.sync_offset"), text_color=("#0F172A", "#CBD5E1"))
-        self.sync_offset_lbl.grid(row=5, column=0, padx=10, pady=6, sticky="w")
-        self.sync_offset_entry = ctk.CTkEntry(
-            scroll,
-            fg_color=("#FFFFFF", "#0B1329"),
-            border_color=("#CBD5E1", "#1E2A4A"),
-            border_width=1,
-            text_color=("#0F172A", "#F8FAFC"),
-            corner_radius=6,
-        )
-        self.sync_offset_entry.insert(0, str(self.config.get("sync_offset_ms", 0)))
-        self.sync_offset_entry.grid(row=5, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
-
         # Language Selector
         self.lang_code_to_name = get_available_languages()
         self.lang_name_to_code = {v: k for k, v in self.lang_code_to_name.items()}
@@ -1083,7 +1074,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         current_display = self.lang_code_to_name.get(current_code, "English")
 
         self.lang_lbl = ctk.CTkLabel(scroll, text=t("settings.language"), text_color=("#0F172A", "#CBD5E1"))
-        self.lang_lbl.grid(row=6, column=0, padx=10, pady=6, sticky="w")
+        self.lang_lbl.grid(row=5, column=0, padx=10, pady=6, sticky="w")
 
         self.lang_menu = ctk.CTkOptionMenu(
             scroll,
@@ -1099,11 +1090,11 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             corner_radius=6,
         )
         self.lang_menu.set(current_display)
-        self.lang_menu.grid(row=6, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
+        self.lang_menu.grid(row=5, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
 
         # Appearance Theme Selector
         self.theme_lbl = ctk.CTkLabel(scroll, text=t("settings.theme"), text_color=("#0F172A", "#CBD5E1"))
-        self.theme_lbl.grid(row=7, column=0, padx=10, pady=6, sticky="w")
+        self.theme_lbl.grid(row=6, column=0, padx=10, pady=6, sticky="w")
 
         self.theme_options = {
             t("settings.theme_dark"): "dark",
@@ -1127,11 +1118,11 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             corner_radius=6,
         )
         self.theme_menu.set(curr_theme_display)
-        self.theme_menu.grid(row=7, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
+        self.theme_menu.grid(row=6, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
 
         # Microphone Input
         self.settings_mic_lbl = ctk.CTkLabel(scroll, text=t("settings.mic_device"), text_color=("#0F172A", "#CBD5E1"))
-        self.settings_mic_lbl.grid(row=8, column=0, padx=10, pady=6, sticky="w")
+        self.settings_mic_lbl.grid(row=7, column=0, padx=10, pady=6, sticky="w")
 
         self.settings_mic_menu = ctk.CTkOptionMenu(
             scroll,
@@ -1146,11 +1137,11 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             dropdown_hover_color=("#F1F5F9", "#162038"),
             corner_radius=6,
         )
-        self.settings_mic_menu.grid(row=8, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
+        self.settings_mic_menu.grid(row=7, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
 
         # Auto-Start in Champion Select
         self.auto_champ_select_lbl = ctk.CTkLabel(scroll, text=t("settings.auto_start_champ_select"), text_color=("#0F172A", "#CBD5E1"))
-        self.auto_champ_select_lbl.grid(row=9, column=0, padx=10, pady=6, sticky="w")
+        self.auto_champ_select_lbl.grid(row=8, column=0, padx=10, pady=6, sticky="w")
         self.auto_champ_select_var = ctk.BooleanVar(
             value=bool(self.config.get("auto_start_champ_select", True))
         )
@@ -1166,11 +1157,11 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             button_hover_color=("#F8FAFC", "#E2E8F0"),
             text_color=("#334155", "#94A3B8"),
         )
-        self.auto_champ_select_switch.grid(row=9, column=1, columnspan=2, padx=10, pady=6, sticky="w")
+        self.auto_champ_select_switch.grid(row=8, column=1, columnspan=2, padx=10, pady=6, sticky="w")
 
         # Auto-Start Replay Sync
         self.auto_replay_lbl = ctk.CTkLabel(scroll, text=t("settings.auto_start_replay"), text_color=("#0F172A", "#CBD5E1"))
-        self.auto_replay_lbl.grid(row=10, column=0, padx=10, pady=6, sticky="w")
+        self.auto_replay_lbl.grid(row=9, column=0, padx=10, pady=6, sticky="w")
         self.auto_replay_var = ctk.BooleanVar(
             value=bool(self.config.get("auto_start_replay", True))
         )
@@ -1186,7 +1177,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             button_hover_color=("#F8FAFC", "#E2E8F0"),
             text_color=("#334155", "#94A3B8"),
         )
-        self.auto_replay_switch.grid(row=10, column=1, columnspan=2, padx=10, pady=6, sticky="w")
+        self.auto_replay_switch.grid(row=9, column=1, columnspan=2, padx=10, pady=6, sticky="w")
 
         # Save Button
         self.save_btn = ctk.CTkButton(
@@ -1200,7 +1191,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             corner_radius=8,
             command=self._save_settings,
         )
-        self.save_btn.grid(row=11, column=0, columnspan=3, padx=10, pady=(20, 10), sticky="ew")
+        self.save_btn.grid(row=10, column=0, columnspan=3, padx=10, pady=(20, 10), sticky="ew")
 
         # --- Software Updates Section ---
         self.updates_title_lbl = ctk.CTkLabel(
@@ -1209,13 +1200,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color=("#0891B2", "#0AC8B9"),
         )
-        self.updates_title_lbl.grid(row=12, column=0, columnspan=3, padx=10, pady=(18, 6), sticky="w")
+        self.updates_title_lbl.grid(row=11, column=0, columnspan=3, padx=10, pady=(18, 6), sticky="w")
 
         self.app_version_lbl = ctk.CTkLabel(scroll, text=t("settings.app_version"), text_color=("#0F172A", "#CBD5E1"))
-        self.app_version_lbl.grid(row=13, column=0, padx=10, pady=6, sticky="w")
+        self.app_version_lbl.grid(row=12, column=0, padx=10, pady=6, sticky="w")
 
         version_frame = ctk.CTkFrame(scroll, fg_color="transparent")
-        version_frame.grid(row=13, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
+        version_frame.grid(row=12, column=1, columnspan=2, padx=10, pady=6, sticky="ew")
 
         self.version_val_lbl = ctk.CTkLabel(
             version_frame,
@@ -1246,7 +1237,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             font=ctk.CTkFont(size=11),
             text_color=("#64748B", "#94A3B8"),
         )
-        self.update_status_lbl.grid(row=14, column=0, columnspan=3, padx=10, pady=(4, 0), sticky="w")
+        self.update_status_lbl.grid(row=13, column=0, columnspan=3, padx=10, pady=(4, 0), sticky="w")
 
         self.update_action_btn = ctk.CTkButton(
             scroll,
@@ -1277,7 +1268,10 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.config["theme"] = theme_code
         save_config(self.config)
         if hasattr(self, "theme_toggle_btn"):
-            self.theme_toggle_btn.configure(text="☀️" if theme_code == "light" else "🌙")
+            self.theme_toggle_btn.configure(
+                text="☀️" if theme_code == "light" else "🌙",
+                text_color=("#D97706", "#FBBF24"),
+            )
         if hasattr(self, "theme_menu") and hasattr(self, "theme_code_to_display"):
             disp = self.theme_code_to_display.get(theme_code)
             if disp and self.theme_menu.get() != disp:
@@ -1362,7 +1356,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.browse_vlc_btn.configure(text=t("settings.browse"))
                 self.check_time_lbl.configure(text=t("settings.check_interval"))
                 self.replay_vol_lbl.configure(text=t("settings.replay_volume"))
-                self.sync_offset_lbl.configure(text=t("settings.sync_offset"))
                 self.lang_lbl.configure(text=t("settings.language"))
                 if hasattr(self, "theme_lbl"):
                     self.theme_lbl.configure(text=t("settings.theme"))
@@ -2231,10 +2224,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         try:
             vol_val = int(self.replay_vol_entry.get().strip() or 80)
             vol_val = max(0, min(100, vol_val))
-            try:
-                sync_offset_val = int(self.sync_offset_entry.get().strip() or 0)
-            except ValueError:
-                sync_offset_val = 0
             selected_lang_name = self.lang_menu.get()
             selected_lang_code = self.lang_name_to_code.get(selected_lang_name, "en")
 
@@ -2252,7 +2241,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 "vlc_dir": self.vlc_dir_entry.get().strip(),
                 "check_time": float(self.check_time_entry.get().strip()),
                 "replay_volume": vol_val,
-                "sync_offset_ms": sync_offset_val,
                 "language": selected_lang_code,
                 "theme": selected_theme_code,
                 "auto_start_champ_select": bool(self.auto_champ_select_var.get()),
@@ -2264,8 +2252,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self._set_theme(selected_theme_code)
                 self.vol_slider.set(vol_val)
                 self._on_replay_volume_slider_changed(vol_val)
-                if hasattr(self, "replay_sync") and self.replay_sync:
-                    self.replay_sync.sync_offset = float(sync_offset_val) / 1000.0
                 self.rec_scene_lbl.configure(
                     text=self._get_engine_display_text()
                 )

@@ -22,7 +22,6 @@ class TestConfigModule(unittest.TestCase):
         self.assertIn("vlc_dir", cfg)
         self.assertIn("check_time", cfg)
         self.assertIn("replay_volume", cfg)
-        self.assertIn("sync_offset_ms", cfg)
         self.assertIn("language", cfg)
         self.assertIn("auto_start_champ_select", cfg)
         self.assertIn("auto_start_replay", cfg)

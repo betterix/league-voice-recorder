@@ -198,7 +198,6 @@ class ReplaySynchronizer:
         self.mute_callback = mute_callback
         self.audio_directory = self.config.get("record_folder", DEFAULT_AUDIO_DIRECTORY)
         self.volume = int(self.config.get("replay_volume", 80))
-        self.sync_offset = float(self.config.get("sync_offset_ms", 0)) / 1000.0
         self.current_player = None
         self.running = False
         self.is_muted = False
@@ -362,7 +361,7 @@ class ReplaySynchronizer:
                             (player.get_time() / 1000.0) if hasattr(player, "get_time") else -1.0
                         )
 
-                        target_time = max(0.0, game_time + self.sync_offset)
+                        target_time = max(0.0, game_time)
 
                         if not is_playing:
                             # Resuming from pause or starting
@@ -445,7 +444,7 @@ class ReplaySynchronizer:
                             self.update_status("PAUSED", f"{game_time:.1f}s")
                         elif paused_game_time >= 0 and abs(game_time - paused_game_time) > 0.5:
                             # User scrubbed while paused in League replay
-                            target_time = max(0.0, game_time + self.sync_offset)
+                            target_time = max(0.0, game_time)
                             player.set_time(int(target_time * 1000))
                             last_seek_wall_time = now_wall
                             paused_game_time = game_time
