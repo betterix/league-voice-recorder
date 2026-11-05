@@ -1622,20 +1622,9 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         )
 
         # -------------------------------------------------------------
-        # BOTTOM SAVE SETTINGS BUTTON
+        # BOTTOM SAVE SETTINGS BUTTON (Removed: settings save instantly upon edit)
         # -------------------------------------------------------------
-        self.save_btn = ctk.CTkButton(
-            scroll,
-            text=t("settings.save_btn"),
-            height=42,
-            font=ctk.CTkFont(size=13, weight="bold"),
-            fg_color=("#0891B2", "#0AC8B9"),
-            hover_color=("#0E7490", "#0397AB"),
-            text_color=("#FFFFFF", "#030712"),
-            corner_radius=8,
-            command=self._save_settings,
-        )
-        self.save_btn.pack(fill="x", padx=10, pady=(10, 16))
+        self.save_btn = None
 
     # ==========================================
     # IN-GAME FLOATING HUD WIDGET HANDLERS
@@ -2161,7 +2150,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                     self.hud_preview_replay_btn.configure(text=t("settings.hud_preview_replay_btn"))
                     self.hud_hide_preview_btn.configure(text=t("settings.hud_hide_preview_btn"))
                     self.hud_reset_pos_btn.configure(text=t("settings.hud_reset_pos_btn"))
-                self.save_btn.configure(text=t("settings.save_btn"))
+                if hasattr(self, "save_btn") and self.save_btn:
+                    self.save_btn.configure(text=t("settings.save_btn"))
                 if hasattr(self, "updates_title_lbl"):
                     self.updates_title_lbl.configure(text=f"🔄 {t('settings.updates_title')}")
                 if hasattr(self, "app_version_lbl"):
@@ -3255,7 +3245,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             self.replay_worker.stop()
 
         # 2. Persist any uncommitted slider or setting state before exit
-        self._flush_pending_settings_to_disk()
+        if not getattr(self, "_in_test_suite", False):
+            self._flush_pending_settings_to_disk()
 
         # 3. Instant visual responsiveness: hide window and taskbar icon immediately (< 1ms)
         try:

@@ -105,7 +105,11 @@ def get_config_file_path():
     """
     Returns the persistent user-level path to config.json located in
     Documents/League Voice Recorder/config.json (next to recordings/).
+    Supports LVR_CONFIG_PATH environment variable override for test isolation.
     """
+    override = os.environ.get("LVR_CONFIG_PATH")
+    if override:
+        return os.path.abspath(override)
     return os.path.join(get_user_documents_app_dir(), "config.json")
 
 
