@@ -251,6 +251,35 @@ class TestLeagueHUDWidget(unittest.TestCase):
         self.hud._on_mouse_down(SliderClickEvent())
         self.assertEqual(self.hud.volume, 50)
 
+    def test_locked_volume_hit_window_lifecycle_and_drag(self):
+        """volume_hit_win is active only in locked REPLAY mode and enables dragging volume."""
+        self.hud.show()
+        self.hud.set_mode("REPLAY")
+        self.hud.set_locked(True)
+
+        self.assertIsNotNone(self.hud.volume_hit_win)
+        self.assertEqual(self.hud.volume_hit_win.state(), "normal")
+
+        # In locked mode, dragging volume via hit window updates volume
+        class DragEvent:
+            x = 82  # ~50% of the 164px track
+
+        self.hud._on_volume_hit_event(DragEvent())
+        self.assertAlmostEqual(self.hud.volume, 50, delta=2)
+        self.mock_volume_callback.assert_called()
+
+        # Switching to RECORD mode hides volume_hit_win
+        self.hud.set_mode("RECORD")
+        self.assertEqual(self.hud.volume_hit_win.state(), "withdrawn")
+
+        # Switching back to REPLAY shows it again
+        self.hud.set_mode("REPLAY")
+        self.assertEqual(self.hud.volume_hit_win.state(), "normal")
+
+        # Unlocking hides volume_hit_win
+        self.hud.set_locked(False)
+        self.assertEqual(self.hud.volume_hit_win.state(), "withdrawn")
+
 
 if __name__ == "__main__":
     unittest.main()

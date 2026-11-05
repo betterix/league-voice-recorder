@@ -144,69 +144,97 @@ def get_available_audio_targets():
     return targets
 
 
+def find_discord_active_pids():
+    """
+    Finds all Discord.exe process IDs that own active audio sessions or voice services.
+    Prioritizes audio.mojom.AudioService (where Discord voice chat streams are decoded and played),
+    followed by renderer processes and other audio session holders.
+    """
+    candidate_pids = set()
+
+    # 1. Query Windows Core Audio sessions via pycaw
+    try:
+        from pycaw.pycaw import AudioUtilities
+
+        for s in AudioUtilities.GetAllSessions():
+            if s.Process and "discord.exe" in s.Process.name().lower():
+                candidate_pids.add(s.ProcessId)
+    except Exception:
+        pass
+
+    # 2. Also inspect running processes for discord.exe if sessions are empty or missing AudioService
+    try:
+        for proc in psutil.process_iter(["pid", "name"]):
+            try:
+                name = (proc.info.get("name") or "").lower()
+                if name == "discord.exe":
+                    candidate_pids.add(proc.info["pid"])
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+    except Exception:
+        pass
+
+    audio_service_pids = []
+    renderer_pids = []
+    other_pids = []
+
+    for pid in candidate_pids:
+        try:
+            proc = psutil.Process(pid)
+            cmd_list = proc.cmdline()
+            cmd = " ".join(cmd_list or []).lower()
+            if "audio.mojom.audioservice" in cmd:
+                audio_service_pids.append(pid)
+            elif "--type=renderer" in cmd:
+                renderer_pids.append(pid)
+            elif any(skip in cmd for skip in ["--type=crashpad-handler", "--type=gpu-process"]):
+                continue  # skip non-audio processes
+            else:
+                other_pids.append(pid)
+        except Exception:
+            pass
+
+    ordered = []
+    for p in audio_service_pids + renderer_pids + other_pids:
+        if p not in ordered:
+            ordered.append(p)
+
+    return ordered
+
+
 def find_discord_active_pid():
     """
-    Finds the specific Discord.exe process ID that owns an active audio session.
-    Prioritizes the session with the highest audio peak.
-    If all sessions are quiet, prioritizes the renderer process.
+    Finds the primary Discord.exe process ID that owns an active audio session.
+    Prioritizes the session with audible sound (peak > 0.0001),
+    falling back to AudioService (voice chat) and renderer.
     """
+    pids = find_discord_active_pids()
+    if not pids:
+        return None
+
     try:
         from pycaw.pycaw import AudioUtilities, IAudioMeterInformation
 
         best_pid = None
-        highest_peak = 0.0
-        candidate_pids = []
+        highest_peak = 0.0001
 
         for s in AudioUtilities.GetAllSessions():
-            if s.Process and "discord.exe" in s.Process.name().lower():
-                pid = s.ProcessId
-                candidate_pids.append(pid)
+            if s.Process and s.ProcessId in pids:
                 try:
                     meter = s._ctl.QueryInterface(IAudioMeterInformation)
                     peak = float(meter.GetPeakValue())
                     if peak > highest_peak:
                         highest_peak = peak
-                        best_pid = pid
+                        best_pid = s.ProcessId
                 except Exception:
                     pass
 
-        # If any Discord session has audible sound, return it immediately
-        if best_pid and highest_peak > 0.0001:
+        if best_pid:
             return best_pid
-
-        # If candidates exist but peak is 0 (quiet), find the renderer process
-        for pid in candidate_pids:
-            try:
-                proc = psutil.Process(pid)
-                cmd = " ".join(proc.cmdline()).lower()
-                if "--type=renderer" in cmd:
-                    return pid
-            except Exception:
-                pass
-
-        if candidate_pids:
-            return candidate_pids[-1]
     except Exception:
         pass
 
-    # Fallback to psutil search for renderer Discord
-    for proc in psutil.process_iter(["pid", "name"]):
-        try:
-            name = (proc.info.get("name") or "").lower()
-            if name == "discord.exe":
-                cmd_list = proc.info.get("cmdline")
-                if cmd_list is None and hasattr(proc, "cmdline"):
-                    try:
-                        cmd_list = proc.cmdline()
-                    except Exception:
-                        cmd_list = []
-                cmd = " ".join(cmd_list or []).lower()
-                if "--type=renderer" in cmd:
-                    return proc.info["pid"]
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
-
-    return None
+    return pids[0]
 
 
 def get_available_microphones():
@@ -652,43 +680,23 @@ class NativeAudioRecorder:
         try:
             from pycaw.pycaw import AudioUtilities, IAudioMeterInformation
 
-            cached_meter = None
-            last_meter_pid = None
-
             while not self._stop_idle_monitor_event.is_set() and not self.is_recording:
-                resolved_pid = self.resolve_target_pid()
-                if resolved_pid and resolved_pid > 0:
-                    found = False
-                    # Fast-path: query cached COM meter directly (315x faster than GetAllSessions)
-                    if cached_meter is not None and last_meter_pid == resolved_pid:
-                        try:
-                            peak = float(cached_meter.GetPeakValue())
-                            self.current_app_level = max(peak, self.current_app_level * 0.85)
-                            found = True
-                        except Exception:
-                            cached_meter = None
-                            last_meter_pid = None
-
-                    if not found:
-                        try:
-                            for s in AudioUtilities.GetAllSessions():
-                                if s.Process and s.ProcessId == resolved_pid:
+                pids = self.resolve_target_pids()
+                if pids:
+                    max_peak = 0.0
+                    try:
+                        for s in AudioUtilities.GetAllSessions():
+                            if s.Process and s.ProcessId in pids:
+                                try:
                                     meter = s._ctl.QueryInterface(IAudioMeterInformation)
-                                    peak = float(meter.GetPeakValue())
-                                    self.current_app_level = max(peak, self.current_app_level * 0.85)
-                                    cached_meter = meter
-                                    last_meter_pid = resolved_pid
-                                    found = True
-                                    break
-                        except Exception:
-                            cached_meter = None
-                            last_meter_pid = None
-
-                    if not found:
+                                    pk = float(meter.GetPeakValue())
+                                    max_peak = max(max_peak, pk)
+                                except Exception:
+                                    pass
+                        self.current_app_level = max(max_peak, self.current_app_level * 0.85)
+                    except Exception:
                         self.current_app_level *= 0.85
                 else:
-                    cached_meter = None
-                    last_meter_pid = None
                     self.current_app_level *= 0.85
 
                 time.sleep(0.06)
@@ -735,27 +743,31 @@ class NativeAudioRecorder:
 
         return scaled_app, scaled_mic
 
-    def resolve_target_pid(self):
-        """Resolves target_pid to an actual running Windows process ID with caching."""
-        now = time.monotonic()
-        if (
-            self._cached_resolved_pid is not None
-            and (now - self._last_resolved_time) < 2.0
-            and psutil.pid_exists(self._cached_resolved_pid)
-        ):
-            return self._cached_resolved_pid
-
+    def resolve_target_pids(self):
+        """Resolves target process(es) to a list of running Windows process IDs."""
         if self.target_pid and self.target_pid > 0:
             if psutil.pid_exists(self.target_pid):
-                self._cached_resolved_pid = self.target_pid
-                self._last_resolved_time = now
-                return self.target_pid
+                return [self.target_pid]
+            return []
 
-        # Auto-detect Discord
-        pid = find_discord_active_pid()
-        self._cached_resolved_pid = pid
+        now = time.monotonic()
+        if (
+            getattr(self, "_cached_resolved_pids", None)
+            and (now - self._last_resolved_time) < 2.0
+            and any(psutil.pid_exists(p) for p in self._cached_resolved_pids)
+        ):
+            return self._cached_resolved_pids
+
+        pids = find_discord_active_pids()
+        self._cached_resolved_pids = pids
+        self._cached_resolved_pid = pids[0] if pids else None
         self._last_resolved_time = now
-        return pid
+        return pids
+
+    def resolve_target_pid(self):
+        """Resolves target_pid to the primary running Windows process ID with caching."""
+        pids = self.resolve_target_pids()
+        return pids[0] if pids else None
 
     def set_target_process(self, pid, name=None):
         """Updates the target application/process to record."""
@@ -763,6 +775,7 @@ class NativeAudioRecorder:
         if name:
             self.target_name = name
         self._cached_resolved_pid = None
+        self._cached_resolved_pids = None
         self._last_resolved_time = 0.0
         self.log(f"Target process set to: PID {pid} ({name or 'Auto'})")
 
@@ -791,7 +804,7 @@ class NativeAudioRecorder:
             self._discord_staging.clear()
             self._mic_staging.clear()
 
-        resolved_pid = self.resolve_target_pid()
+        target_pids = self.resolve_target_pids()
 
         temp_dir = os.path.join(self.record_folder, ".temp_audio")
         os.makedirs(temp_dir, exist_ok=True)
@@ -800,15 +813,17 @@ class NativeAudioRecorder:
         self.mic_wav_path = os.path.join(temp_dir, f"{session_id}_mic.wav")
 
         # 1. Start Discord Process Loopback thread
-        if resolved_pid:
-            try:
-                proc_name = psutil.Process(resolved_pid).name()
-            except Exception:
-                proc_name = "Discord"
-            self.log(f"Hooking ProcessLoopback for {proc_name} (PID: {resolved_pid})...")
+        if target_pids:
+            names = []
+            for pid in target_pids:
+                try:
+                    names.append(f"{psutil.Process(pid).name()} (PID: {pid})")
+                except Exception:
+                    names.append(f"PID: {pid}")
+            self.log(f"Hooking ProcessLoopback for {', '.join(names)}...")
             self._discord_thread = threading.Thread(
                 target=self._capture_discord_loop,
-                args=(resolved_pid, self.discord_wav_path),
+                args=(target_pids, self.discord_wav_path),
                 daemon=True,
                 name="DiscordProcessLoopbackWorker",
             )
@@ -870,21 +885,39 @@ class NativeAudioRecorder:
 
         self.is_recording = True
 
-    def _capture_discord_loop(self, pid, wav_path):
+    def _capture_discord_loop(self, pids, wav_path):
         """
         Polls Discord process audio frames from WASAPI ProcessLoopback.
+        Simultaneously captures and mixes all active audio streams (e.g. Discord voice + pings).
         Writes directly to TimelineWavWriter with continuous in-game clock alignment.
         """
+        if isinstance(pids, (int, str)):
+            target_pids = [int(pids)]
+        else:
+            target_pids = [int(p) for p in pids if p]
+
+        if not target_pids:
+            self.log("⚠️ No target PID provided for process audio capture.")
+            return
+
+        loops = []
         try:
             from proctap._native import ProcessLoopback
 
-            loop = ProcessLoopback(pid)
-            loop.start()
+            for pid in target_pids:
+                try:
+                    lp = ProcessLoopback(pid)
+                    lp.start()
+                    if lp.is_process_specific():
+                        loops.append(lp)
+                    else:
+                        self.log(f"⚠️ ProcessLoopback for PID {pid} is not process-specific; skipped.")
+                        lp.stop()
+                except Exception as e:
+                    self.log(f"⚠️ Failed to start ProcessLoopback for PID {pid}: {e}")
 
-            # Strict isolation check: ensure capture is strictly process-specific to Discord.
-            if not loop.is_process_specific():
-                self.log("❌ ERROR: Process loopback is NOT process-specific! Aborting capture to prevent recording background audio.")
-                loop.stop()
+            if not loops:
+                self.log("❌ ERROR: No process-specific loopback could be started for target processes.")
                 return
 
             writer = TimelineWavWriter(wav_path, channels=2, sample_rate=48000)
@@ -898,21 +931,36 @@ class NativeAudioRecorder:
             while not self.stop_event.is_set():
                 now = time.perf_counter()
 
-                d = loop.read()
-                if d:
-                    floats = np.frombuffer(d, dtype=np.float32)
-                    if len(floats) > 0:
-                        peak = max(float(floats.max()), -float(floats.min()))
-                        self.current_app_level = max(peak, self.current_app_level * 0.85)
+                # Read available float32 chunks from all active loops
+                chunks = []
+                for lp in loops:
+                    try:
+                        d = lp.read()
+                        if d:
+                            f = np.frombuffer(d, dtype=np.float32)
+                            if len(f) > 0:
+                                chunks.append(f)
+                    except Exception:
+                        pass
+
+                if chunks:
+                    if len(chunks) == 1:
+                        mixed = chunks[0]
+                    else:
+                        max_len = max(len(c) for c in chunks)
+                        mixed = np.zeros(max_len, dtype=np.float32)
+                        for c in chunks:
+                            mixed[:len(c)] += c
+
+                    peak = float(np.abs(mixed).max()) if len(mixed) > 0 else 0.0
+                    self.current_app_level = max(peak, self.current_app_level * 0.85)
 
                     if not self.is_paused:
-                        ints = np.clip(floats * 32767.0, -32768, 32767).astype(np.int16)
-                        raw_bytes = ints.tobytes()
-                        writer.write_frames(raw_bytes)
+                        ints = np.clip(mixed * 32767.0, -32768, 32767).astype(np.int16)
+                        writer.write_frames(ints.tobytes())
                     t_last = now
                 else:
-                    # Empty read: Discord is quiet / silence period
-                    # Inject exact silence matching elapsed time only when active (not paused)
+                    # Empty read: silence period
                     dt = now - t_last
                     if not self.is_paused:
                         if dt >= 0.01:
@@ -924,9 +972,14 @@ class NativeAudioRecorder:
                     time.sleep(0.001)
 
             writer.close(final_game_time=self.latest_game_time)
-            loop.stop()
         except Exception as e:
             self.log(f"Discord process audio capture error: {e}")
+        finally:
+            for lp in loops:
+                try:
+                    lp.stop()
+                except Exception:
+                    pass
 
     def _write_mic_loop(self, wav_path, channels, rate):
         """Consumes microphone audio chunks from queue and writes directly to TimelineWavWriter."""

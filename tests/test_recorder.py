@@ -424,6 +424,86 @@ class TestRecorderModule(unittest.TestCase):
             dur = wf.getnframes() / wf.getframerate()
             self.assertEqual(dur, 15.0, "Total duration must be exactly 15.0s, with lag cleanly trimmed")
 
+    def test_find_discord_active_pids_prioritizes_audio_service(self):
+        """find_discord_active_pids prioritizes audio.mojom.AudioService over renderer."""
+        from app.native_audio import find_discord_active_pids, find_discord_active_pid
+
+        mock_session_audio = MagicMock()
+        mock_session_audio.ProcessId = 13604
+        mock_session_audio.Process.name.return_value = "Discord.exe"
+        mock_session_audio._ctl.QueryInterface.return_value.GetPeakValue.return_value = 0.0
+
+        mock_session_renderer = MagicMock()
+        mock_session_renderer.ProcessId = 1828
+        mock_session_renderer.Process.name.return_value = "Discord.exe"
+        mock_session_renderer._ctl.QueryInterface.return_value.GetPeakValue.return_value = 0.0
+
+        def fake_proc(pid):
+            p = MagicMock()
+            if pid == 13604:
+                p.cmdline.return_value = ["Discord.exe", "--type=utility", "--utility-sub-type=audio.mojom.AudioService"]
+            elif pid == 1828:
+                p.cmdline.return_value = ["Discord.exe", "--type=renderer"]
+            else:
+                p.cmdline.return_value = []
+            return p
+
+        with patch("pycaw.pycaw.AudioUtilities.GetAllSessions", return_value=[mock_session_renderer, mock_session_audio]), \
+             patch("psutil.Process", side_effect=fake_proc):
+            pids = find_discord_active_pids()
+            self.assertEqual(pids, [13604, 1828], "AudioService PID must be prioritized first")
+            primary = find_discord_active_pid()
+            self.assertEqual(primary, 13604, "find_discord_active_pid must return primary AudioService PID when quiet")
+
+            # When sound plays on renderer, find_discord_active_pid prioritizes the active session
+            mock_session_renderer._ctl.QueryInterface.return_value.GetPeakValue.return_value = 0.8
+            self.assertEqual(find_discord_active_pid(), 1828, "Active sound session must be chosen if peak is loud")
+
+    def test_capture_discord_loop_multi_process_mixing(self):
+        """_capture_discord_loop reads from multiple ProcessLoopback instances and mixes them."""
+        from app.native_audio import NativeAudioRecorder
+        import numpy as np
+        import wave
+        import threading
+        import time
+
+        engine = NativeAudioRecorder(record_folder=self.temp_dir.name)
+        out_wav = os.path.join(self.temp_dir.name, "multi_proc_test.wav")
+
+        mock_loop1 = MagicMock()
+        mock_loop1.is_process_specific.return_value = True
+        # Chunk of 480 float32 frames of value 0.2
+        f1 = np.full(480 * 2, 0.2, dtype=np.float32)
+        mock_loop1.read.side_effect = [f1.tobytes(), None]
+
+        mock_loop2 = MagicMock()
+        mock_loop2.is_process_specific.return_value = True
+        # Chunk of 480 float32 frames of value 0.3
+        f2 = np.full(480 * 2, 0.3, dtype=np.float32)
+        mock_loop2.read.side_effect = [f2.tobytes(), None]
+
+        def fake_proctap_init(pid):
+            return mock_loop1 if pid == 1001 else mock_loop2
+
+        with patch("proctap._native.ProcessLoopback", side_effect=fake_proctap_init):
+            # Run for 1 iteration and stop
+            def stop_later():
+                time.sleep(0.05)
+                engine.stop_event.set()
+
+            t = threading.Thread(target=stop_later)
+            t.start()
+            engine._capture_discord_loop([1001, 1002], out_wav)
+            t.join()
+
+        self.assertTrue(os.path.exists(out_wav))
+        with wave.open(out_wav, "rb") as wf:
+            frames = wf.readframes(wf.getnframes())
+            # Mixed value should be 0.2 + 0.3 = 0.5 * 32767 = ~16383
+            ints = np.frombuffer(frames, dtype=np.int16)
+            self.assertGreater(len(ints), 0)
+            self.assertAlmostEqual(ints[0], int(0.5 * 32767), delta=100)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -212,9 +212,11 @@ class LeagueHUDWidget:
         self.canvas.bind("<Button-3>", self._on_right_click)
         self.canvas.bind("<Motion>", self._on_mouse_hover)
 
-        # Dedicated transparent hit-test window for Lock icon in click-through mode
+        # Dedicated transparent hit-test windows for Lock icon and Volume slider in click-through mode
         self.lock_hit_win = None
+        self.volume_hit_win = None
         self._init_lock_hit_window()
+        self._init_volume_hit_window()
 
         # Initial render
         self.render()
@@ -292,6 +294,59 @@ class LeagueHUDWidget:
         """Called when clicking the lock icon while overlay is locked to unlock drag mode."""
         self.set_locked(False)
 
+    def _init_volume_hit_window(self) -> None:
+        """Creates a transparent hit-test window over the volume slider in Replay mode for click-through mode."""
+        try:
+            self.volume_hit_win = tk.Toplevel(self.master)
+            self.volume_hit_win.overrideredirect(True)
+            self.volume_hit_win.withdraw()
+            try:
+                self.volume_hit_win.attributes("-topmost", True)
+                self.volume_hit_win.attributes("-alpha", 0.01)
+            except Exception:
+                pass
+            self.volume_hit_win.config(cursor="hand2")
+            self.volume_hit_win.bind("<ButtonPress-1>", self._on_volume_hit_event)
+            self.volume_hit_win.bind("<B1-Motion>", self._on_volume_hit_event)
+            self.volume_hit_win.bind("<ButtonRelease-1>", self._on_volume_hit_event)
+            self.volume_hit_win.bind("<Button-3>", lambda e: None)
+        except Exception:
+            self.volume_hit_win = None
+
+    def _sync_volume_hit_window(self) -> None:
+        """Positions the volume hit window precisely over the volume slider when locked, visible, and in REPLAY mode."""
+        if not getattr(self, "volume_hit_win", None):
+            return
+        if getattr(self, "is_visible", False) and self.locked and getattr(self, "mode", "") == "REPLAY":
+            try:
+                wx = self.window.winfo_x()
+                wy = self.window.winfo_y()
+                vx = wx + int(self.SLIDER_X1 - 6)
+                vy = wy + 42
+                vw = int(self.SLIDER_X2 - self.SLIDER_X1 + 12)
+                vh = 24
+                self.volume_hit_win.geometry(f"{vw}x{vh}+{vx}+{vy}")
+                self.volume_hit_win.deiconify()
+                self.volume_hit_win.attributes("-topmost", True)
+                self.volume_hit_win.attributes("-alpha", 0.01)
+            except Exception:
+                pass
+        else:
+            try:
+                self.volume_hit_win.withdraw()
+            except Exception:
+                pass
+
+    def _on_volume_hit_event(self, event: tk.Event) -> None:
+        """Called when clicking or dragging the volume slider while overlay is locked in Replay mode."""
+        canvas_x = self.SLIDER_X1 - 6 + event.x
+        self._update_volume_from_mouse(canvas_x)
+
+    def _sync_hit_windows(self) -> None:
+        """Synchronizes all hit-test windows (lock icon and volume slider) with the overlay position."""
+        self._sync_lock_hit_window()
+        self._sync_volume_hit_window()
+
     def _apply_click_through(self, enable: bool) -> None:
         """Applies or removes the Windows WS_EX_TRANSPARENT style strictly on the top-level window."""
         try:
@@ -308,7 +363,7 @@ class LeagueHUDWidget:
         self.locked = bool(locked)
         self.click_through = self.locked
         self._apply_click_through(self.locked)
-        self._sync_lock_hit_window()
+        self._sync_hit_windows()
         if getattr(self, "is_visible", False):
             self.render()
         if self.on_lock_changed:
@@ -334,6 +389,7 @@ class LeagueHUDWidget:
         mode_upper = mode.upper()
         if mode_upper in ("RECORD", "REPLAY"):
             self.mode = mode_upper
+            self._sync_hit_windows()
             self.render()
 
     def show(self) -> None:
@@ -347,7 +403,7 @@ class LeagueHUDWidget:
             pass
         self.window.update_idletasks()
         self._apply_click_through(self.locked)
-        self._sync_lock_hit_window()
+        self._sync_hit_windows()
         self.render()
 
     def hide(self) -> None:
@@ -359,13 +415,18 @@ class LeagueHUDWidget:
                 self.lock_hit_win.withdraw()
             except Exception:
                 pass
+        if getattr(self, "volume_hit_win", None):
+            try:
+                self.volume_hit_win.withdraw()
+            except Exception:
+                pass
 
     def reset_position(self) -> None:
         """Resets HUD position back to top-right screen corner."""
         x, y = self._calculate_initial_position(-1, -1)
         self.window.geometry(f"{self.WIDTH}x{self.HEIGHT}+{x}+{y}")
         self.window.update_idletasks()
-        self._sync_lock_hit_window()
+        self._sync_hit_windows()
         if self.on_position_changed:
             self.on_position_changed(x, y)
 
@@ -921,7 +982,7 @@ class LeagueHUDWidget:
             self._is_dragging = False
             final_x = self.window.winfo_x()
             final_y = self.window.winfo_y()
-            self._sync_lock_hit_window()
+            self._sync_hit_windows()
             if self.on_position_changed:
                 self.on_position_changed(final_x, final_y)
 
@@ -982,6 +1043,9 @@ class LeagueHUDWidget:
             if getattr(self, "lock_hit_win", None):
                 self.lock_hit_win.destroy()
                 self.lock_hit_win = None
+            if getattr(self, "volume_hit_win", None):
+                self.volume_hit_win.destroy()
+                self.volume_hit_win = None
         except Exception:
             pass
         try:
