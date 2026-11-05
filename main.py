@@ -649,6 +649,43 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.vol_slider.set(self.current_vol)
         self.vol_slider.grid(row=0, column=1, padx=(4, 10), pady=6, sticky="ew")
 
+        # 1-Click Replay API Auto-Configuration Row (Under Replay Controls)
+        self.replay_api_row = ctk.CTkFrame(
+            rep_card,
+            fg_color=("#F8FAFC", "#070D1E"),
+            corner_radius=6,
+            border_width=1,
+            border_color=("#E2E8F0", "#162038"),
+        )
+        self.replay_api_row.pack(fill="x", padx=14, pady=(0, 6))
+        self.replay_api_row.grid_columnconfigure(0, weight=1)
+        self.replay_api_row.grid_columnconfigure(1, weight=0)
+
+        self.replay_api_badge = ctk.CTkLabel(
+            self.replay_api_row,
+            text=t("settings.replay_api_status_not_found"),
+            font=ctk.CTkFont(size=10, weight="bold"),
+            corner_radius=6,
+            padx=8,
+            pady=3,
+        )
+        self.replay_api_badge.grid(row=0, column=0, padx=(8, 4), pady=5, sticky="w")
+
+        self.replay_api_btn = ctk.CTkButton(
+            self.replay_api_row,
+            text=t("settings.enable_replay_api_btn"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            height=26,
+            fg_color=("#0284C7", "#0284C7"),
+            hover_color=("#0369A1", "#0369A1"),
+            border_width=1,
+            border_color=("#38BDF8", "#0284C7"),
+            corner_radius=6,
+            command=self._on_enable_replay_api_clicked,
+        )
+        self.replay_api_btn.grid(row=0, column=1, padx=(4, 8), pady=5, sticky="e")
+        self._refresh_replay_api_ui_status()
+
         rep_info_frame = ctk.CTkFrame(
             rep_card,
             fg_color=("#F8FAFC", "#070D1E"),
@@ -1327,44 +1364,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             text_color=("#334155", "#94A3B8"),
             command=self._on_auto_replay_toggled,
         )
-        self.auto_replay_switch.grid(row=2, column=1, padx=(6, 14), pady=6, sticky="w")
-
-        # 1-Click Replay API Auto-Configuration (game.cfg)
-        self.replay_api_lbl = ctk.CTkLabel(
-            card_auto,
-            text=t("settings.replay_api_title"),
-            font=ctk.CTkFont(size=11, weight="bold"),
-            text_color=("#0F172A", "#CBD5E1"),
-        )
-        self.replay_api_lbl.grid(row=3, column=0, padx=(14, 8), pady=(6, 12), sticky="w")
-
-        replay_api_box = ctk.CTkFrame(card_auto, fg_color="transparent")
-        replay_api_box.grid(row=3, column=1, padx=(6, 14), pady=(6, 12), sticky="w")
-
-        self.replay_api_badge = ctk.CTkLabel(
-            replay_api_box,
-            text=t("settings.replay_api_status_not_found"),
-            font=ctk.CTkFont(size=11, weight="bold"),
-            corner_radius=6,
-            padx=8,
-            pady=3,
-        )
-        self.replay_api_badge.pack(side="left", padx=(0, 8))
-
-        self.replay_api_btn = ctk.CTkButton(
-            replay_api_box,
-            text=t("settings.enable_replay_api_btn"),
-            font=ctk.CTkFont(size=11, weight="bold"),
-            height=28,
-            fg_color=("#0284C7", "#0284C7"),
-            hover_color=("#0369A1", "#0369A1"),
-            border_width=1,
-            border_color=("#38BDF8", "#0284C7"),
-            corner_radius=6,
-            command=self._on_enable_replay_api_clicked,
-        )
-        self.replay_api_btn.pack(side="left")
-        self._refresh_replay_api_ui_status()
+        self.auto_replay_lbl.grid(row=2, column=0, padx=(14, 8), pady=(6, 12), sticky="w")
+        self.auto_replay_switch.grid(row=2, column=1, padx=(6, 14), pady=(6, 12), sticky="w")
 
         # -------------------------------------------------------------
         # CARD 4: IN-GAME FLOATING HUD OVERLAY
@@ -2131,8 +2132,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 if hasattr(self, "auto_replay_lbl"):
                     self.auto_replay_lbl.configure(text=t("settings.auto_start_replay"))
                     self.auto_replay_switch.configure(text=t("settings.auto_start_replay_info"))
-                if hasattr(self, "replay_api_lbl"):
-                    self.replay_api_lbl.configure(text=t("settings.replay_api_title"))
+                if hasattr(self, "replay_api_btn"):
                     self.replay_api_btn.configure(text=t("settings.enable_replay_api_btn"))
                     self._refresh_replay_api_ui_status()
                 if hasattr(self, "hud_title_lbl"):

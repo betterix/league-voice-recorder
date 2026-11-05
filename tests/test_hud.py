@@ -123,15 +123,15 @@ class TestLeagueHUDWidget(unittest.TestCase):
         self.mock_volume_callback.assert_called_with(100)
 
     def test_opacity_and_click_through_toggle(self):
-        """Opacity and click-through can be modified dynamically."""
+        """Opacity and position lock can be modified dynamically."""
         self.hud.set_opacity(0.60)
         self.assertEqual(self.hud.opacity, 0.60)
 
         self.hud.set_click_through(True)
-        self.assertTrue(self.hud.click_through)
+        self.assertTrue(self.hud.locked)
 
         self.hud.set_click_through(False)
-        self.assertFalse(self.hud.click_through)
+        self.assertFalse(self.hud.locked)
 
     def test_locked_toggle_and_callback(self):
         """Position locking can be toggled and triggers callback."""
@@ -149,6 +149,37 @@ class TestLeagueHUDWidget(unittest.TestCase):
         self.hud._on_mouse_down(DummyEvent())
         self.assertTrue(self.hud.locked)
         self.mock_lock_callback.assert_called_with(True)
+
+    def test_drag_unlocked_and_locked(self):
+        """Overlay can be dragged when unlocked, but stays in place when locked."""
+        # Unlocked
+        self.hud.set_locked(False)
+
+        class DownEvent:
+            x = 100
+            y = 30
+            x_root = 500
+            y_root = 300
+
+        self.hud._on_mouse_down(DownEvent())
+        self.assertTrue(self.hud._is_dragging)
+
+        class MoveEvent:
+            x = 120
+            y = 40
+            x_root = 520
+            y_root = 310
+
+        self.hud._on_mouse_move(MoveEvent())
+        self.hud._on_mouse_up(MoveEvent())
+        self.assertFalse(self.hud._is_dragging)
+        self.mock_pos_callback.assert_called()
+
+        # Locked: dragging cannot be started
+        self.mock_pos_callback.reset_mock()
+        self.hud.set_locked(True)
+        self.hud._on_mouse_down(DownEvent())
+        self.assertFalse(self.hud._is_dragging)
 
     def test_reset_position(self):
         """Reset position calculates top-right bounds and calls callback."""

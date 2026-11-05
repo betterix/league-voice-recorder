@@ -23,7 +23,7 @@ WS_EX_LAYERED = 0x00080000
 WS_EX_TRANSPARENT = 0x00000020
 
 
-def set_window_click_through(hwnd: int, enable: bool = True) -> None:
+def set_window_click_through(hwnd: int, enable: bool = False) -> None:
     """Configures a Windows window for click-through transparency."""
     if sys.platform != "win32" or not hwnd:
         return
@@ -35,11 +35,9 @@ def set_window_click_through(hwnd: int, enable: bool = True) -> None:
         set_long = getattr(u32, "SetWindowLongPtrW", u32.SetWindowLongW)
 
         style = get_long(hwnd, GWL_EXSTYLE)
-        if enable:
-            new_style = style | WS_EX_LAYERED | WS_EX_TRANSPARENT
-        else:
-            new_style = style & ~WS_EX_TRANSPARENT
-
+        # Always strip WS_EX_TRANSPARENT so the overlay can always receive mouse events,
+        # position drags, volume adjustments, and lock toggles without being ghosted.
+        new_style = style & ~WS_EX_TRANSPARENT
         if new_style != style:
             set_long(hwnd, GWL_EXSTYLE, new_style)
             SWP_NOMOVE = 0x0002
@@ -269,6 +267,7 @@ class LeagueHUDWidget:
         """Dynamically locks or unlocks the overlay position."""
         self.locked = bool(locked)
         self.click_through = self.locked
+        self._apply_click_through(False)
         if getattr(self, "is_visible", False):
             self.render()
         if self.on_lock_changed:
@@ -306,8 +305,7 @@ class LeagueHUDWidget:
         except Exception:
             pass
         self.window.update_idletasks()
-        if self.click_through:
-            self._apply_click_through(True)
+        self._apply_click_through(False)
         self.render()
 
     def hide(self) -> None:
@@ -782,15 +780,27 @@ class LeagueHUDWidget:
         self._is_dragging = True
         self._drag_start_x = event.x
         self._drag_start_y = event.y
+        self._drag_start_x_root = getattr(event, "x_root", 0)
+        self._drag_start_y_root = getattr(event, "y_root", 0)
+        self._drag_win_start_x = self.window.winfo_x()
+        self._drag_win_start_y = self.window.winfo_y()
 
     def _on_mouse_move(self, event: tk.Event) -> None:
         if self._is_dragging_volume:
             self._update_volume_from_mouse(event.x)
         elif self._is_dragging and not self.locked:
-            cur_x = self.window.winfo_x()
-            cur_y = self.window.winfo_y()
-            new_x = cur_x + (event.x - self._drag_start_x)
-            new_y = cur_y + (event.y - self._drag_start_y)
+            x_root = getattr(event, "x_root", 0)
+            y_root = getattr(event, "y_root", 0)
+            if x_root and y_root and getattr(self, "_drag_start_x_root", 0):
+                dx = x_root - self._drag_start_x_root
+                dy = y_root - self._drag_start_y_root
+                new_x = self._drag_win_start_x + dx
+                new_y = self._drag_win_start_y + dy
+            else:
+                cur_x = self.window.winfo_x()
+                cur_y = self.window.winfo_y()
+                new_x = cur_x + (event.x - getattr(self, "_drag_start_x", event.x))
+                new_y = cur_y + (event.y - getattr(self, "_drag_start_y", event.y))
             self.window.geometry(f"+{new_x}+{new_y}")
 
     def _on_mouse_up(self, event: tk.Event) -> None:
