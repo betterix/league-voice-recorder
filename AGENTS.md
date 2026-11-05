@@ -40,6 +40,7 @@ League Voice Recorder/
 │   ├── native_audio.py     # Native WASAPI audio capture (Discord loopback & mic)
 │   ├── hud_widget.py       # In-Game floating HUD overlay widget (translucent live & replay HUD)
 │   ├── play_replay.py      # ReplaySynchronizer engine (process watcher & VLC sync)
+│   ├── replay_config.py    # 1-Click Replay API Auto-Configuration (game.cfg parser & backup)
 │   └── updater.py          # Auto-updater (GitHub releases, zip extraction, in-place replace)
 │
 ├── assets/                 # Visual branding assets (icons, logos)
@@ -64,6 +65,7 @@ League Voice Recorder/
 │   ├── test_discord_ipc.py # Discord Local IPC & mute silence injection
 │   ├── test_i18n.py        # Locale discovery, translation lookup, and key parity
 │   ├── test_recorder.py    # FFmpeg sample-accurate offset alignment & replay guard
+│   ├── test_replay_config.py # 1-Click game.cfg Replay API detection & safe backup
 │   ├── test_replay_sync.py # ROFL Game ID extraction & volume clamping
 │   ├── test_ui.py          # CustomTkinter headless UI & live language switching
 │   └── test_updater.py     # Release asset check, zip extraction, and in-place update

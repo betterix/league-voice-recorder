@@ -32,29 +32,62 @@ if sys.platform.startswith("win"):
 
 
 def find_league_install_dir():
-    """Finds the League of Legends installation directory containing lockfile."""
+    """Finds the League of Legends installation directory (running or offline)."""
     global _CACHED_LEAGUE_INSTALL_DIR
-    if _CACHED_LEAGUE_INSTALL_DIR and os.path.exists(os.path.join(_CACHED_LEAGUE_INSTALL_DIR, "lockfile")):
+
+    def _is_valid_league_dir(d: str) -> bool:
+        if not d or not os.path.isdir(d):
+            return False
+        return (
+            os.path.exists(os.path.join(d, "lockfile"))
+            or os.path.exists(os.path.join(d, "LeagueClient.exe"))
+            or os.path.exists(os.path.join(d, "Config", "game.cfg"))
+            or os.path.exists(os.path.join(d, "Game", "League of Legends.exe"))
+        )
+
+    if _CACHED_LEAGUE_INSTALL_DIR and _is_valid_league_dir(_CACHED_LEAGUE_INSTALL_DIR):
         return _CACHED_LEAGUE_INSTALL_DIR
 
-    # 1. Fast lookup via psutil
+    # 1. Fast lookup via psutil (active processes)
     try:
         for proc in psutil.process_iter(["name", "exe"]):
             try:
                 name = proc.info.get("name") or ""
-                if "LeagueClientUx" in name or "LeagueClient" in name:
+                if any(x in name for x in ("LeagueClientUx", "LeagueClient", "League of Legends")):
                     exe = proc.info.get("exe")
                     if exe:
                         d = os.path.dirname(exe)
-                        if os.path.exists(os.path.join(d, "lockfile")):
+                        if _is_valid_league_dir(d):
                             _CACHED_LEAGUE_INSTALL_DIR = d
                             return d
+                        # Check parent in case process is in Game\ subfolder
+                        parent = os.path.dirname(d)
+                        if _is_valid_league_dir(parent):
+                            _CACHED_LEAGUE_INSTALL_DIR = parent
+                            return parent
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
     except Exception:
         pass
 
-    # 2. PowerShell fallback (original logic)
+    # 2. Riot Client Metadata configuration lookup (works offline)
+    try:
+        metadata_yaml = os.path.join(
+            os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
+            r"Riot Games\Metadata\league_of_legends.live\league_of_legends.live.product_settings.yaml",
+        )
+        if os.path.exists(metadata_yaml):
+            with open(metadata_yaml, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    if "product_install_full_path" in line:
+                        candidate = line.split(":", 1)[1].strip().strip('"').strip("'")
+                        if _is_valid_league_dir(candidate):
+                            _CACHED_LEAGUE_INSTALL_DIR = candidate
+                            return candidate
+    except Exception:
+        pass
+
+    # 3. PowerShell fallback for running League processes
     try:
         cmd = [
             "powershell",
@@ -80,23 +113,28 @@ def find_league_install_dir():
                 p_path = proc.get("Path")
                 if p_path:
                     d = os.path.dirname(p_path)
-                    if os.path.exists(os.path.join(d, "lockfile")):
+                    if _is_valid_league_dir(d):
                         _CACHED_LEAGUE_INSTALL_DIR = d
                         return d
+                    parent = os.path.dirname(d)
+                    if _is_valid_league_dir(parent):
+                        _CACHED_LEAGUE_INSTALL_DIR = parent
+                        return parent
     except Exception:
         pass
 
-    # 3. Known drive search fallback
+    # 4. Known drive search fallback
     drives = list("CDEFGHIJ")
     subpaths = [
         r"Riot Games\League of Legends",
         r"Program Files\Riot Games\League of Legends",
         r"Program Files (x86)\Riot Games\League of Legends",
+        r"Games\League of Legends",
     ]
     for drive in drives:
         for sub in subpaths:
             candidate = f"{drive}:\\{sub}"
-            if os.path.exists(os.path.join(candidate, "lockfile")):
+            if _is_valid_league_dir(candidate):
                 _CACHED_LEAGUE_INSTALL_DIR = candidate
                 return candidate
     return None

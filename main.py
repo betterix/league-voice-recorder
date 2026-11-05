@@ -1308,7 +1308,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color=("#0F172A", "#CBD5E1"),
         )
-        self.auto_replay_lbl.grid(row=2, column=0, padx=(14, 8), pady=(6, 12), sticky="w")
+        self.auto_replay_lbl.grid(row=2, column=0, padx=(14, 8), pady=6, sticky="w")
 
         self.auto_replay_var = ctk.BooleanVar(
             value=bool(self.config.get("auto_start_replay", True))
@@ -1325,7 +1325,44 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             button_hover_color=("#F8FAFC", "#E2E8F0"),
             text_color=("#334155", "#94A3B8"),
         )
-        self.auto_replay_switch.grid(row=2, column=1, padx=(6, 14), pady=(6, 12), sticky="w")
+        self.auto_replay_switch.grid(row=2, column=1, padx=(6, 14), pady=6, sticky="w")
+
+        # 1-Click Replay API Auto-Configuration (game.cfg)
+        self.replay_api_lbl = ctk.CTkLabel(
+            card_auto,
+            text=t("settings.replay_api_title"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0F172A", "#CBD5E1"),
+        )
+        self.replay_api_lbl.grid(row=3, column=0, padx=(14, 8), pady=(6, 12), sticky="w")
+
+        replay_api_box = ctk.CTkFrame(card_auto, fg_color="transparent")
+        replay_api_box.grid(row=3, column=1, padx=(6, 14), pady=(6, 12), sticky="w")
+
+        self.replay_api_badge = ctk.CTkLabel(
+            replay_api_box,
+            text=t("settings.replay_api_status_not_found"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            corner_radius=6,
+            padx=8,
+            pady=3,
+        )
+        self.replay_api_badge.pack(side="left", padx=(0, 8))
+
+        self.replay_api_btn = ctk.CTkButton(
+            replay_api_box,
+            text=t("settings.enable_replay_api_btn"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            height=28,
+            fg_color=("#0284C7", "#0284C7"),
+            hover_color=("#0369A1", "#0369A1"),
+            border_width=1,
+            border_color=("#38BDF8", "#0284C7"),
+            corner_radius=6,
+            command=self._on_enable_replay_api_clicked,
+        )
+        self.replay_api_btn.pack(side="left")
+        self._refresh_replay_api_ui_status()
 
         # -------------------------------------------------------------
         # CARD 4: IN-GAME FLOATING HUD OVERLAY
@@ -1687,6 +1724,68 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         if self.hud:
             self.hud.reset_position()
 
+    def _refresh_replay_api_ui_status(self):
+        """Refreshes the Replay API status badge and button state in Settings."""
+        if not hasattr(self, "replay_api_badge") or getattr(self, "_is_destroyed", False):
+            return
+        try:
+            from app.replay_config import check_replay_api_status
+
+            is_enabled, path = check_replay_api_status()
+            if path is None:
+                self.replay_api_badge.configure(
+                    text=t("settings.replay_api_status_not_found"),
+                    text_color=("#64748B", "#94A3B8"),
+                    fg_color=("#F1F5F9", "#0F1A36"),
+                )
+                self.replay_api_btn.configure(
+                    state="normal",
+                    text=t("settings.enable_replay_api_btn"),
+                    fg_color=("#0284C7", "#0284C7"),
+                )
+            elif is_enabled:
+                self.replay_api_badge.configure(
+                    text=t("settings.replay_api_status_enabled"),
+                    text_color=("#059669", "#10B981"),
+                    fg_color=("#DCFCE7", "#064E3B"),
+                )
+                self.replay_api_btn.configure(
+                    state="normal",
+                    text=f"✔ {t('settings.enable_replay_api_btn').replace('⚡ ', '')}",
+                    fg_color=("#059669", "#065F46"),
+                )
+            else:
+                self.replay_api_badge.configure(
+                    text=t("settings.replay_api_status_disabled"),
+                    text_color=("#D97706", "#F59E0B"),
+                    fg_color=("#FEF3C7", "#78350F"),
+                )
+                self.replay_api_btn.configure(
+                    state="normal",
+                    text=t("settings.enable_replay_api_btn"),
+                    fg_color=("#0284C7", "#0284C7"),
+                )
+        except Exception:
+            pass
+
+    def _on_enable_replay_api_clicked(self):
+        """1-Click Replay API Auto-Configuration handler."""
+        try:
+            from app.replay_config import enable_replay_api
+
+            success, msg = enable_replay_api()
+            self._refresh_replay_api_ui_status()
+            if success:
+                self._log_safe(f"[SYSTEM] {msg}")
+                messagebox.showinfo(t("settings.replay_api_success_title"), msg)
+            else:
+                self._log_safe(f"[ERROR] {msg}")
+                messagebox.showerror(t("tabs.settings"), msg)
+        except Exception as exc:
+            err_msg = f"Failed to configure Replay API: {exc}"
+            self._log_safe(f"[ERROR] {err_msg}")
+            messagebox.showerror(t("tabs.settings"), err_msg)
+
     def _is_league_game_foreground(self) -> bool:
         """
         Checks if the active foreground window is strictly the game process
@@ -2019,6 +2118,10 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 if hasattr(self, "auto_replay_lbl"):
                     self.auto_replay_lbl.configure(text=t("settings.auto_start_replay"))
                     self.auto_replay_switch.configure(text=t("settings.auto_start_replay_info"))
+                if hasattr(self, "replay_api_lbl"):
+                    self.replay_api_lbl.configure(text=t("settings.replay_api_title"))
+                    self.replay_api_btn.configure(text=t("settings.enable_replay_api_btn"))
+                    self._refresh_replay_api_ui_status()
                 if hasattr(self, "hud_title_lbl"):
                     self.hud_title_lbl.configure(text=f"🎮 {t('settings.hud_section_title')}")
                     self.hud_enable_lbl.configure(text=t("settings.hud_overlay_enabled"))
@@ -2710,6 +2813,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             self.ffmpeg_badge.configure(
                 text=f"{ffmpeg_prefix} {t('health.checking')}", text_color=checking_color
             )
+
+        self._refresh_replay_api_ui_status()
 
     # ==========================================
     # SOFTWARE UPDATES (ONE-CLICK IN-PLACE UPDATER)
