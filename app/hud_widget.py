@@ -100,9 +100,22 @@ class LeagueHUDWidget:
     Supports two modes: 'RECORD' and 'REPLAY'.
     """
 
-    WIDTH = 280
+    WIDTH = 350
     HEIGHT = 76
     KEY_COLOR = "#010101"  # Cutout color for transparent window corners
+
+    # Precise Layout Coordinates (Extra-wide layout preventing any label collision)
+    TRACK_START_X = 88.0
+    TRACK_END_X = 240.0
+    TRACK_WIDTH = 152.0
+    NUM_BARS = 36
+    DIVIDER_X = 250
+    SLIDER_X1 = 88.0
+    SLIDER_X2 = 240.0
+    LOCK_X = 332
+    LOCK_Y = 22
+    TIMER_X = 300
+    TIMER_Y = 52
 
     # Design color palette from mockups
     COLOR_BG = "#0E1116"
@@ -121,17 +134,21 @@ class LeagueHUDWidget:
         self,
         master: tk.Tk,
         opacity: float = 0.85,
+        locked: bool = False,
         click_through: bool = False,
         initial_x: int = -1,
         initial_y: int = -1,
         on_volume_changed: Callable[[int], None] | None = None,
         on_position_changed: Callable[[int, int], None] | None = None,
+        on_lock_changed: Callable[[bool], None] | None = None,
     ) -> None:
         self.master = master
         self.opacity = max(0.3, min(1.0, float(opacity)))
-        self.click_through = bool(click_through)
+        self.locked = bool(locked or click_through)
+        self.click_through = self.locked
         self.on_volume_changed = on_volume_changed
         self.on_position_changed = on_position_changed
+        self.on_lock_changed = on_lock_changed
 
         self.mode = "RECORD"  # "RECORD" or "REPLAY"
         self.is_visible = False
@@ -194,6 +211,7 @@ class LeagueHUDWidget:
         self.canvas.bind("<B1-Motion>", self._on_mouse_move)
         self.canvas.bind("<ButtonRelease-1>", self._on_mouse_up)
         self.canvas.bind("<Button-3>", self._on_right_click)
+        self.canvas.bind("<Motion>", self._on_mouse_hover)
 
         # Initial render
         self.render()
@@ -247,11 +265,18 @@ class LeagueHUDWidget:
         except Exception:
             pass
 
-    def set_click_through(self, enable: bool) -> None:
-        """Dynamically enables or disables click-through mode."""
-        self.click_through = bool(enable)
+    def set_locked(self, locked: bool) -> None:
+        """Dynamically locks or unlocks the overlay position."""
+        self.locked = bool(locked)
+        self.click_through = self.locked
         if getattr(self, "is_visible", False):
-            self._apply_click_through(self.click_through)
+            self.render()
+        if self.on_lock_changed:
+            self.on_lock_changed(self.locked)
+
+    def set_click_through(self, enable: bool) -> None:
+        """Alias for set_locked to maintain full backward compatibility."""
+        self.set_locked(enable)
 
     def set_opacity(self, opacity: float) -> None:
         """Dynamically adjusts overlay transparency."""
@@ -361,9 +386,9 @@ class LeagueHUDWidget:
 
         # 2. Vertical divider line
         self.canvas.create_line(
-            202,
+            self.DIVIDER_X,
             10,
-            202,
+            self.DIVIDER_X,
             self.HEIGHT - 10,
             fill=self.COLOR_DIVIDER,
             width=1,
@@ -374,11 +399,35 @@ class LeagueHUDWidget:
         else:
             self._render_replay_content()
 
+    def _render_lock_icon(self) -> None:
+        """Renders the Lock/Unlock status button on the top right corner."""
+        lock_bg = "#261E14" if self.locked else "#131B2E"
+        lock_border = "#78350F" if self.locked else "#2A3547"
+        self.canvas.create_oval(
+            self.LOCK_X - 11,
+            self.LOCK_Y - 11,
+            self.LOCK_X + 11,
+            self.LOCK_Y + 11,
+            fill=lock_bg,
+            outline=lock_border,
+            width=1,
+        )
+        lock_icon = "🔒" if self.locked else "🔓"
+        lock_color = "#F59E0B" if self.locked else "#38BDF8"
+        self.canvas.create_text(
+            self.LOCK_X,
+            self.LOCK_Y,
+            text=lock_icon,
+            anchor="center",
+            font=("Segoe UI Emoji", 10),
+            fill=lock_color,
+        )
+
     def _render_recorder_content(self) -> None:
-        """Renders the Recorder HUD (MIC, DISCORD, REC, Timer)."""
+        """Renders the Recorder HUD (MIC, DISCORD, REC, Timer, Lock)."""
         # Row 1: MIC Label
         self.canvas.create_text(
-            14,
+            16,
             22,
             text="MIC",
             anchor="w",
@@ -407,7 +456,7 @@ class LeagueHUDWidget:
 
         # Row 2: DISCORD Label
         self.canvas.create_text(
-            14,
+            16,
             54,
             text="DISCORD",
             anchor="w",
@@ -437,11 +486,11 @@ class LeagueHUDWidget:
         if self.is_paused:
             # Amber dot + PAUSED
             self.canvas.create_oval(
-                211, 19, 219, 27, fill=self.COLOR_AMBER, outline=""
+                258, 18, 266, 26, fill=self.COLOR_AMBER, outline=""
             )
             self.canvas.create_text(
-                223,
-                23,
+                270,
+                22,
                 text="PAUSED",
                 anchor="w",
                 fill=self.COLOR_AMBER,
@@ -450,21 +499,24 @@ class LeagueHUDWidget:
         else:
             # Coral/red dot + REC
             self.canvas.create_oval(
-                218, 19, 226, 27, fill=self.COLOR_RED, outline=""
+                258, 18, 266, 26, fill=self.COLOR_RED, outline=""
             )
             self.canvas.create_text(
-                230,
-                23,
+                270,
+                22,
                 text="REC",
                 anchor="w",
                 fill=self.COLOR_RED,
                 font=("Segoe UI", 10, "bold"),
             )
 
+        # Lock button (top right)
+        self._render_lock_icon()
+
         # Right Section: Digital Match Timer
         self.canvas.create_text(
-            241,
-            52,
+            self.TIMER_X,
+            self.TIMER_Y,
             text=self.time_str,
             anchor="center",
             fill=self.COLOR_TIMER,
@@ -472,10 +524,10 @@ class LeagueHUDWidget:
         )
 
     def _render_replay_content(self) -> None:
-        """Renders the Replay HUD (AUDIO wave with playhead, VOLUME slider, REPLAY, Timer)."""
+        """Renders the Replay HUD (AUDIO wave with playhead, VOLUME slider, REPLAY, Timer, Lock)."""
         # Row 1: AUDIO Label
         self.canvas.create_text(
-            14,
+            16,
             22,
             text="AUDIO",
             anchor="w",
@@ -485,7 +537,7 @@ class LeagueHUDWidget:
 
         # Row 1: Audio waveform vertical bars with moving playhead cursor
         progress = max(0.0, min(1.0, self.current_time / self.total_duration))
-        cursor_x = 68.0 + progress * 126.0
+        cursor_x = self.TRACK_START_X + progress * self.TRACK_WIDTH
 
         # Draw played portion (Teal) and upcoming portion (Muted slate)
         played_bars, upcoming_bars = self._split_waveform(cursor_x, audio_level=self.audio_level)
@@ -523,7 +575,7 @@ class LeagueHUDWidget:
 
         # Row 2: VOLUME Label
         self.canvas.create_text(
-            14,
+            16,
             54,
             text="VOLUME",
             anchor="w",
@@ -532,11 +584,10 @@ class LeagueHUDWidget:
         )
 
         # Row 2: Volume Slider Track
-        slider_x1, slider_x2 = 68.0, 194.0
-        slider_w = slider_x2 - slider_x1
+        slider_x1, slider_x2 = self.SLIDER_X1, self.SLIDER_X2
         effective_vol = 0 if self.is_muted else self.volume
         vol_pct = max(0.0, min(1.0, effective_vol / 100.0))
-        knob_x = slider_x1 + vol_pct * slider_w
+        knob_x = slider_x1 + vol_pct * self.TRACK_WIDTH
 
         # Background track capsule
         self.canvas.create_line(
@@ -576,44 +627,31 @@ class LeagueHUDWidget:
         # Right Section: Status (▶ REPLAY or ⏸ PAUSED)
         if self.is_paused:
             self.canvas.create_text(
-                210,
-                23,
-                text="⏸",
-                anchor="w",
-                fill=self.COLOR_AMBER,
-                font=("Segoe UI", 10, "bold"),
-            )
-            self.canvas.create_text(
-                224,
-                23,
-                text="PAUSED",
+                258,
+                22,
+                text="⏸ PAUSED",
                 anchor="w",
                 fill=self.COLOR_AMBER,
                 font=("Segoe UI", 9, "bold"),
             )
         else:
-            self.canvas.create_text(
-                211,
-                23,
-                text="▶",
-                anchor="w",
-                fill=self.COLOR_TEAL,
-                font=("Segoe UI", 10, "bold"),
-            )
             speed_text = "REPLAY" if self.speed == 1.0 else f"{self.speed:.1f}x"
             self.canvas.create_text(
-                225,
-                23,
-                text=speed_text,
+                258,
+                22,
+                text=f"▶ {speed_text}",
                 anchor="w",
                 fill=self.COLOR_TEAL,
-                font=("Segoe UI", 10, "bold"),
+                font=("Segoe UI", 9, "bold"),
             )
+
+        # Lock button (top right)
+        self._render_lock_icon()
 
         # Right Section: Replay Timer
         self.canvas.create_text(
-            241,
-            52,
+            self.TIMER_X,
+            self.TIMER_Y,
             text=self.time_str,
             anchor="center",
             fill=self.COLOR_TIMER,
@@ -625,10 +663,10 @@ class LeagueHUDWidget:
     # ==========================================
     def _generate_static_waveform(self) -> list[tuple[float, float, float]]:
         """Generates baseline vertical bar coordinates (x, y1, y2) for the replay audio track."""
-        width = 126.0
-        start_x = 68.0
+        width = self.TRACK_WIDTH
+        start_x = self.TRACK_START_X
         center_y = 22.0
-        num_bars = 32
+        num_bars = self.NUM_BARS
         step = width / (num_bars - 1)
         bars = []
 
@@ -684,9 +722,9 @@ class LeagueHUDWidget:
         seed: float = 0.0,
     ) -> list[tuple[float, float, float]]:
         """Generates sleek, vertical visualizer bars (x, y_top, y_bottom) modulated by live VU levels."""
-        width = 126.0
-        start_x = 68.0
-        num_bars = 32
+        width = self.TRACK_WIDTH
+        start_x = self.TRACK_START_X
+        num_bars = self.NUM_BARS
         step = width / (num_bars - 1)
         bars = []
 
@@ -713,28 +751,38 @@ class LeagueHUDWidget:
     # ==========================================
     # MOUSE INTERACTION & DRAGGING
     # ==========================================
+    def _is_lock_hit(self, x: float, y: float) -> bool:
+        return (self.LOCK_X - 14) <= x <= (self.LOCK_X + 14) and (self.LOCK_Y - 14) <= y <= (self.LOCK_Y + 14)
+
+    def _is_volume_slider_hit(self, x: float, y: float) -> bool:
+        return self.mode == "REPLAY" and (self.SLIDER_X1 - 6) <= x <= (self.SLIDER_X2 + 6) and 42 <= y <= 66
+
     def _on_mouse_down(self, event: tk.Event) -> None:
-        if self.click_through:
+        # 1. Click on Lock button
+        if self._is_lock_hit(event.x, event.y):
+            self.set_locked(not self.locked)
             return
 
-        # Check if clicking the volume slider in Replay mode
-        if self.mode == "REPLAY" and 65 <= event.x <= 198 and 42 <= event.y <= 66:
+        # 2. Click on Volume slider in Replay mode
+        # ALLOWED EVEN WHEN LOCKED! (User requirement: able to change sound while locked)
+        if self._is_volume_slider_hit(event.x, event.y):
             self._is_dragging_volume = True
             self._update_volume_from_mouse(event.x)
             return
 
-        # Window drag
+        # 3. If locked, window cannot be dragged!
+        if self.locked:
+            return
+
+        # 4. Unlocked: Drag the overlay window
         self._is_dragging = True
         self._drag_start_x = event.x
         self._drag_start_y = event.y
 
     def _on_mouse_move(self, event: tk.Event) -> None:
-        if self.click_through:
-            return
-
         if self._is_dragging_volume:
             self._update_volume_from_mouse(event.x)
-        elif self._is_dragging:
+        elif self._is_dragging and not self.locked:
             cur_x = self.window.winfo_x()
             cur_y = self.window.winfo_y()
             new_x = cur_x + (event.x - self._drag_start_x)
@@ -742,9 +790,6 @@ class LeagueHUDWidget:
             self.window.geometry(f"+{new_x}+{new_y}")
 
     def _on_mouse_up(self, event: tk.Event) -> None:
-        if self.click_through:
-            return
-
         if self._is_dragging_volume:
             self._is_dragging_volume = False
             self._update_volume_from_mouse(event.x)
@@ -755,12 +800,24 @@ class LeagueHUDWidget:
             if self.on_position_changed:
                 self.on_position_changed(final_x, final_y)
 
+    def _on_mouse_hover(self, event: tk.Event) -> None:
+        """Dynamically updates mouse cursor to reflect actionable elements."""
+        try:
+            if self._is_lock_hit(event.x, event.y) or (
+                self.mode == "REPLAY" and self._is_volume_slider_hit(event.x, event.y)
+            ):
+                self.canvas.config(cursor="hand2")
+            elif not self.locked:
+                self.canvas.config(cursor="fleur")
+            else:
+                self.canvas.config(cursor="")
+        except Exception:
+            pass
+
     def _update_volume_from_mouse(self, mouse_x: float) -> None:
         """Computes volume percentage from mouse X coordinate in slider track."""
-        slider_x1, slider_x2 = 68.0, 194.0
-        slider_w = slider_x2 - slider_x1
-        clamped_x = max(slider_x1, min(slider_x2, mouse_x))
-        pct = round(((clamped_x - slider_x1) / slider_w) * 100)
+        clamped_x = max(self.SLIDER_X1, min(self.SLIDER_X2, mouse_x))
+        pct = round(((clamped_x - self.SLIDER_X1) / self.TRACK_WIDTH) * 100)
         self.volume = pct
         self.render()
         if self.on_volume_changed:
@@ -768,27 +825,23 @@ class LeagueHUDWidget:
 
     def _on_right_click(self, event: tk.Event) -> None:
         """Pops up a contextual control menu."""
-        if self.click_through:
-            return
-
         menu = tk.Menu(self.window, tearoff=0)
+        lock_label = "🔓 Unlock Position" if self.locked else "🔒 Lock Position"
+        menu.add_command(
+            label=lock_label,
+            command=lambda: self.set_locked(not self.locked),
+        )
         menu.add_command(
             label="🎯 Reset Position",
             command=self.reset_position,
         )
         if self.mode == "RECORD":
             menu.add_command(
-                label="👁️ Switch to Replay HUD",
-                command=lambda: self.set_mode("REPLAY"),
-            )
-        else:
-            menu.add_command(
-                label="👁️ Switch to Recorder HUD",
-                command=lambda: self.set_mode("RECORD"),
+                label="🔇 Toggle Mic Mute",
+                command=lambda: setattr(self, "is_muted", not self.is_muted) or self.render(),
             )
         menu.add_separator()
-        menu.add_command(label="✕ Close HUD", command=self.hide)
-
+        menu.add_command(label="✕ Close Overlay", command=self.hide)
         try:
             menu.tk_popup(event.x_root, event.y_root)
         finally:

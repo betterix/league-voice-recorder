@@ -12,15 +12,18 @@ class TestLeagueHUDWidget(unittest.TestCase):
 
         self.mock_volume_callback = MagicMock()
         self.mock_pos_callback = MagicMock()
+        self.mock_lock_callback = MagicMock()
 
         self.hud = LeagueHUDWidget(
             self.root,
             opacity=0.85,
             click_through=False,
+            locked=False,
             initial_x=120,
             initial_y=80,
             on_volume_changed=self.mock_volume_callback,
             on_position_changed=self.mock_pos_callback,
+            on_lock_changed=self.mock_lock_callback,
         )
 
     def tearDown(self):
@@ -31,11 +34,12 @@ class TestLeagueHUDWidget(unittest.TestCase):
             pass
 
     def test_hud_dimensions_and_properties(self):
-        """HUD matches 280x76 specifications and starts withdrawn."""
-        self.assertEqual(self.hud.WIDTH, 280)
+        """HUD matches 350x76 specifications and starts withdrawn."""
+        self.assertEqual(self.hud.WIDTH, 350)
         self.assertEqual(self.hud.HEIGHT, 76)
         self.assertEqual(self.hud.opacity, 0.85)
         self.assertFalse(self.hud.click_through)
+        self.assertFalse(self.hud.locked)
         self.assertFalse(self.hud.is_visible)
 
     def test_hud_show_and_hide(self):
@@ -94,8 +98,8 @@ class TestLeagueHUDWidget(unittest.TestCase):
         pts = self.hud._generate_static_waveform()
         self.assertGreater(len(pts), 10)
 
-        # Split at 50% with voice level
-        cursor_x = 68.0 + 0.5 * 126.0
+        # Split at 50% with voice level (88.0 + 0.5 * 152.0 = 164.0)
+        cursor_x = 88.0 + 0.5 * 152.0
         played, upcoming = self.hud._split_waveform(cursor_x, audio_level=0.75)
         self.assertGreater(len(played), 0)
         self.assertGreater(len(upcoming), 0)
@@ -103,18 +107,18 @@ class TestLeagueHUDWidget(unittest.TestCase):
     def test_volume_slider_mouse_calculation(self):
         """Dragging volume updates percentage and invokes callback."""
         self.hud.set_mode("REPLAY")
-        # Middle of slider: 68 + 126/2 = 131 -> 50%
-        self.hud._update_volume_from_mouse(131.0)
+        # Middle of slider: 88 + 152/2 = 164 -> 50%
+        self.hud._update_volume_from_mouse(164.0)
         self.assertEqual(self.hud.volume, 50)
         self.mock_volume_callback.assert_called_with(50)
 
-        # Clamping left edge (< 68 -> 0%)
-        self.hud._update_volume_from_mouse(40.0)
+        # Clamping left edge (< 88 -> 0%)
+        self.hud._update_volume_from_mouse(50.0)
         self.assertEqual(self.hud.volume, 0)
         self.mock_volume_callback.assert_called_with(0)
 
-        # Clamping right edge (> 194 -> 100%)
-        self.hud._update_volume_from_mouse(250.0)
+        # Clamping right edge (> 240 -> 100%)
+        self.hud._update_volume_from_mouse(280.0)
         self.assertEqual(self.hud.volume, 100)
         self.mock_volume_callback.assert_called_with(100)
 
@@ -128,6 +132,23 @@ class TestLeagueHUDWidget(unittest.TestCase):
 
         self.hud.set_click_through(False)
         self.assertFalse(self.hud.click_through)
+
+    def test_locked_toggle_and_callback(self):
+        """Position locking can be toggled and triggers callback."""
+        self.hud.set_locked(True)
+        self.assertTrue(self.hud.locked)
+
+        self.hud.set_locked(False)
+        self.assertFalse(self.hud.locked)
+
+        # Clicking lock icon toggles locked state
+        class DummyEvent:
+            x = 332
+            y = 22
+
+        self.hud._on_mouse_down(DummyEvent())
+        self.assertTrue(self.hud.locked)
+        self.mock_lock_callback.assert_called_with(True)
 
     def test_reset_position(self):
         """Reset position calculates top-right bounds and calls callback."""

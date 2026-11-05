@@ -117,14 +117,17 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         try:
             from app.hud_widget import LeagueHUDWidget
 
+            is_locked = bool(self.config.get("hud_locked", self.config.get("hud_click_through", False)))
             self.hud = LeagueHUDWidget(
                 self,
                 opacity=float(self.config.get("hud_opacity", 0.85)),
-                click_through=bool(self.config.get("hud_click_through", False)),
+                locked=is_locked,
+                click_through=is_locked,
                 initial_x=int(self.config.get("hud_x", -1)),
                 initial_y=int(self.config.get("hud_y", -1)),
                 on_volume_changed=self._on_hud_volume_changed,
                 on_position_changed=self._on_hud_position_changed,
+                on_lock_changed=self._on_hud_lock_changed_from_overlay,
             )
         except Exception:
             self.hud = None
@@ -1373,22 +1376,22 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         )
         self.hud_enable_switch.grid(row=1, column=1, padx=(6, 14), pady=6, sticky="w")
 
-        # Click-Through Mode Switch
-        self.hud_click_through_lbl = ctk.CTkLabel(
+        # Lock Position / Click-Through Mode Switch
+        self.hud_lock_lbl = ctk.CTkLabel(
             card_hud,
-            text=t("settings.hud_click_through"),
+            text=t("settings.hud_locked"),
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color=("#0F172A", "#CBD5E1"),
         )
-        self.hud_click_through_lbl.grid(row=2, column=0, padx=(14, 8), pady=6, sticky="w")
+        self.hud_lock_lbl.grid(row=2, column=0, padx=(14, 8), pady=6, sticky="w")
 
-        self.hud_click_through_var = ctk.BooleanVar(
-            value=bool(self.config.get("hud_click_through", False))
+        self.hud_lock_var = ctk.BooleanVar(
+            value=bool(self.config.get("hud_locked", self.config.get("hud_click_through", False)))
         )
-        self.hud_click_through_switch = ctk.CTkSwitch(
+        self.hud_lock_switch = ctk.CTkSwitch(
             card_hud,
-            text=t("settings.hud_click_through_info"),
-            variable=self.hud_click_through_var,
+            text=t("settings.hud_locked_info"),
+            variable=self.hud_lock_var,
             onvalue=True,
             offvalue=False,
             fg_color=("#CBD5E1", "#1E2A4A"),
@@ -1396,9 +1399,14 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             button_color=("#FFFFFF", "#FFFFFF"),
             button_hover_color=("#F8FAFC", "#E2E8F0"),
             text_color=("#334155", "#94A3B8"),
-            command=self._on_hud_click_through_toggled,
+            command=self._on_hud_lock_toggled,
         )
-        self.hud_click_through_switch.grid(row=2, column=1, padx=(6, 14), pady=6, sticky="w")
+        self.hud_lock_switch.grid(row=2, column=1, padx=(6, 14), pady=6, sticky="w")
+
+        # Backward compatibility aliases
+        self.hud_click_through_lbl = self.hud_lock_lbl
+        self.hud_click_through_var = self.hud_lock_var
+        self.hud_click_through_switch = self.hud_lock_switch
 
         # HUD Opacity Slider
         curr_opacity = float(self.config.get("hud_opacity", 0.85))
@@ -1605,12 +1613,24 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         if not enabled and self.hud:
             self.hud.hide()
 
-    def _on_hud_click_through_toggled(self):
-        ct = bool(self.hud_click_through_var.get())
-        self.config["hud_click_through"] = ct
+    def _on_hud_lock_toggled(self):
+        locked = bool(self.hud_lock_var.get())
+        self.config["hud_locked"] = locked
+        self.config["hud_click_through"] = locked
         save_config(self.config)
         if self.hud:
-            self.hud.set_click_through(ct)
+            self.hud.set_locked(locked)
+
+    def _on_hud_click_through_toggled(self):
+        self._on_hud_lock_toggled()
+
+    def _on_hud_lock_changed_from_overlay(self, locked: bool):
+        """Called when player clicks the lock/unlock icon directly on the overlay."""
+        self.config["hud_locked"] = locked
+        self.config["hud_click_through"] = locked
+        save_config(self.config)
+        if hasattr(self, "hud_lock_var"):
+            self.hud_lock_var.set(locked)
 
     def _on_hud_opacity_slider_changed(self, val):
         op = round(float(val), 2)
@@ -2003,8 +2023,12 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                     self.hud_title_lbl.configure(text=f"🎮 {t('settings.hud_section_title')}")
                     self.hud_enable_lbl.configure(text=t("settings.hud_overlay_enabled"))
                     self.hud_enable_switch.configure(text=t("settings.hud_overlay_info"))
-                    self.hud_click_through_lbl.configure(text=t("settings.hud_click_through"))
-                    self.hud_click_through_switch.configure(text=t("settings.hud_click_through_info"))
+                    if hasattr(self, "hud_lock_lbl"):
+                        self.hud_lock_lbl.configure(text=t("settings.hud_locked"))
+                        self.hud_lock_switch.configure(text=t("settings.hud_locked_info"))
+                    elif hasattr(self, "hud_click_through_lbl"):
+                        self.hud_click_through_lbl.configure(text=t("settings.hud_locked"))
+                        self.hud_click_through_switch.configure(text=t("settings.hud_locked_info"))
                     self.hud_opacity_lbl.configure(
                         text=t("settings.hud_opacity", percent=int(self.hud_opacity_slider.get() * 100))
                     )
@@ -2933,7 +2957,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 "auto_start_champ_select": bool(self.auto_champ_select_var.get()),
                 "auto_start_replay": bool(self.auto_replay_var.get()),
                 "hud_overlay_enabled": bool(self.hud_enable_var.get()) if hasattr(self, "hud_enable_var") else True,
-                "hud_click_through": bool(self.hud_click_through_var.get()) if hasattr(self, "hud_click_through_var") else False,
+                "hud_locked": bool(self.hud_lock_var.get()) if hasattr(self, "hud_lock_var") else False,
+                "hud_click_through": bool(self.hud_lock_var.get()) if hasattr(self, "hud_lock_var") else False,
                 "hud_opacity": round(float(self.hud_opacity_slider.get()), 2) if hasattr(self, "hud_opacity_slider") else 0.85,
             }
             if save_config(new_config):
@@ -2941,7 +2966,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 set_language(selected_lang_code)
                 self._set_theme(selected_theme_code)
                 if self.hud:
-                    self.hud.set_click_through(new_config["hud_click_through"])
+                    self.hud.set_locked(new_config["hud_locked"])
                     self.hud.set_opacity(new_config["hud_opacity"])
                     if not new_config["hud_overlay_enabled"]:
                         self.hud.hide()
