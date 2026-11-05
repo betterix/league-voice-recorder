@@ -278,6 +278,19 @@ class TestUIApp(unittest.TestCase):
         self.app._sync_hud_visibility_and_state()
         self.assertFalse(self.app.hud.is_visible)
 
+    def test_replay_api_button_click(self):
+        """Clicking enable replay api calls enable_replay_api and logs message without error."""
+        with (
+            patch("app.replay_config.enable_replay_api", return_value=(True, "Replay API enabled")),
+            patch("tkinter.messagebox.showinfo"),
+        ):
+            self.app._on_enable_replay_api_clicked()
+
+        items = []
+        while not self.app.msg_queue.empty():
+            items.append(self.app.msg_queue.get_nowait())
+        self.assertTrue(any("Replay API enabled" in str(item) for item in items))
+
 
 if __name__ == "__main__":
     unittest.main()

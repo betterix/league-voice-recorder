@@ -1776,14 +1776,14 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             success, msg = enable_replay_api()
             self._refresh_replay_api_ui_status()
             if success:
-                self._log_safe(f"[SYSTEM] {msg}")
+                self.log_message(f"[SYSTEM] {msg}")
                 messagebox.showinfo(t("settings.replay_api_success_title"), msg)
             else:
-                self._log_safe(f"[ERROR] {msg}")
+                self.log_message(f"[ERROR] {msg}")
                 messagebox.showerror(t("tabs.settings"), msg)
         except Exception as exc:
             err_msg = f"Failed to configure Replay API: {exc}"
-            self._log_safe(f"[ERROR] {err_msg}")
+            self.log_message(f"[ERROR] {err_msg}")
             messagebox.showerror(t("tabs.settings"), err_msg)
 
     def _is_league_game_foreground(self) -> bool:
@@ -2159,6 +2159,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         """Thread-safe log submission."""
         now = datetime.datetime.now().strftime("%H:%M:%S")
         self.msg_queue.put(("LOG", f"[{now}] {message}"))
+
+    _log_safe = log_message
 
     def set_rec_status(self, status, detail=""):
         """Thread-safe status update for recorder."""
