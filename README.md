@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://betterix.github.io/league-voice-recorder/"><img src="https://img.shields.io/badge/website-live-success?logo=googlechrome&logoColor=white" alt="Live Website" /></a>
-  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.4.0-blue?logo=github" alt="Release Version" /></a>
+  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.4.1-blue?logo=github" alt="Release Version" /></a>
   <img src="https://img.shields.io/badge/python-3.14.10-blue?logo=python&logoColor=white" alt="Python Version" />
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%2064--bit-0078D6?logo=windows&logoColor=white" alt="Platform" />
   <img src="https://img.shields.io/badge/build-passing-brightgreen?logo=githubactions&logoColor=white" alt="Build Status" />
@@ -68,16 +68,20 @@ In competitive League of Legends scrimmages and tournament matches, reviewing ga
 - ⚡ **Zero-Latency Unpause & Debounced Scrubbing**: Instant playback resumption without pipeline-flushing seeks; debounced seek cooldown eliminates VLC asynchronous time flutter.
 - 🔇 **In-Game Replay Mute Hotkey (`M`)**: Press **`M`** inside the League replay spectator mode or desktop app to toggle replay voice comms on and off (foreground-window guarded to prevent accidental muting while typing).
 - 🔊 **Dynamic Replay Volume Control**: Adjust replay audio level (0–100%) on the fly via UI slider with persistent user preference.
+- 🛠️ **1-Click Replay API Auto-Configuration**: Automatically locates `League of Legends/Config/game.cfg` and injects `EnableReplayApi=1` into `[General]` with automatic safe backup (`game.cfg.bak`).
 
 ### 🪟 In-Game Floating HUD Overlay (Hextech Esports Overlay)
 - 🎮 **Game-Exclusive Display & Anti-Bleed Isolation**:
   - The HUD overlay **ONLY** appears when actively recording a live scrim match (`RECORDING` or `PAUSED`) or synchronizing a replay (`SYNCING` or `PAUSED`) AND the foreground window is the actual League game engine (`League of Legends.exe`).
-  - **Client & Desktop Isolation**: 100% hidden when sitting in the League launcher client (`LeagueClientUx.exe`), Discord, browser, or desktop.
+  - **ChampSelect Pre-Warming & Loading Screen Launch**: The overlay pre-warms in memory during ChampSelect with zero CPU hitch, staying 100% hidden through ChampSelect, lobby, Discord, browser, or desktop, and automatically appears the exact moment `League of Legends.exe` displays the Loading Screen.
   - **Alt-Tab Smart Focus Guard**: Instantly hides when Alt-Tabbing away from `League of Legends.exe`, and immediately restores visibility upon refocusing back into the game.
 - 📊 **Dual HUD Modes**:
-  - **Live Scrim HUD**: Animated dual-channel oscilloscopes for player mic (`#3DDCC4` mint) and Discord comms (`#8B93FF` periwinkle), pulsing red `REC` indicator, and live digital match clock.
-  - **Replay HUD**: Full waveform scrubbing view with white playhead needle (`#FFFFFF`), real-time VLC volume slider, and playback status pill (`▶ REPLAY` / `⏸ PAUSED`).
-- 🖱️ **Zero-Interference Draggable Overlay**: Reposition anywhere; coordinates saved in `config.json`. Supports click-through mode (`WS_EX_TRANSPARENT`) so mouse clicks pass straight into League during matches.
+  - **Live Scrim HUD**: Animated dual-channel oscilloscopes with boosted sensitivity for player mic (`#3DDCC4` mint) and Discord comms (`#8B93FF` periwinkle), pulsing red `REC` indicator, and live digital match clock.
+  - **Replay HUD**: Full waveform scrubbing view with white playhead needle (`#FFFFFF`), real-time interactive VLC volume slider, and playback status pill (`▶ REPLAY` / `⏸ PAUSED`).
+- 🖱️ **Native Click-Through & Dedicated Interactive Hit Targets**:
+  - Main window implements native `WS_EX_TRANSPARENT` so 100% of in-game clicks pass directly into League of Legends during matches.
+  - Dedicated transparent hit targets keep the **Lock icon** clickable to toggle drag mode and the **Replay Volume slider** draggable even while locked!
+- ⚡ **Instant Settings Auto-Save**: All settings, volume preferences, and HUD coordinates save instantly and silently to `config.json` without requiring a manual save button.
 - 🖥️ **Centered App Window**: Clean desktop launch geometry automatically centered on the user's primary monitor.
 
 ### 📦 Windows Distribution, Packaging & Updates
@@ -334,7 +338,7 @@ To ensure complete transparency and player safety:
 - **Public Verification Badges**: Every [GitHub Release](https://github.com/betterix/league-voice-recorder/releases) includes direct links to the public VirusTotal scan reports and cryptographic SHA256 checksums.
 - **Independent Local Verification**: You can verify the integrity of any downloaded binary at any time in Windows PowerShell:
   ```powershell
-  Get-FileHash .\LeagueVoiceRecorder-Setup-v0.4.0.exe -Algorithm SHA256
+  Get-FileHash .\LeagueVoiceRecorder-Setup-v0.4.1.exe -Algorithm SHA256
   ```
 - **100% Riot Vanguard & Anti-Cheat Safe**: League Voice Recorder strictly utilizes official developer APIs (`127.0.0.1:2999`) and Windows WASAPI audio loopback. It contains **no memory injectors, no DLL hooks, and no game modifications**.
 

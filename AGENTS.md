@@ -269,20 +269,28 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
 ### 3.7 In-Game Floating HUD Overlay (`app/hud_widget.py`)
 - **Game-Exclusive Display & Anti-Bleed Isolation**:
   - The HUD overlay **ONLY** appears when actively recording a live scrim match (`RECORDING` or `PAUSED`) or actively synchronizing a replay (`SYNCING` or `PAUSED`) AND the foreground window is the actual League game engine (`League of Legends.exe`).
-  - **Client & Desktop Isolation**: 100% hidden when sitting in the League launcher client (`LeagueClientUx.exe` / `LeagueClient.exe`), Discord, browser, or desktop.
+  - **ChampSelect Pre-Warming & Loading Screen Launch**: Pre-warms resources in memory during ChampSelect with 0 CPU hitch; stays 100% hidden through ChampSelect, lobby, Discord, browser, or desktop, and automatically appears the exact moment `League of Legends.exe` displays the Loading Screen.
   - **Alt-Tab Smart Focus Guard**: Instantly hides when Alt-Tabbing away from `League of Legends.exe`, and immediately restores visibility upon refocusing back into the game.
 - **Translucent & Non-Intrusive Design**:
-  - Implements a 280x76 borderless floating HUD with semi-transparent layered opacity (`-alpha 0.85` by default) and transparent corner cutout (`-transparentcolor`) matching the esports Hextech PNG design specifications.
+  - Implements a 350x76 borderless floating HUD with semi-transparent layered opacity (`-alpha 0.85` by default) matching esports Hextech design specifications.
   - Floats topmost over League of Legends in Borderless or Windowed display modes.
 - **Dual Mode Operation**:
-  - **Recorder HUD Mode**: Renders dynamic animated oscilloscopes for player Microphone (`#3DDCC4` mint/teal) and Discord team chat (`#8B93FF` periwinkle) modulated by real-time WASAPI audio levels, with a pulsing red REC badge and digital match clock.
+  - **Recorder HUD Mode**: Renders dynamic animated oscilloscopes with boosted sensitivity for player Microphone (`#3DDCC4` mint/teal) and Discord team chat (`#8B93FF` periwinkle) modulated by real-time WASAPI audio levels, with a pulsing red REC badge and digital match clock.
   - **Replay HUD Mode**: Displays an audio waveform with a moving playhead needle (`#FFFFFF` cursor, `#3DDCC4` played audio, `#3C4655` upcoming audio), an interactive replay volume slider with real-time VLC volume sync, and playback state indicator (`▶ REPLAY` / `⏸ PAUSED`).
-- **Input Transparency & Positioning**:
-  - Draggable with mouse to reposition anywhere on the desktop; automatically persists `hud_x` and `hud_y` coordinates to `config.json`.
-  - Supports Windows `WS_EX_TRANSPARENT` Click-Through mode so mouse clicks pass straight through into League of Legends during matches.
+- **Native Click-Through & Dedicated Interactive Hit Targets**:
+  - Draggable with mouse when unlocked; automatically persists `hud_x` and `hud_y` coordinates to `config.json`.
+  - Supports Windows `WS_EX_TRANSPARENT` Click-Through mode so 100% of mouse clicks pass straight through into League of Legends during matches.
+  - Dedicated transparent hit windows keep the **Lock icon** clickable to toggle drag mode and the **Replay Volume slider** draggable even when click-through is enabled!
   - Settings UI includes preview controls ("Preview Rec HUD", "Preview Replay HUD"), opacity slider (40%-100%), and position reset.
 
-### 3.8 Automated VirusTotal CI Scanner & Security Verification (`scripts/virustotal_scan.py`)
+### 3.8 1-Click Replay API Auto-Configuration (`app/replay_config.py`)
+- **Automated Configuration**:
+  - Automatically locates `League of Legends/Config/game.cfg` via `find_league_install_dir()`.
+  - Backs up the original configuration safely to `game.cfg.bak`.
+  - Parses and injects `EnableReplayApi=1` under the `[General]` section via `configparser`.
+  - Accessible via a dedicated 1-click button in the Settings interface with instant user feedback.
+
+### 3.9 Automated VirusTotal CI Scanner & Security Verification (`scripts/virustotal_scan.py`)
 - **Automated Antivirus CI Pipeline**:
   - Automatically invoked during GitHub Actions release compilation (`.github/workflows/release.yml`) whenever a new release or version tag is built.
   - Interacts with **VirusTotal API v3** (`https://www.virustotal.com/api/v3`) to analyze both the standalone compiled binary (`LeagueVoiceRecorder.exe`) and the Inno Setup installer wizard (`LeagueVoiceRecorder-Setup-*.exe`).

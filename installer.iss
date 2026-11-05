@@ -2,7 +2,7 @@
 ; League Voice Recorder & Replay Synchronizer Installer
 
 #define MyAppName "League Voice Recorder"
-#define MyAppVersion "0.4.0"
+#define MyAppVersion "0.4.1"
 #define MyAppPublisher "betterix"
 #define MyAppURL "https://github.com/betterix/league-voice-recorder"
 #define MyAppExeName "LeagueVoiceRecorder.exe"
