@@ -1814,10 +1814,20 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             if not hwnd:
                 return False
 
-            # If user is directly interacting with or focusing the HUD overlay itself, keep it visible!
+            # If user is directly interacting with or focusing the HUD overlay or hit-windows, keep it visible!
             if getattr(self, "hud", None):
-                hud_hwnd = getattr(self.hud, "get_hwnd", lambda: 0)()
-                if hud_hwnd and hwnd == hud_hwnd:
+                hud_hwnds = [getattr(self.hud, "get_hwnd", lambda: 0)()]
+                if getattr(self.hud, "lock_hit_win", None):
+                    try:
+                        hud_hwnds.append(self.hud.lock_hit_win.winfo_id())
+                    except Exception:
+                        pass
+                if getattr(self.hud, "volume_hit_win", None):
+                    try:
+                        hud_hwnds.append(self.hud.volume_hit_win.winfo_id())
+                    except Exception:
+                        pass
+                if hwnd in hud_hwnds and hwnd != 0:
                     return True
 
             fg_pid = ctypes.c_ulong()
@@ -1930,7 +1940,16 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.hud.hide()
             return
 
-        # 2. Stay visible during active watcher (in League, Discord, desktop, or while waiting)
+        # 2. STRICT LEAGUE OF LEGENDS.EXE FOREGROUND CHECK:
+        # The HUD overlay must ONLY be displayed when in League of Legends.exe (Loading Screen or Game).
+        # It must be 100% hidden in ChampSelect, client launcher, Discord, Chrome, and desktop.
+        # It also hides immediately when Alt-Tabbing away from League of Legends.exe.
+        if not self._is_league_game_foreground():
+            if self.hud.is_visible:
+                self.hud.hide()
+            return
+
+        # 3. Inside League of Legends.exe -> Show HUD in appropriate mode
         target_mode = "REPLAY" if (is_rep_active and not is_rec_active) else "RECORD"
         if is_rep_active and is_rec_active:
             if rep_status in ("SYNCING", "PAUSED"):
@@ -2467,12 +2486,15 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
         if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
             self.hud.set_mode("RECORD")
-            self.hud.show()
             self.hud.update_recorder_state(
                 time_str="00:00",
                 mic_level=0.0,
                 discord_level=0.0,
             )
+            if self._is_league_game_foreground():
+                self.hud.show()
+            else:
+                self.hud.hide()
 
     def _stop_recording(self):
         if getattr(self, "hud", None) and not getattr(self, "_is_hud_previewing", False):
@@ -2598,7 +2620,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
         if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
             self.hud.set_mode("REPLAY")
-            self.hud.show()
             self.hud.update_replay_state(
                 time_str="00:00",
                 current_time=0.0,
@@ -2609,6 +2630,10 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 speed=1.0,
                 audio_level=0.0,
             )
+            if self._is_league_game_foreground():
+                self.hud.show()
+            else:
+                self.hud.hide()
 
     def _update_volume_display(self, current_vol=None):
         vol = int(current_vol if current_vol is not None else self.vol_slider.get())
