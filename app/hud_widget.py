@@ -24,20 +24,36 @@ WS_EX_TRANSPARENT = 0x00000020
 
 
 def set_window_click_through(hwnd: int, enable: bool = True) -> None:
-    """Configures a Windows window for click-through transparency via SetWindowLongW."""
+    """Configures a Windows window for click-through transparency."""
     if sys.platform != "win32" or not hwnd:
         return
     try:
         import ctypes
 
-        style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        u32 = ctypes.windll.user32
+        get_long = getattr(u32, "GetWindowLongPtrW", u32.GetWindowLongW)
+        set_long = getattr(u32, "SetWindowLongPtrW", u32.SetWindowLongW)
+
+        style = get_long(hwnd, GWL_EXSTYLE)
         if enable:
-            ctypes.windll.user32.SetWindowLongW(
-                hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED | WS_EX_TRANSPARENT
-            )
+            new_style = style | WS_EX_LAYERED | WS_EX_TRANSPARENT
         else:
-            ctypes.windll.user32.SetWindowLongW(
-                hwnd, GWL_EXSTYLE, style & ~WS_EX_TRANSPARENT
+            new_style = style & ~WS_EX_TRANSPARENT
+
+        if new_style != style:
+            set_long(hwnd, GWL_EXSTYLE, new_style)
+            SWP_NOMOVE = 0x0002
+            SWP_NOSIZE = 0x0001
+            SWP_NOZORDER = 0x0004
+            SWP_FRAMECHANGED = 0x0020
+            u32.SetWindowPos(
+                hwnd,
+                0,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED,
             )
     except Exception:
         pass
@@ -179,10 +195,6 @@ class LeagueHUDWidget:
         self.canvas.bind("<ButtonRelease-1>", self._on_mouse_up)
         self.canvas.bind("<Button-3>", self._on_right_click)
 
-        # Apply click-through if configured
-        if self.click_through:
-            self._apply_click_through(True)
-
         # Initial render
         self.render()
 
@@ -217,30 +229,40 @@ class LeagueHUDWidget:
             return 0
 
     def _apply_click_through(self, enable: bool) -> None:
-        """Applies or removes the Windows WS_EX_TRANSPARENT style."""
+        """Applies or removes the Windows WS_EX_TRANSPARENT style strictly on the top-level window."""
         try:
-            hwnd = self.window.winfo_id()
-            if sys.platform == "win32":
-                import ctypes
+            if sys.platform != "win32":
+                return
+            import ctypes
 
-                parent = ctypes.windll.user32.GetParent(hwnd)
-                target_hwnd = parent if parent else hwnd
-                set_window_click_through(target_hwnd, enable)
+            hwnd = self.window.winfo_id()
+            if not hwnd:
+                return
+            parent = ctypes.windll.user32.GetParent(hwnd)
+            # CRITICAL: ONLY apply to parent (the real top-level HWND).
+            # Never apply to child window (hwnd) as setting WS_EX_LAYERED on the child canvas
+            # without LayeredWindowAttributes causes the canvas to become completely invisible.
+            if parent:
+                set_window_click_through(parent, enable)
         except Exception:
             pass
 
     def set_click_through(self, enable: bool) -> None:
         """Dynamically enables or disables click-through mode."""
         self.click_through = bool(enable)
-        self._apply_click_through(self.click_through)
+        if getattr(self, "is_visible", False):
+            self._apply_click_through(self.click_through)
 
     def set_opacity(self, opacity: float) -> None:
         """Dynamically adjusts overlay transparency."""
         self.opacity = max(0.3, min(1.0, float(opacity)))
         try:
             self.window.attributes("-alpha", self.opacity)
+            self.window.attributes("-topmost", True)
         except Exception:
             pass
+        if getattr(self, "is_visible", False):
+            self.render()
 
     def set_mode(self, mode: str) -> None:
         """Switches between 'RECORD' and 'REPLAY' modes."""
@@ -254,6 +276,9 @@ class LeagueHUDWidget:
         self.is_visible = True
         self.window.deiconify()
         self.window.attributes("-topmost", True)
+        self.window.update_idletasks()
+        if self.click_through:
+            self._apply_click_through(True)
         self.render()
 
     def hide(self) -> None:
@@ -361,31 +386,24 @@ class LeagueHUDWidget:
             font=("Segoe UI", 10, "bold"),
         )
 
-        # Row 1: MIC Animated Waveform
-        mic_pts = self._generate_active_waveform(
-            center_y=22,
+        # Row 1: MIC Animated Vertical Visualizer Bars
+        mic_color = "#EF4444" if self.is_muted else self.COLOR_TEAL
+        mic_bars = self._generate_active_waveform(
+            center_y=22.0,
             level=0.0 if self.is_muted else self.mic_level,
             phase=self._wave_phase,
             seed=0.0,
         )
-        mic_glow = "#5A1E28" if self.is_muted else "#155E54"
-        mic_color = "#EF4444" if self.is_muted else self.COLOR_TEAL
-        self.canvas.create_line(
-            mic_pts,
-            fill=mic_glow,
-            width=3.2,
-            smooth=True,
-            capstyle="round",
-            joinstyle="round",
-        )
-        self.canvas.create_line(
-            mic_pts,
-            fill=mic_color,
-            width=1.8,
-            smooth=True,
-            capstyle="round",
-            joinstyle="round",
-        )
+        for x, y1, y2 in mic_bars:
+            self.canvas.create_line(
+                x,
+                y1,
+                x,
+                y2,
+                fill=mic_color,
+                width=2.2,
+                capstyle="round",
+            )
 
         # Row 2: DISCORD Label
         self.canvas.create_text(
@@ -397,29 +415,23 @@ class LeagueHUDWidget:
             font=("Segoe UI", 10, "bold"),
         )
 
-        # Row 2: DISCORD Animated Waveform
-        discord_pts = self._generate_active_waveform(
-            center_y=54,
+        # Row 2: DISCORD Animated Vertical Visualizer Bars
+        discord_bars = self._generate_active_waveform(
+            center_y=54.0,
             level=self.discord_level,
             phase=self._wave_phase * 1.15,
             seed=2.5,
         )
-        self.canvas.create_line(
-            discord_pts,
-            fill="#343864",
-            width=3.2,
-            smooth=True,
-            capstyle="round",
-            joinstyle="round",
-        )
-        self.canvas.create_line(
-            discord_pts,
-            fill=self.COLOR_PERIWINKLE,
-            width=1.8,
-            smooth=True,
-            capstyle="round",
-            joinstyle="round",
-        )
+        for x, y1, y2 in discord_bars:
+            self.canvas.create_line(
+                x,
+                y1,
+                x,
+                y2,
+                fill=self.COLOR_PERIWINKLE,
+                width=2.2,
+                capstyle="round",
+            )
 
         # Right Section: Status Indicator (REC or PAUSED)
         if self.is_paused:
@@ -471,57 +483,41 @@ class LeagueHUDWidget:
             font=("Segoe UI", 10, "bold"),
         )
 
-        # Row 1: Audio waveform with moving playhead cursor
+        # Row 1: Audio waveform vertical bars with moving playhead cursor
         progress = max(0.0, min(1.0, self.current_time / self.total_duration))
         cursor_x = 68.0 + progress * 126.0
 
-        # Draw played portion (Teal)
-        played_pts, upcoming_pts = self._split_waveform(cursor_x, audio_level=self.audio_level)
-        if len(played_pts) >= 4:
+        # Draw played portion (Teal) and upcoming portion (Muted slate)
+        played_bars, upcoming_bars = self._split_waveform(cursor_x, audio_level=self.audio_level)
+        for x, y1, y2 in played_bars:
             self.canvas.create_line(
-                played_pts,
-                fill="#155E54",
-                width=3.2,
-                smooth=True,
-                capstyle="round",
-                joinstyle="round",
-            )
-            self.canvas.create_line(
-                played_pts,
+                x,
+                y1,
+                x,
+                y2,
                 fill=self.COLOR_TEAL,
-                width=1.8,
-                smooth=True,
+                width=2.2,
                 capstyle="round",
-                joinstyle="round",
             )
-
-        # Draw upcoming portion (Muted slate)
-        if len(upcoming_pts) >= 4:
+        for x, y1, y2 in upcoming_bars:
             self.canvas.create_line(
-                upcoming_pts,
-                fill="#1A2332",
-                width=3.2,
-                smooth=True,
-                capstyle="round",
-                joinstyle="round",
-            )
-            self.canvas.create_line(
-                upcoming_pts,
+                x,
+                y1,
+                x,
+                y2,
                 fill=self.COLOR_UPCOMING_WAVE,
-                width=1.8,
-                smooth=True,
+                width=2.2,
                 capstyle="round",
-                joinstyle="round",
             )
 
         # White playhead cursor needle
         self.canvas.create_line(
             cursor_x,
-            14,
+            13,
             cursor_x,
-            30,
+            31,
             fill="#FFFFFF",
-            width=2,
+            width=2.2,
             capstyle="round",
         )
 
@@ -625,68 +621,58 @@ class LeagueHUDWidget:
         )
 
     # ==========================================
-    # WAVEFORM ALGORITHMS
+    # WAVEFORM ALGORITHMS (PURE VERTICAL BARS)
     # ==========================================
-    def _generate_static_waveform(self) -> list[tuple[float, float]]:
-        """Generates a smooth, organic audio waveform track profile for replay."""
+    def _generate_static_waveform(self) -> list[tuple[float, float, float]]:
+        """Generates baseline vertical bar coordinates (x, y1, y2) for the replay audio track."""
         width = 126.0
         start_x = 68.0
         center_y = 22.0
-        num_points = 90
-        step = width / (num_points - 1)
-        pts = []
+        num_bars = 32
+        step = width / (num_bars - 1)
+        bars = []
 
-        for i in range(num_points):
+        for i in range(num_bars):
             x = start_x + i * step
-            norm = i / (num_points - 1)
-            envelope = math.sin(norm * math.pi) ** 1.15
-            h = (
-                math.sin(norm * 4.0 * math.pi)
-                + math.sin(norm * 8.0 * math.pi) * 0.4
-                + math.cos(norm * 2.0 * math.pi) * 0.3
-            ) * 5.8 * envelope
-            pts.append((x, center_y + h))
-        return pts
+            norm = i / (num_bars - 1)
+            envelope = math.sin(norm * math.pi) ** 0.85
+            # Dynamic sound profile with realistic peaks and troughs
+            profile = (
+                math.sin(norm * 4.0 * math.pi) * 0.45
+                + math.sin(norm * 9.0 * math.pi) * 0.35
+                + math.cos(norm * 2.0 * math.pi) * 0.20
+            )
+            h = 2.0 + abs(profile) * envelope * 5.6
+            h = min(7.5, max(1.8, h))
+            bars.append((x, center_y - h, center_y + h))
+        return bars
 
     def _split_waveform(
         self, cursor_x: float, audio_level: float = 0.0
-    ) -> tuple[list[float], list[float]]:
-        """Splits the replay waveform into played (left) and upcoming (right) coordinates."""
+    ) -> tuple[list[tuple[float, float, float]], list[tuple[float, float, float]]]:
+        """Splits the replay waveform into played (left) and upcoming (right) vertical bars."""
         pts = self._replay_wave_points
         played = []
         upcoming = []
-        split_done = False
-
+        center_y = 22.0
         mod_phase = self._wave_phase if audio_level > 0.02 else 0.0
 
-        for i in range(len(pts) - 1):
-            x1, y1 = pts[i]
-            x2, y2 = pts[i + 1]
-
-            if audio_level > 0.02 and x1 <= cursor_x:
-                norm = i / max(1, len(pts) - 1)
-                envelope = math.sin(norm * math.pi) ** 1.15
-                disp = math.sin(norm * 5.0 * math.pi + mod_phase) * audio_level * 5.0 * envelope
-                y1 = y1 + disp
-
-            if x2 < cursor_x:
-                if not played:
-                    played.extend([x1, y1])
-                played.extend([x2, y2])
-            elif not split_done:
-                t = (cursor_x - x1) / (x2 - x1) if x2 != x1 else 0.0
-                mid_y = y1 + t * (y2 - y1)
-                if not played:
-                    played.extend([x1, y1])
-                played.extend([cursor_x, mid_y])
-                upcoming.extend([cursor_x, mid_y, x2, y2])
-                split_done = True
+        for i, (x, y1, y2) in enumerate(pts):
+            if x <= cursor_x:
+                if audio_level > 0.02:
+                    norm = i / max(1, len(pts) - 1)
+                    envelope = math.sin(norm * math.pi) ** 0.8
+                    bounce = (
+                        math.sin(norm * 5.0 * math.pi + mod_phase) * 0.55
+                        + math.cos(norm * 10.0 * math.pi - mod_phase * 0.7) * 0.35
+                    )
+                    h = (y2 - center_y) + abs(bounce) * audio_level * 3.6 * envelope
+                    h = min(7.8, max(1.8, h))
+                    played.append((x, center_y - h, center_y + h))
+                else:
+                    played.append((x, y1, y2))
             else:
-                upcoming.extend([x2, y2])
-
-        if not split_done:
-            flat_pts = [coord for pt in pts for coord in pt]
-            return flat_pts, []
+                upcoming.append((x, y1, y2))
 
         return played, upcoming
 
@@ -696,30 +682,33 @@ class LeagueHUDWidget:
         level: float = 0.0,
         phase: float = 0.0,
         seed: float = 0.0,
-    ) -> list[float]:
-        """Generates a silky smooth oscillating audio waveform modulated by live VU levels."""
+    ) -> list[tuple[float, float, float]]:
+        """Generates sleek, vertical visualizer bars (x, y_top, y_bottom) modulated by live VU levels."""
         width = 126.0
         start_x = 68.0
-        num_points = 90
-        step = width / (num_points - 1)
-        points = []
+        num_bars = 32
+        step = width / (num_bars - 1)
+        bars = []
 
-        base_amp = 0.8 if level < 0.02 else 1.2
-        active_amp = level * 7.0
+        min_half_h = 1.8  # Resting pill half-height (total 3.6px)
+        max_boost = 6.0   # Max dynamic audio expansion
 
-        for i in range(num_points):
+        for i in range(num_bars):
             x = start_x + i * step
-            norm = i / (num_points - 1)
-            envelope = math.sin(norm * math.pi) ** 1.25
+            norm = i / (num_bars - 1)
+            envelope = math.sin(norm * math.pi) ** 0.75
 
-            w1 = math.sin(norm * 3.6 * math.pi + phase + seed)
-            w2 = math.sin(norm * 7.2 * math.pi - phase * 0.75 + seed * 1.4) * 0.32
-            w3 = math.cos(norm * 1.8 * math.pi + phase * 0.4) * 0.22
+            # Dynamic harmonic frequency oscillation
+            w1 = math.sin(norm * 4.2 * math.pi + phase + seed)
+            w2 = math.cos(norm * 8.4 * math.pi - phase * 0.8 + seed * 1.5) * 0.35
+            w3 = math.sin(norm * 2.1 * math.pi + phase * 0.5) * 0.25
+            variation = abs(w1 + w2 + w3) / 1.6
 
-            disp = (w1 + w2 + w3) * (base_amp + active_amp) * envelope
-            points.extend([x, center_y + disp])
+            h = min_half_h + (variation * level * max_boost) * envelope
+            h = min(7.8, max(min_half_h, h))
+            bars.append((x, center_y - h, center_y + h))
 
-        return points
+        return bars
 
     # ==========================================
     # MOUSE INTERACTION & DRAGGING

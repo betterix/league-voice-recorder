@@ -1608,12 +1608,19 @@ class LeagueVoiceRecorderApp(ctk.CTk):
     def _on_hud_click_through_toggled(self):
         ct = bool(self.hud_click_through_var.get())
         self.config["hud_click_through"] = ct
+        save_config(self.config)
         if self.hud:
             self.hud.set_click_through(ct)
 
     def _on_hud_opacity_slider_changed(self, val):
         op = round(float(val), 2)
         self.config["hud_opacity"] = op
+        if hasattr(self, "_save_hud_op_timer") and self._save_hud_op_timer:
+            try:
+                self.after_cancel(self._save_hud_op_timer)
+            except Exception:
+                pass
+        self._save_hud_op_timer = self.after(500, lambda: save_config(self.config))
         if hasattr(self, "hud_opacity_lbl"):
             self.hud_opacity_lbl.configure(
                 text=t("settings.hud_opacity", percent=int(op * 100))
