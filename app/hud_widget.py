@@ -35,9 +35,10 @@ def set_window_click_through(hwnd: int, enable: bool = False) -> None:
         set_long = getattr(u32, "SetWindowLongPtrW", u32.SetWindowLongW)
 
         style = get_long(hwnd, GWL_EXSTYLE)
-        # Always strip WS_EX_TRANSPARENT so the overlay can always receive mouse events,
-        # position drags, volume adjustments, and lock toggles without being ghosted.
-        new_style = style & ~WS_EX_TRANSPARENT
+        if enable:
+            new_style = style | WS_EX_TRANSPARENT
+        else:
+            new_style = style & ~WS_EX_TRANSPARENT
         if new_style != style:
             set_long(hwnd, GWL_EXSTYLE, new_style)
             SWP_NOMOVE = 0x0002
@@ -773,6 +774,52 @@ class LeagueHUDWidget:
     def _is_volume_slider_hit(self, x: float, y: float) -> bool:
         return self.mode == "REPLAY" and (self.SLIDER_X1 - 6) <= x <= (self.SLIDER_X2 + 6) and 42 <= y <= 66
 
+    def _forward_click(self, button: str = "right") -> None:
+        """Forwards mouse clicks through the locked overlay into the game window beneath."""
+        if getattr(self, "_is_forwarding_click", False):
+            return
+        self._is_forwarding_click = True
+        try:
+            if sys.platform != "win32":
+                return
+            import ctypes
+
+            u32 = ctypes.windll.user32
+            parent = self.get_hwnd()
+            if parent:
+                # 1. Enable WS_EX_TRANSPARENT so the overlay is ignored by OS hit testing
+                set_window_click_through(parent, enable=True)
+
+                # 2. Fire the synthesized mouse event directly to the window beneath the cursor
+                if button == "right":
+                    MOUSEEVENTF_RIGHTDOWN = 0x0008
+                    MOUSEEVENTF_RIGHTUP = 0x0010
+                    u32.mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0)
+                    u32.mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0)
+                else:
+                    MOUSEEVENTF_LEFTDOWN = 0x0002
+                    MOUSEEVENTF_LEFTUP = 0x0004
+                    u32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+                    u32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+
+                # 3. Schedule restoring interactivity so the Lock icon and Volume slider stay clickable
+                if hasattr(self, "window") and self.window:
+                    self.window.after(30, self._restore_click_transparency)
+        except Exception:
+            pass
+        finally:
+            self._is_forwarding_click = False
+
+    def _restore_click_transparency(self) -> None:
+        try:
+            if not getattr(self, "window", None):
+                return
+            parent = self.get_hwnd()
+            if parent:
+                set_window_click_through(parent, enable=False)
+        except Exception:
+            pass
+
     def _on_mouse_down(self, event: tk.Event) -> None:
         # 1. Click on Lock button
         if self._is_lock_hit(event.x, event.y):
@@ -786,8 +833,9 @@ class LeagueHUDWidget:
             self._update_volume_from_mouse(event.x)
             return
 
-        # 3. If locked, window cannot be dragged!
+        # 3. If locked, window cannot be dragged! Instead, forward the left-click into the game!
         if self.locked:
+            self._forward_click(button="left")
             return
 
         # 4. Unlocked: Drag the overlay window
@@ -852,7 +900,13 @@ class LeagueHUDWidget:
             self.on_volume_changed(pct)
 
     def _on_right_click(self, event: tk.Event) -> None:
-        """Pops up a contextual control menu."""
+        """Pops up a contextual control menu when unlocked; forwards right click to game when locked."""
+        # When locked: Right-click panel is permanently disabled!
+        # Forward the right-click directly into the game so champion/camera moves seamlessly.
+        if self.locked:
+            self._forward_click(button="right")
+            return
+
         menu = tk.Menu(self.window, tearoff=0)
         lock_label = "🔓 Unlock Position" if self.locked else "🔒 Lock Position"
         menu.add_command(

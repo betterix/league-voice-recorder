@@ -198,6 +198,63 @@ class TestLeagueHUDWidget(unittest.TestCase):
         max_active_height = max(y2 - y1 for _, y1, y2 in active_bars)
         self.assertGreater(max_active_height, 8.0)
 
+    def test_locked_right_click_blocks_panel_and_forwards(self):
+        """When locked, right-clicking never opens popup panel and forwards click to game."""
+        self.hud.set_locked(True)
+
+        class RightClickEvent:
+            x = 150
+            y = 35
+            x_root = 500
+            y_root = 300
+
+        with unittest.mock.patch.object(self.hud, "_forward_click") as mock_forward:
+            self.hud._on_right_click(RightClickEvent())
+            mock_forward.assert_called_once_with(button="right")
+
+    def test_locked_left_click_forwards_when_outside_controls(self):
+        """When locked, left-clicking outside lock and slider forwards left click to game."""
+        self.hud.set_locked(True)
+
+        class LeftClickEvent:
+            x = 150
+            y = 35
+            x_root = 500
+            y_root = 300
+
+        with unittest.mock.patch.object(self.hud, "_forward_click") as mock_forward:
+            self.hud._on_mouse_down(LeftClickEvent())
+            mock_forward.assert_called_once_with(button="left")
+
+    def test_locked_lock_icon_and_replay_slider_stay_clickable(self):
+        """Lock icon toggles unlock, and replay volume slider remains interactive when locked."""
+        # 1. Overlay is locked
+        self.hud.set_locked(True)
+        self.hud.set_mode("REPLAY")
+
+        class LockClickEvent:
+            x = 332
+            y = 22
+
+        # Clicking lock icon unlocks without forwarding
+        with unittest.mock.patch.object(self.hud, "_forward_click") as mock_forward:
+            self.hud._on_mouse_down(LockClickEvent())
+            self.assertFalse(self.hud.locked)
+            mock_forward.assert_not_called()
+
+        # Re-lock
+        self.hud.set_locked(True)
+
+        class SliderClickEvent:
+            x = 164  # Middle of volume slider (50%)
+            y = 54
+
+        # Clicking volume slider adjusts sound without forwarding
+        with unittest.mock.patch.object(self.hud, "_forward_click") as mock_forward:
+            self.hud._on_mouse_down(SliderClickEvent())
+            self.assertEqual(self.hud.volume, 50)
+            mock_forward.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
