@@ -424,6 +424,27 @@ class TestRecorderModule(unittest.TestCase):
             dur = wf.getnframes() / wf.getframerate()
             self.assertEqual(dur, 15.0, "Total duration must be exactly 15.0s, with lag cleanly trimmed")
 
+    def test_timeline_wav_writer_does_not_pad_midstream(self):
+        """sync_to_game_time only pads initial silence mid-match, never injecting zeros mid-stream."""
+        from app.native_audio import TimelineWavWriter
+
+        wav_path = os.path.join(self.temp_dir.name, "midstream_pad_test.wav")
+        writer = TimelineWavWriter(wav_path, channels=2, sample_rate=48000)
+
+        # Write 2 seconds of audio
+        writer.write_frames(b"\x12\x34\x56\x78" * (48000 * 2))
+        expected_size = 44 + (48000 * 2 * 4)
+        self.assertEqual(writer.file_size(), expected_size)
+
+        # Call sync_to_game_time with a higher game_time (simulating clock jitter)
+        writer.sync_to_game_time(5.0)
+
+        # File size and current_frame must remain unchanged (no mid-stream silence injected!)
+        self.assertEqual(writer.file_size(), expected_size)
+        self.assertEqual(writer.current_frame, 48000 * 2)
+
+        writer.close()
+
 
 if __name__ == "__main__":
     unittest.main()
