@@ -212,6 +212,10 @@ class LeagueHUDWidget:
         self.canvas.bind("<Button-3>", self._on_right_click)
         self.canvas.bind("<Motion>", self._on_mouse_hover)
 
+        # Dedicated transparent hit-test window for Lock icon in click-through mode
+        self.lock_hit_win = None
+        self._init_lock_hit_window()
+
         # Initial render
         self.render()
 
@@ -245,30 +249,66 @@ class LeagueHUDWidget:
         except Exception:
             return 0
 
+    def _init_lock_hit_window(self) -> None:
+        """Creates a tiny transparent hit-test window over the lock icon for click-through mode."""
+        try:
+            self.lock_hit_win = tk.Toplevel(self.master)
+            self.lock_hit_win.overrideredirect(True)
+            self.lock_hit_win.withdraw()
+            try:
+                self.lock_hit_win.attributes("-topmost", True)
+                self.lock_hit_win.attributes("-alpha", 0.01)
+            except Exception:
+                pass
+            self.lock_hit_win.config(cursor="hand2")
+            self.lock_hit_win.bind("<ButtonPress-1>", self._on_lock_hit_click)
+            self.lock_hit_win.bind("<Button-3>", lambda e: None)
+        except Exception:
+            self.lock_hit_win = None
+
+    def _sync_lock_hit_window(self) -> None:
+        """Positions the lock hit window precisely over the lock button when locked and visible."""
+        if not getattr(self, "lock_hit_win", None):
+            return
+        if getattr(self, "is_visible", False) and self.locked:
+            try:
+                wx = self.window.winfo_x()
+                wy = self.window.winfo_y()
+                hx = wx + self.LOCK_X - 14
+                hy = wy + self.LOCK_Y - 14
+                self.lock_hit_win.geometry(f"28x28+{hx}+{hy}")
+                self.lock_hit_win.deiconify()
+                self.lock_hit_win.attributes("-topmost", True)
+                self.lock_hit_win.attributes("-alpha", 0.01)
+            except Exception:
+                pass
+        else:
+            try:
+                self.lock_hit_win.withdraw()
+            except Exception:
+                pass
+
+    def _on_lock_hit_click(self, event: tk.Event) -> None:
+        """Called when clicking the lock icon while overlay is locked to unlock drag mode."""
+        self.set_locked(False)
+
     def _apply_click_through(self, enable: bool) -> None:
         """Applies or removes the Windows WS_EX_TRANSPARENT style strictly on the top-level window."""
         try:
             if sys.platform != "win32":
                 return
-            import ctypes
-
-            hwnd = self.window.winfo_id()
-            if not hwnd:
-                return
-            parent = ctypes.windll.user32.GetParent(hwnd)
-            # CRITICAL: ONLY apply to parent (the real top-level HWND).
-            # Never apply to child window (hwnd) as setting WS_EX_LAYERED on the child canvas
-            # without LayeredWindowAttributes causes the canvas to become completely invisible.
+            parent = self.get_hwnd()
             if parent:
                 set_window_click_through(parent, enable)
         except Exception:
             pass
 
     def set_locked(self, locked: bool) -> None:
-        """Dynamically locks or unlocks the overlay position."""
+        """Dynamically locks or unlocks the overlay position and toggles click-through mode."""
         self.locked = bool(locked)
         self.click_through = self.locked
-        self._apply_click_through(False)
+        self._apply_click_through(self.locked)
+        self._sync_lock_hit_window()
         if getattr(self, "is_visible", False):
             self.render()
         if self.on_lock_changed:
@@ -306,18 +346,26 @@ class LeagueHUDWidget:
         except Exception:
             pass
         self.window.update_idletasks()
-        self._apply_click_through(False)
+        self._apply_click_through(self.locked)
+        self._sync_lock_hit_window()
         self.render()
 
     def hide(self) -> None:
         """Hides the floating HUD."""
         self.is_visible = False
         self.window.withdraw()
+        if getattr(self, "lock_hit_win", None):
+            try:
+                self.lock_hit_win.withdraw()
+            except Exception:
+                pass
 
     def reset_position(self) -> None:
         """Resets HUD position back to top-right screen corner."""
         x, y = self._calculate_initial_position(-1, -1)
         self.window.geometry(f"{self.WIDTH}x{self.HEIGHT}+{x}+{y}")
+        self.window.update_idletasks()
+        self._sync_lock_hit_window()
         if self.on_position_changed:
             self.on_position_changed(x, y)
 
@@ -873,6 +921,7 @@ class LeagueHUDWidget:
             self._is_dragging = False
             final_x = self.window.winfo_x()
             final_y = self.window.winfo_y()
+            self._sync_lock_hit_window()
             if self.on_position_changed:
                 self.on_position_changed(final_x, final_y)
 
@@ -900,11 +949,9 @@ class LeagueHUDWidget:
             self.on_volume_changed(pct)
 
     def _on_right_click(self, event: tk.Event) -> None:
-        """Pops up a contextual control menu when unlocked; forwards right click to game when locked."""
+        """Pops up a contextual control menu when unlocked; suppressed when locked."""
         # When locked: Right-click panel is permanently disabled!
-        # Forward the right-click directly into the game so champion/camera moves seamlessly.
         if self.locked:
-            self._forward_click(button="right")
             return
 
         menu = tk.Menu(self.window, tearoff=0)
@@ -931,6 +978,12 @@ class LeagueHUDWidget:
 
     def destroy(self) -> None:
         """Destroys the HUD toplevel window cleanly."""
+        try:
+            if getattr(self, "lock_hit_win", None):
+                self.lock_hit_win.destroy()
+                self.lock_hit_win = None
+        except Exception:
+            pass
         try:
             self.window.destroy()
         except Exception:

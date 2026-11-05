@@ -199,7 +199,7 @@ class TestLeagueHUDWidget(unittest.TestCase):
         self.assertGreater(max_active_height, 8.0)
 
     def test_locked_right_click_blocks_panel_and_forwards(self):
-        """When locked, right-clicking never opens popup panel and forwards click to game."""
+        """When locked, right-clicking never opens popup panel."""
         self.hud.set_locked(True)
 
         class RightClickEvent:
@@ -208,23 +208,23 @@ class TestLeagueHUDWidget(unittest.TestCase):
             x_root = 500
             y_root = 300
 
-        with unittest.mock.patch.object(self.hud, "_forward_click") as mock_forward:
+        with unittest.mock.patch("tkinter.Menu.tk_popup") as mock_popup:
             self.hud._on_right_click(RightClickEvent())
-            mock_forward.assert_called_once_with(button="right")
+            mock_popup.assert_not_called()
 
-    def test_locked_left_click_forwards_when_outside_controls(self):
-        """When locked, left-clicking outside lock and slider forwards left click to game."""
+    def test_locked_lock_hit_window_unlocks(self):
+        """Dedicated hit window captures click over lock icon to unlock drag mode."""
         self.hud.set_locked(True)
+        self.hud.show()
+        self.assertTrue(self.hud.locked)
+        self.assertTrue(self.hud.lock_hit_win is not None)
 
-        class LeftClickEvent:
-            x = 150
-            y = 35
-            x_root = 500
-            y_root = 300
+        class DummyEvent:
+            x = 10
+            y = 10
 
-        with unittest.mock.patch.object(self.hud, "_forward_click") as mock_forward:
-            self.hud._on_mouse_down(LeftClickEvent())
-            mock_forward.assert_called_once_with(button="left")
+        self.hud._on_lock_hit_click(DummyEvent())
+        self.assertFalse(self.hud.locked)
 
     def test_locked_lock_icon_and_replay_slider_stay_clickable(self):
         """Lock icon toggles unlock, and replay volume slider remains interactive when locked."""
@@ -236,11 +236,9 @@ class TestLeagueHUDWidget(unittest.TestCase):
             x = 332
             y = 22
 
-        # Clicking lock icon unlocks without forwarding
-        with unittest.mock.patch.object(self.hud, "_forward_click") as mock_forward:
-            self.hud._on_mouse_down(LockClickEvent())
-            self.assertFalse(self.hud.locked)
-            mock_forward.assert_not_called()
+        # Clicking lock icon unlocks without dragging
+        self.hud._on_mouse_down(LockClickEvent())
+        self.assertFalse(self.hud.locked)
 
         # Re-lock
         self.hud.set_locked(True)
@@ -249,11 +247,9 @@ class TestLeagueHUDWidget(unittest.TestCase):
             x = 164  # Middle of volume slider (50%)
             y = 54
 
-        # Clicking volume slider adjusts sound without forwarding
-        with unittest.mock.patch.object(self.hud, "_forward_click") as mock_forward:
-            self.hud._on_mouse_down(SliderClickEvent())
-            self.assertEqual(self.hud.volume, 50)
-            mock_forward.assert_not_called()
+        # Clicking volume slider adjusts sound
+        self.hud._on_mouse_down(SliderClickEvent())
+        self.assertEqual(self.hud.volume, 50)
 
 
 if __name__ == "__main__":
