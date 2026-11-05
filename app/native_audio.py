@@ -407,8 +407,8 @@ class TimelineWavWriter:
             target_byte = 44 + target_frame * self.frame_size
             fsize = self.file_size()
 
-            # Only pad initial silence if recording begins mid-game and no audio has been written yet
-            if fsize <= 44 and target_byte > fsize:
+            if target_byte > fsize:
+                # Game time is ahead (e.g. started mid-game): pad silence to align timeline
                 self.file.seek(fsize)
                 gap = target_byte - fsize
                 chunk = b"\x00" * 65536
@@ -893,20 +893,35 @@ class NativeAudioRecorder:
             if self.latest_game_time > 0:
                 writer.sync_to_game_time(self.latest_game_time)
 
+            t_last = time.perf_counter()
+
             while not self.stop_event.is_set():
+                now = time.perf_counter()
+
                 d = loop.read()
                 if d:
                     floats = np.frombuffer(d, dtype=np.float32)
                     if len(floats) > 0:
-                        np.nan_to_num(floats, copy=False)
                         peak = max(float(floats.max()), -float(floats.min()))
                         self.current_app_level = max(peak, self.current_app_level * 0.85)
 
                     if not self.is_paused:
                         ints = np.clip(floats * 32767.0, -32768, 32767).astype(np.int16)
-                        writer.write_frames(ints.tobytes())
+                        raw_bytes = ints.tobytes()
+                        writer.write_frames(raw_bytes)
+                    t_last = now
                 else:
-                    time.sleep(0.002)
+                    # Empty read: Discord is quiet / silence period
+                    # Inject exact silence matching elapsed time only when active (not paused)
+                    dt = now - t_last
+                    if not self.is_paused:
+                        if dt >= 0.01:
+                            silence_frames = int(dt * 48000)
+                            writer.write_frames(b"\x00" * (silence_frames * 4))
+                            t_last = now
+                    else:
+                        t_last = now
+                    time.sleep(0.001)
 
             writer.close(final_game_time=self.latest_game_time)
             loop.stop()
