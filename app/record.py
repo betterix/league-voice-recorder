@@ -33,6 +33,10 @@ if sys.platform.startswith("win"):
 
 def find_league_install_dir():
     """Finds the League of Legends installation directory containing lockfile."""
+    global _CACHED_LEAGUE_INSTALL_DIR
+    if _CACHED_LEAGUE_INSTALL_DIR and os.path.exists(os.path.join(_CACHED_LEAGUE_INSTALL_DIR, "lockfile")):
+        return _CACHED_LEAGUE_INSTALL_DIR
+
     # 1. Fast lookup via psutil
     try:
         for proc in psutil.process_iter(["name", "exe"]):
@@ -43,6 +47,7 @@ def find_league_install_dir():
                     if exe:
                         d = os.path.dirname(exe)
                         if os.path.exists(os.path.join(d, "lockfile")):
+                            _CACHED_LEAGUE_INSTALL_DIR = d
                             return d
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
@@ -76,6 +81,7 @@ def find_league_install_dir():
                 if p_path:
                     d = os.path.dirname(p_path)
                     if os.path.exists(os.path.join(d, "lockfile")):
+                        _CACHED_LEAGUE_INSTALL_DIR = d
                         return d
     except Exception:
         pass
@@ -91,6 +97,7 @@ def find_league_install_dir():
         for sub in subpaths:
             candidate = f"{drive}:\\{sub}"
             if os.path.exists(os.path.join(candidate, "lockfile")):
+                _CACHED_LEAGUE_INSTALL_DIR = candidate
                 return candidate
     return None
 
@@ -382,14 +389,14 @@ class LeagueRecorder:
 
         ffmpeg_cmd = get_ffmpeg_path()
         try:
-            cmd = [ffmpeg_cmd, "-y", "-i", video_path]
+            cmd = [ffmpeg_cmd, "-y", "-threads", "0", "-i", video_path]
             if initial_offset < -0.005:
                 cmd.extend(["-ss", f"{abs(initial_offset):.3f}"])
             elif initial_offset > 0.005:
                 delay_ms = int(initial_offset * 1000)
                 cmd.extend(["-af", f"adelay=delays={delay_ms}:all=1"])
 
-            cmd.extend(["-q:a", "0", "-map", "a", mp3_path])
+            cmd.extend(["-threads", "0", "-q:a", "0", "-map", "a", mp3_path])
 
             subprocess.run(
                 cmd,

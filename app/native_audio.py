@@ -1033,7 +1033,7 @@ class NativeAudioRecorder:
             return None
 
         ffmpeg_cmd = get_ffmpeg_path()
-        cmd = [ffmpeg_cmd, "-y"]
+        cmd = [ffmpeg_cmd, "-y", "-threads", "0"]
 
         # Pure unamplified direct audio pipeline (no volume boosts, no limiters, zero DSP filtering):
         # Sample rate and channel layout alignment strictly for clean FFmpeg mixing directly into MP3
@@ -1081,6 +1081,7 @@ class NativeAudioRecorder:
             "-filter_complex", filter_chain,
             "-map", "[aout]",
             "-c:a", "libmp3lame",
+            "-threads", "0",
             "-q:a", "0",
             mp3_path,
         ])
