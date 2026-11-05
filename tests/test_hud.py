@@ -186,6 +186,18 @@ class TestLeagueHUDWidget(unittest.TestCase):
         self.hud.reset_position()
         self.mock_pos_callback.assert_called()
 
+    def test_waveform_sensitivity_boost(self):
+        """Soft to normal speech produces significantly expanded dynamic bars over resting silence."""
+        resting_bars = self.hud._generate_active_waveform(center_y=22.0, level=0.0)
+        # In silence, bars should be at minimum resting half-height 1.8 (height = 3.6)
+        for _, y1, y2 in resting_bars:
+            self.assertAlmostEqual(y2 - y1, 3.6, places=1)
+
+        # In moderate speech (level = 0.15), bars should be visibly and substantially taller (> 8.0px)
+        active_bars = self.hud._generate_active_waveform(center_y=22.0, level=0.15)
+        max_active_height = max(y2 - y1 for _, y1, y2 in active_bars)
+        self.assertGreater(max_active_height, 8.0)
+
 
 if __name__ == "__main__":
     unittest.main()

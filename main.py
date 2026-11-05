@@ -1102,6 +1102,9 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             0, str(self.config.get("record_folder", os.path.abspath("recordings")))
         )
         self.rec_folder_entry.grid(row=1, column=1, padx=6, pady=6, sticky="ew")
+        self.rec_folder_entry.bind("<FocusOut>", self._on_settings_entry_changed)
+        self.rec_folder_entry.bind("<Return>", self._on_settings_entry_changed)
+        self.rec_folder_entry.bind("<KeyRelease>", self._on_settings_entry_debounced)
 
         self.browse_rec_btn = ctk.CTkButton(
             card_storage,
@@ -1140,6 +1143,9 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             0, str(self.config.get("vlc_dir", r"C:\Program Files\VideoLAN\VLC"))
         )
         self.vlc_dir_entry.grid(row=2, column=1, padx=6, pady=6, sticky="ew")
+        self.vlc_dir_entry.bind("<FocusOut>", self._on_settings_entry_changed)
+        self.vlc_dir_entry.bind("<Return>", self._on_settings_entry_changed)
+        self.vlc_dir_entry.bind("<KeyRelease>", self._on_settings_entry_debounced)
 
         self.browse_vlc_btn = ctk.CTkButton(
             card_storage,
@@ -1177,6 +1183,9 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         )
         self.replay_vol_entry.insert(0, str(self.config.get("replay_volume", 80)))
         self.replay_vol_entry.grid(row=3, column=1, padx=6, pady=(6, 12), sticky="w")
+        self.replay_vol_entry.bind("<FocusOut>", self._on_settings_entry_changed)
+        self.replay_vol_entry.bind("<Return>", self._on_settings_entry_changed)
+        self.replay_vol_entry.bind("<KeyRelease>", self._on_settings_entry_debounced)
 
         # -------------------------------------------------------------
         # CARD 2: INTERFACE & AUDIO INPUT
@@ -3044,6 +3053,9 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         if selected:
             self.rec_folder_entry.delete(0, "end")
             self.rec_folder_entry.insert(0, selected)
+            self.config["record_folder"] = selected
+            save_config(self.config)
+            self._refresh_recordings_list()
 
     def _browse_vlc_folder(self):
         curr = self.vlc_dir_entry.get().strip() or r"C:\Program Files\VideoLAN\VLC"
@@ -3051,6 +3063,66 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         if selected:
             self.vlc_dir_entry.delete(0, "end")
             self.vlc_dir_entry.insert(0, selected)
+            self.config["vlc_dir"] = selected
+            save_config(self.config)
+            self._check_system_health()
+
+    def _on_settings_entry_changed(self, event=None):
+        """Immediately saves modified setting entries to config.json without dialog popups."""
+        try:
+            changed = False
+            refresh_rec = False
+            refresh_health = False
+
+            if hasattr(self, "rec_folder_entry"):
+                f = self.rec_folder_entry.get().strip()
+                if f and f != self.config.get("record_folder"):
+                    self.config["record_folder"] = f
+                    changed = True
+                    refresh_rec = True
+
+            if hasattr(self, "vlc_dir_entry"):
+                vd = self.vlc_dir_entry.get().strip()
+                if vd and vd != self.config.get("vlc_dir"):
+                    self.config["vlc_dir"] = vd
+                    changed = True
+                    refresh_health = True
+
+            if hasattr(self, "replay_vol_entry"):
+                v_str = self.replay_vol_entry.get().strip()
+                if v_str.isdigit():
+                    v_val = max(0, min(100, int(v_str)))
+                    if v_val != self.config.get("replay_volume"):
+                        self.config["replay_volume"] = v_val
+                        if hasattr(self, "vol_slider"):
+                            self.vol_slider.set(v_val)
+                        if hasattr(self, "_on_replay_volume_slider_changed"):
+                            self._on_replay_volume_slider_changed(v_val)
+                        changed = True
+
+            if changed:
+                save_config(self.config)
+                if refresh_rec and hasattr(self, "_refresh_recordings_list"):
+                    try:
+                        self._refresh_recordings_list()
+                    except Exception:
+                        pass
+                if refresh_health and hasattr(self, "_check_system_health"):
+                    try:
+                        self._check_system_health()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    def _on_settings_entry_debounced(self, event=None):
+        """Debounces entry keystrokes to commit to config.json 500ms after user pauses typing."""
+        if hasattr(self, "_save_entry_timer") and self._save_entry_timer:
+            try:
+                self.after_cancel(self._save_entry_timer)
+            except Exception:
+                pass
+        self._save_entry_timer = self.after(500, self._on_settings_entry_changed)
 
     def _save_settings(self):
         try:
@@ -3095,22 +3167,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.rec_scene_lbl.configure(
                     text=self._get_engine_display_text()
                 )
-                messagebox.showinfo(
-                    t("tabs.settings"),
-                    t("settings.saved_success"),
-                )
                 self._check_system_health()
                 self._refresh_recordings_list()
+                self.log_message(f"[SETTINGS] {t('settings.saved_success')}")
             else:
-                messagebox.showerror(
-                    t("tabs.settings"),
-                    t("settings.saved_error"),
-                )
+                self.log_message(f"[SETTINGS] {t('settings.saved_error')}")
         except Exception as e:
-            messagebox.showerror(
-                t("tabs.settings"),
-                t("settings.invalid_input", error=e),
-            )
+            self.log_message(f"[ERROR] {e}")
 
     # ==========================================
     # LOG UTILITIES

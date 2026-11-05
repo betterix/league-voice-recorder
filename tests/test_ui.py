@@ -305,6 +305,36 @@ class TestUIApp(unittest.TestCase):
         self.app._flush_pending_settings_to_disk()
         self.assertEqual(self.app.config["hud_opacity"], 0.60)
 
+    def test_settings_entry_instant_save(self):
+        """Editing setting entries immediately updates config upon change."""
+        new_test_folder = r"C:\UniqueTestRecordings_" + str(id(self))
+        new_test_vol = 42 if self.app.config.get("replay_volume") != 42 else 55
+
+        self.app.rec_folder_entry.delete(0, "end")
+        self.app.rec_folder_entry.insert(0, new_test_folder)
+        self.app.replay_vol_entry.delete(0, "end")
+        self.app.replay_vol_entry.insert(0, str(new_test_vol))
+
+        with patch("main.save_config", return_value=True) as mock_save:
+            self.app._on_settings_entry_changed()
+            self.assertEqual(self.app.config["record_folder"], new_test_folder)
+            self.assertEqual(self.app.config["replay_volume"], new_test_vol)
+            mock_save.assert_called()
+
+    def test_save_settings_silent_and_prompt_free(self):
+        """Save settings updates config and logs without popup dialogs."""
+        with (
+            patch("tkinter.messagebox.showinfo") as mock_info,
+            patch("main.save_config", return_value=True),
+        ):
+            self.app._save_settings()
+            mock_info.assert_not_called()
+
+        items = []
+        while not self.app.msg_queue.empty():
+            items.append(self.app.msg_queue.get_nowait())
+        self.assertTrue(any("SETTINGS" in str(item) for item in items))
+
 
 if __name__ == "__main__":
     unittest.main()

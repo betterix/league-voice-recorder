@@ -695,19 +695,21 @@ class LeagueHUDWidget:
         played = []
         upcoming = []
         center_y = 22.0
-        mod_phase = self._wave_phase if audio_level > 0.02 else 0.0
+        clamped_level = max(0.0, min(1.0, float(audio_level)))
+        eff_audio = min(1.0, (clamped_level ** 0.45) * 1.55) if clamped_level > 0.012 else 0.0
+        mod_phase = self._wave_phase if eff_audio > 0.0 else 0.0
 
         for i, (x, y1, y2) in enumerate(pts):
             if x <= cursor_x:
-                if audio_level > 0.02:
+                if eff_audio > 0.0:
                     norm = i / max(1, len(pts) - 1)
-                    envelope = math.sin(norm * math.pi) ** 0.8
+                    envelope = 0.40 + 0.60 * (math.sin(norm * math.pi) ** 0.6)
                     bounce = (
-                        math.sin(norm * 5.0 * math.pi + mod_phase) * 0.55
-                        + math.cos(norm * 10.0 * math.pi - mod_phase * 0.7) * 0.35
+                        math.sin(norm * 5.0 * math.pi + mod_phase) * 0.6
+                        + math.cos(norm * 10.0 * math.pi - mod_phase * 0.8) * 0.4
                     )
-                    h = (y2 - center_y) + abs(bounce) * audio_level * 3.6 * envelope
-                    h = min(7.8, max(1.8, h))
+                    h = (y2 - center_y) + abs(bounce) * eff_audio * 4.5 * envelope
+                    h = min(9.2, max(1.8, h))
                     played.append((x, center_y - h, center_y + h))
                 else:
                     played.append((x, y1, y2))
@@ -731,21 +733,33 @@ class LeagueHUDWidget:
         bars = []
 
         min_half_h = 1.8  # Resting pill half-height (total 3.6px)
-        max_boost = 6.0   # Max dynamic audio expansion
+        max_boost = 7.5   # Max dynamic audio expansion
+
+        # High-sensitivity voice expansion curve:
+        # Voice audio peaks in WASAPI typically hover between 0.05 and 0.35 during normal talking.
+        # Compressing dynamic range with a perceptual root curve allows even soft or normal speech
+        # to produce lively, dancing equalizer bars instead of staying static.
+        clamped_level = max(0.0, min(1.0, float(level)))
+        if clamped_level > 0.012:
+            eff_level = min(1.0, (clamped_level ** 0.45) * 1.55)
+        else:
+            eff_level = 0.0
 
         for i in range(num_bars):
             x = start_x + i * step
             norm = i / (num_bars - 1)
-            envelope = math.sin(norm * math.pi) ** 0.75
 
-            # Dynamic harmonic frequency oscillation
+            # Dynamic harmonic frequency oscillation for lively equalizer animation
             w1 = math.sin(norm * 4.2 * math.pi + phase + seed)
-            w2 = math.cos(norm * 8.4 * math.pi - phase * 0.8 + seed * 1.5) * 0.35
-            w3 = math.sin(norm * 2.1 * math.pi + phase * 0.5) * 0.25
-            variation = abs(w1 + w2 + w3) / 1.6
+            w2 = math.cos(norm * 8.4 * math.pi - phase * 0.9 + seed * 1.6) * 0.45
+            w3 = math.sin(norm * 12.6 * math.pi + phase * 1.4) * 0.25
+            variation = 0.35 + 0.65 * (abs(w1 + w2 + w3) / 1.7)
 
-            h = min_half_h + (variation * level * max_boost) * envelope
-            h = min(7.8, max(min_half_h, h))
+            # Envelope keeping center prominent while keeping outer bars animated
+            envelope = 0.40 + 0.60 * (math.sin(norm * math.pi) ** 0.6)
+
+            h = min_half_h + (eff_level * max_boost * variation * envelope)
+            h = min(9.2, max(min_half_h, h))
             bars.append((x, center_y - h, center_y + h))
 
         return bars
