@@ -1783,42 +1783,23 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             else "IDLE"
         )
 
-        # STRICT RECORDING CHECK: Only true when actively recording or paused in match
-        rec_recording = getattr(rec_w, "recording", False)
-        if hasattr(rec_recording, "_mock_name"):
-            rec_recording = False
-        else:
-            rec_recording = bool(rec_recording)
+        is_rep_active = rep_w is not None
+        is_rec_active = rec_w is not None
 
-        is_recording = (rec_w is not None) and (
-            rec_status in ("RECORDING", "PAUSED") or rec_recording
-        )
-
-        # STRICT REPLAY CHECK: Only true when actively replaying or paused in replay
-        rep_player = getattr(rep_w, "current_player", None)
-        if hasattr(rep_player, "_mock_name"):
-            rep_player = None
-
-        is_replaying = (rep_w is not None) and (
-            rep_status in ("SYNCING", "PAUSED") or rep_player is not None
-        )
-
-        # 1. ONLY SHOW WHEN RECORDING OR REPLAYING!
-        # If WATCHING (waiting for match/replay), IDLE, SAVED, STOPPED -> HIDE!
-        if not (is_recording or is_replaying):
+        # 1. If neither match recording nor replay is running -> Hide HUD
+        if not (is_rec_active or is_rep_active):
             if self.hud.is_visible:
                 self.hud.hide()
             return
 
-        # 2. ONLY SHOW WHEN IN LEAGUE OF LEGENDS.EXE!
-        # If Alt-Tabbed into another application (Discord, Chrome, client, desktop) -> HIDE!
-        if not self._is_league_game_foreground():
-            if self.hud.is_visible:
-                self.hud.hide()
-            return
+        # 2. Stay visible during active watcher (in League, Discord, desktop, or while waiting)
+        target_mode = "REPLAY" if (is_rep_active and not is_rec_active) else "RECORD"
+        if is_rep_active and is_rec_active:
+            if rep_status in ("SYNCING", "PAUSED"):
+                target_mode = "REPLAY"
+            else:
+                target_mode = "RECORD"
 
-        # 3. Inside active match recording or replay -> Show HUD!
-        target_mode = "REPLAY" if is_replaying else "RECORD"
         if self.hud.mode != target_mode:
             self.hud.set_mode(target_mode)
 
@@ -2079,18 +2060,18 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                     status, detail = item[1], item[2]
                     self._render_rec_status(status, detail)
                     if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
-                        if status in ("SAVED", "STOPPED", "IDLE", "WATCHING") and not self._is_hud_previewing:
+                        if status in ("SAVED", "STOPPED", "IDLE") and not self._is_hud_previewing:
                             self.hud.hide()
-                        elif status in ("RECORDING", "PAUSED"):
+                        elif status in ("RECORDING", "PAUSED", "WATCHING"):
                             self._sync_hud_visibility_and_state()
 
                 elif action == "STATUS_REPLAY":
                     status, detail = item[1], item[2]
                     self._render_replay_status(status, detail)
                     if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
-                        if status in ("STOPPED", "IDLE", "WATCHING") and not self._is_hud_previewing:
+                        if status in ("STOPPED", "IDLE") and not self._is_hud_previewing:
                             self.hud.hide()
-                        elif status in ("SYNCING", "PAUSED"):
+                        elif status in ("SYNCING", "PAUSED", "WATCHING"):
                             self._sync_hud_visibility_and_state()
 
                 elif action == "REPLAY_MUTE":
@@ -2469,6 +2450,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
         if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
             self.hud.set_mode("REPLAY")
+            self.hud.show()
             self.hud.update_replay_state(
                 time_str="00:00",
                 current_time=0.0,
