@@ -300,7 +300,11 @@ class LeagueHUDWidget:
         """Displays the floating HUD."""
         self.is_visible = True
         self.window.deiconify()
-        self.window.attributes("-topmost", True)
+        try:
+            self.window.attributes("-alpha", self.opacity)
+            self.window.attributes("-topmost", True)
+        except Exception:
+            pass
         self.window.update_idletasks()
         if self.click_through:
             self._apply_click_through(True)

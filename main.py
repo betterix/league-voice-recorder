@@ -1298,6 +1298,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             button_color=("#FFFFFF", "#FFFFFF"),
             button_hover_color=("#F8FAFC", "#E2E8F0"),
             text_color=("#334155", "#94A3B8"),
+            command=self._on_auto_champ_select_toggled,
         )
         self.auto_champ_select_switch.grid(row=1, column=1, padx=(6, 14), pady=6, sticky="w")
 
@@ -1324,6 +1325,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             button_color=("#FFFFFF", "#FFFFFF"),
             button_hover_color=("#F8FAFC", "#E2E8F0"),
             text_color=("#334155", "#94A3B8"),
+            command=self._on_auto_replay_toggled,
         )
         self.auto_replay_switch.grid(row=2, column=1, padx=(6, 14), pady=6, sticky="w")
 
@@ -1642,11 +1644,22 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         """Saves repositioned HUD coordinates."""
         self.config["hud_x"] = x
         self.config["hud_y"] = y
-        save_config({"hud_x": x, "hud_y": y})
+        save_config(self.config)
+
+    def _on_auto_champ_select_toggled(self):
+        val = bool(self.auto_champ_select_var.get())
+        self.config["auto_start_champ_select"] = val
+        save_config(self.config)
+
+    def _on_auto_replay_toggled(self):
+        val = bool(self.auto_replay_var.get())
+        self.config["auto_start_replay"] = val
+        save_config(self.config)
 
     def _on_hud_enabled_toggled(self):
         enabled = bool(self.hud_enable_var.get())
         self.config["hud_overlay_enabled"] = enabled
+        save_config(self.config)
         if not enabled and self.hud:
             self.hud.hide()
 
@@ -3116,6 +3129,47 @@ class LeagueVoiceRecorderApp(ctk.CTk):
     # ==========================================
     # CLEAN SHUTDOWN
     # ==========================================
+    def _flush_pending_settings_to_disk(self):
+        """Immediately flushes all settings and debounced sliders to config.json."""
+        try:
+            if hasattr(self, "_save_hud_op_timer") and self._save_hud_op_timer:
+                try:
+                    self.after_cancel(self._save_hud_op_timer)
+                except Exception:
+                    pass
+                self._save_hud_op_timer = None
+
+            if hasattr(self, "_save_vol_timer") and self._save_vol_timer:
+                try:
+                    self.after_cancel(self._save_vol_timer)
+                except Exception:
+                    pass
+                self._save_vol_timer = None
+
+            if hasattr(self, "hud_opacity_slider"):
+                self.config["hud_opacity"] = round(float(self.hud_opacity_slider.get()), 2)
+            if hasattr(self, "hud_enable_var"):
+                self.config["hud_overlay_enabled"] = bool(self.hud_enable_var.get())
+            if hasattr(self, "hud_lock_var"):
+                self.config["hud_locked"] = bool(self.hud_lock_var.get())
+                self.config["hud_click_through"] = bool(self.hud_lock_var.get())
+            if hasattr(self, "auto_champ_select_var"):
+                self.config["auto_start_champ_select"] = bool(self.auto_champ_select_var.get())
+            if hasattr(self, "auto_replay_var"):
+                self.config["auto_start_replay"] = bool(self.auto_replay_var.get())
+            if hasattr(self, "rec_folder_entry"):
+                folder = self.rec_folder_entry.get().strip()
+                if folder:
+                    self.config["record_folder"] = folder
+            if hasattr(self, "vlc_dir_entry"):
+                vlc_d = self.vlc_dir_entry.get().strip()
+                if vlc_d:
+                    self.config["vlc_dir"] = vlc_d
+
+            save_config(self.config)
+        except Exception:
+            pass
+
     def _on_close(self):
         # 1. Warn if active match recording is in progress
         if self.recorder_worker and self.recorder_worker.recording:
@@ -3137,7 +3191,10 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         if self.replay_worker:
             self.replay_worker.stop()
 
-        # 2. Instant visual responsiveness: hide window and taskbar icon immediately (< 1ms)
+        # 2. Persist any uncommitted slider or setting state before exit
+        self._flush_pending_settings_to_disk()
+
+        # 3. Instant visual responsiveness: hide window and taskbar icon immediately (< 1ms)
         try:
             if hasattr(self, "hud") and self.hud:
                 self.hud.hide()

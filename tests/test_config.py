@@ -65,6 +65,27 @@ class TestConfigModule(unittest.TestCase):
         self.assertEqual(os.path.dirname(rec_dir), app_dir)
         self.assertEqual(os.path.basename(rec_dir), "recordings")
 
+    def test_save_config_partial_merge_preserves_settings(self):
+        from app.config import save_config
+
+        # 1. Save full initial setting with custom opacity
+        initial = load_config()
+        initial["hud_opacity"] = 0.55
+        initial["hud_locked"] = True
+        save_config(initial)
+
+        # 2. Perform a partial update (e.g. moving overlay position)
+        save_config({"hud_x": 500, "hud_y": 300})
+
+        # 3. Reload config and verify opacity and other fields were NOT lost
+        reloaded = load_config()
+        self.assertEqual(reloaded["hud_x"], 500)
+        self.assertEqual(reloaded["hud_y"], 300)
+        self.assertEqual(reloaded["hud_opacity"], 0.55)
+        self.assertTrue(reloaded["hud_locked"])
+        self.assertIn("record_folder", reloaded)
+        self.assertIn("vlc_dir", reloaded)
+
 
 if __name__ == "__main__":
     unittest.main()

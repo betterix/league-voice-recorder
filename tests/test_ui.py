@@ -291,6 +291,20 @@ class TestUIApp(unittest.TestCase):
             items.append(self.app.msg_queue.get_nowait())
         self.assertTrue(any("Replay API enabled" in str(item) for item in items))
 
+    def test_auto_switches_toggle_and_flush(self):
+        """Toggling settings switches immediately updates config and flushes cleanly."""
+        self.app.auto_champ_select_var.set(False)
+        self.app._on_auto_champ_select_toggled()
+        self.assertFalse(self.app.config["auto_start_champ_select"])
+
+        self.app.auto_replay_var.set(False)
+        self.app._on_auto_replay_toggled()
+        self.assertFalse(self.app.config["auto_start_replay"])
+
+        self.app.hud_opacity_slider.set(0.60)
+        self.app._flush_pending_settings_to_disk()
+        self.assertEqual(self.app.config["hud_opacity"], 0.60)
+
 
 if __name__ == "__main__":
     unittest.main()

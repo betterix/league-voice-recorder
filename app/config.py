@@ -255,14 +255,35 @@ def load_config():
 def save_config(config_data):
     """Save configuration dictionary to Documents/League Voice Recorder/config.json and synchronize .env."""
     global _CONFIG_CACHE, _CONFIG_MTIME
-    _CONFIG_CACHE = None
+
+    # Always merge into current config so partial updates never erase other settings
+    current_cfg = load_config()
+    merged_data = {**current_cfg, **config_data}
+
+    # Normalize numeric and boolean types
+    if "hud_opacity" in merged_data:
+        try:
+            merged_data["hud_opacity"] = round(float(merged_data["hud_opacity"]), 2)
+        except (ValueError, TypeError):
+            merged_data["hud_opacity"] = 0.85
+    if "replay_volume" in merged_data:
+        try:
+            merged_data["replay_volume"] = max(0, min(100, int(merged_data["replay_volume"])))
+        except (ValueError, TypeError):
+            merged_data["replay_volume"] = 100
+
+    _CONFIG_CACHE = merged_data.copy()
     _CONFIG_MTIME = 0.0
 
     success = True
     config_path = get_config_file_path()
     try:
         with open(config_path, "w", encoding="utf-8") as f:
-            f.write(json.dumps(config_data, indent=4, ensure_ascii=False))
+            f.write(json.dumps(merged_data, indent=4, ensure_ascii=False))
+        try:
+            _CONFIG_MTIME = os.path.getmtime(config_path)
+        except OSError:
+            pass
     except Exception as e:
         print(f"❌ Error saving config.json: {e}")
         success = False
@@ -272,7 +293,7 @@ def save_config(config_data):
     if os.path.exists(legacy_config_path):
         try:
             with open(legacy_config_path, "w", encoding="utf-8") as f:
-                f.write(json.dumps(config_data, indent=4, ensure_ascii=False))
+                f.write(json.dumps(merged_data, indent=4, ensure_ascii=False))
         except Exception:
             pass
 
@@ -280,8 +301,8 @@ def save_config(config_data):
     if os.path.exists(DOTENV_PATH):
         try:
             for cfg_key, env_key in _KEY_MAPPINGS:
-                if cfg_key in config_data:
-                    set_key(DOTENV_PATH, env_key, str(config_data[cfg_key]))
+                if cfg_key in merged_data:
+                    set_key(DOTENV_PATH, env_key, str(merged_data[cfg_key]))
         except Exception as e:
             print(f"⚠️ Warning: Failed to sync .env: {e}")
 
