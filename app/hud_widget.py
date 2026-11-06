@@ -788,11 +788,11 @@ class LeagueHUDWidget:
 
     def _render_replay_content(self) -> None:
         """Renders the Replay HUD (AUDIO wave with playhead, VOLUME slider, REPLAY, Timer, Lock)."""
-        # Row 1: Voice Track Mode Button (STD vs AI)
-        btn_bg = "#064E3B" if self.prefer_suppressed else "#1E293B"
-        btn_border = "#10B981" if self.prefer_suppressed else "#475569"
-        btn_text = "✨ AI" if self.prefer_suppressed else "🎙️ RAW"
-        btn_text_color = "#6EE7B7" if self.prefer_suppressed else "#CBD5E1"
+        # Row 1: Voice Track Label (COMMS)
+        btn_bg = "#1E293B"
+        btn_border = "#475569"
+        btn_text = "🎙️ COMMS"
+        btn_text_color = "#CBD5E1"
 
         draw_rounded_rect(
             self.canvas,

@@ -71,7 +71,6 @@ class TestReplaySyncModule(unittest.TestCase):
 
     def test_unpause_zero_latency_behavior(self):
         """Unpausing at the same timestamp must use instant play() and skip pipeline-flushing set_time()."""
-        from unittest.mock import MagicMock
 
         player = MagicMock()
         paused_game_time = 120.0
@@ -107,7 +106,6 @@ class TestReplaySyncModule(unittest.TestCase):
 
     def test_seek_cooldown_prevents_spam(self):
         """Hard seeks during large drift must adhere to an 800ms cooldown to avoid seek storms."""
-        from unittest.mock import MagicMock
 
         player = MagicMock()
         last_seek_wall_time = 100.0
@@ -128,7 +126,6 @@ class TestReplaySyncModule(unittest.TestCase):
         self.assertEqual(last_seek_wall_time, 100.9)
 
     def test_replay_sync_mute_and_toggle(self):
-        from unittest.mock import MagicMock
 
         mute_callback = MagicMock()
         sync = ReplaySynchronizer(mute_callback=mute_callback)
@@ -155,7 +152,6 @@ class TestReplaySyncModule(unittest.TestCase):
         mute_callback.assert_called_with(False)
 
     def test_set_volume_while_muted_preserves_mute(self):
-        from unittest.mock import MagicMock
 
         sync = ReplaySynchronizer()
         player = MagicMock()
@@ -225,47 +221,6 @@ class TestReplaySyncModule(unittest.TestCase):
                 find_matching_audio_file(tmpdir, "222222", prefer_suppressed=False),
                 suppressed_only,
             )
-
-    def test_voice_mode_toggle_and_callback(self):
-        callback_results = []
-        sync = ReplaySynchronizer(
-            config={"replay_volume": 80, "prefer_suppressed_replay": False},
-            voice_mode_callback=lambda mode: callback_results.append(mode),
-        )
-        self.assertFalse(sync.prefer_suppressed)
-
-        sync.set_voice_mode(True)
-        self.assertTrue(sync.prefer_suppressed)
-        self.assertEqual(callback_results, [True])
-
-        sync.toggle_voice_mode()
-        self.assertFalse(sync.prefer_suppressed)
-        self.assertEqual(callback_results, [True, False])
-
-    def test_perform_voice_mode_switch_mock(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            raw_path = os.path.join(tmpdir, "333333.mp3")
-            suppressed_path = os.path.join(tmpdir, "333333_suppressed.mp3")
-            with open(raw_path, "wb") as f:
-                f.write(b"0" * 15000)
-            with open(suppressed_path, "wb") as f:
-                f.write(b"1" * 15000)
-
-            sync = ReplaySynchronizer(config={"record_folder": tmpdir, "replay_volume": 80})
-            sync.current_game_id = "333333"
-            sync.current_audio_path = raw_path
-
-            mock_player = MagicMock()
-            mock_player.get_time.return_value = 45000
-            mock_player.get_rate.return_value = 1.0
-            mock_instance = MagicMock()
-
-            # Switch from raw to suppressed
-            success = sync._perform_voice_mode_switch(mock_player, mock_instance, target_suppressed=True)
-            self.assertTrue(success)
-            self.assertTrue(sync.prefer_suppressed)
-            self.assertEqual(sync.current_audio_path, os.path.abspath(suppressed_path))
-            mock_player.set_time.assert_called_with(45000)
 
 
 if __name__ == "__main__":

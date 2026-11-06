@@ -56,7 +56,6 @@ uv run --python 3.14.10 python -m nuitka ^
     --include-package=proctap ^
     --include-package=pyaudiowpatch ^
     --include-package=pycaw ^
-    --include-package-data=pyrnnoise ^
     --nofollow-import-to=scipy ^
     --nofollow-import-to=unittest ^
     --nofollow-import-to=doctest ^
@@ -109,13 +108,6 @@ if exist "LICENSE" (
 echo Copying README.md to output directory...
 if exist "README.md" (
     copy /y "README.md" "dist\LeagueVoiceRecorder\README.md" >nul
-)
-
-rem Ensure rnnoise.dll is bundled for AI noise suppression
-if exist ".venv\Lib\site-packages\pyrnnoise\rnnoise.dll" (
-    copy /y ".venv\Lib\site-packages\pyrnnoise\rnnoise.dll" "dist\LeagueVoiceRecorder\rnnoise.dll" >nul
-    if not exist "dist\LeagueVoiceRecorder\pyrnnoise" mkdir "dist\LeagueVoiceRecorder\pyrnnoise"
-    copy /y ".venv\Lib\site-packages\pyrnnoise\rnnoise.dll" "dist\LeagueVoiceRecorder\pyrnnoise\rnnoise.dll" >nul
 )
 
 echo Cleaning up temporary build artifacts...

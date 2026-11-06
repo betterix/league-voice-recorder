@@ -95,7 +95,7 @@ def find_tone_onset_sample(
 class TestTimingAndPaddingAccuracy(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.config = {"record_folder": self.temp_dir.name, "ai_noise_suppression": True}
+        self.config = {"record_folder": self.temp_dir.name}
 
     def tearDown(self):
         self.temp_dir.cleanup()
@@ -408,12 +408,12 @@ class TestTimingAndPaddingAccuracy(unittest.TestCase):
             )
 
     # =========================================================================
-    # TEST 5: End-to-End Real MP3 Mix & Suppressed MP3 Verification
+    # TEST 5: End-to-End Real MP3 Mix Verification
     # =========================================================================
-    def test_end_to_end_ffmpeg_and_rnnoise_mp3_timing_accuracy(self):
+    def test_end_to_end_ffmpeg_mp3_timing_accuracy(self):
         """
-        Executes real FFmpeg mixing and real RNNoise suppression on synthetic scrim audio.
-        Decodes output MP3s back to PCM and confirms arrival times match League match clock.
+        Executes real FFmpeg mixing on synthetic scrim audio.
+        Decodes output MP3 back to PCM and confirms arrival times match League match clock.
         Uses 1500 Hz (Discord) and 400 Hz (Mic) for complete spectral isolation.
         """
         ffmpeg_cmd = get_ffmpeg_path()
@@ -422,7 +422,6 @@ class TestTimingAndPaddingAccuracy(unittest.TestCase):
 
         nr = NativeAudioRecorder(
             record_folder=self.temp_dir.name,
-            ai_noise_suppression=True,
             log_callback=lambda msg: None,
         )
         nr.is_recording = True
@@ -456,40 +455,35 @@ class TestTimingAndPaddingAccuracy(unittest.TestCase):
         self.assertIsNotNone(out_mp3)
         self.assertTrue(os.path.exists(out_mp3))
 
-        suppressed_mp3 = os.path.join(nr.record_folder, "E2E_MATCH_TIMING_suppressed.mp3")
-        self.assertTrue(os.path.exists(suppressed_mp3))
+        # Decode output MP3 back to PCM WAV via FFmpeg to measure true arrival timestamps
+        decoded_wav = os.path.join(self.temp_dir.name, "decoded_raw.wav")
+        cmd = [ffmpeg_cmd, "-y", "-i", out_mp3, "-f", "wav", decoded_wav]
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        # Decode output MP3s back to PCM WAV via FFmpeg to measure true arrival timestamps
-        for mp3_file, is_suppressed in ((out_mp3, False), (suppressed_mp3, True)):
-            label = "AI-Suppressed MP3" if is_suppressed else "Raw Mixed MP3"
-            decoded_wav = os.path.join(self.temp_dir.name, f"decoded_{'supp' if is_suppressed else 'raw'}.wav")
-            cmd = [ffmpeg_cmd, "-y", "-i", mp3_file, "-f", "wav", decoded_wav]
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        with wave.open(decoded_wav, "rb") as wf:
+            decoded_frames = wf.getnframes()
+            decoded_samples = np.frombuffer(wf.readframes(decoded_frames), dtype=np.int16)[0::2]
 
-            with wave.open(decoded_wav, "rb") as wf:
-                decoded_frames = wf.getnframes()
-                decoded_samples = np.frombuffer(wf.readframes(decoded_frames), dtype=np.int16)[0::2]
+        # Verify Discord call at 5.0s (1500 Hz)
+        onset_disc = find_tone_onset_sample(decoded_samples, 1500.0, 48000)
+        self.assertGreater(onset_disc, 0, f"Discord tone not detected in ({out_mp3})")
+        disc_err_ms = abs(onset_disc - (48000 * 5)) / 48000.0 * 1000.0
+        # MP3 perceptual encoding framing tolerance is <= 25ms
+        self.assertLess(
+            disc_err_ms,
+            25.0,
+            f"Discord arrival delayed by {disc_err_ms:.2f}ms in {out_mp3}!",
+        )
 
-            # Verify Discord call at 5.0s (1500 Hz)
-            onset_disc = find_tone_onset_sample(decoded_samples, 1500.0, 48000)
-            self.assertGreater(onset_disc, 0, f"Discord tone not detected in {label} ({mp3_file})")
-            disc_err_ms = abs(onset_disc - (48000 * 5)) / 48000.0 * 1000.0
-            # MP3 perceptual encoding framing tolerance is <= 25ms
-            self.assertLess(
-                disc_err_ms,
-                25.0,
-                f"{label} Discord arrival delayed by {disc_err_ms:.2f}ms in {mp3_file}!",
-            )
-
-            # Verify Mic call at 18.0s (400 Hz)
-            onset_mic = find_tone_onset_sample(decoded_samples, 400.0, 48000)
-            self.assertGreater(onset_mic, 0, f"Mic tone not detected in {label} ({mp3_file})")
-            mic_err_ms = abs(onset_mic - (48000 * 18)) / 48000.0 * 1000.0
-            self.assertLess(
-                mic_err_ms,
-                25.0,
-                f"{label} Mic arrival delayed by {mic_err_ms:.2f}ms in {mp3_file}!",
-            )
+        # Verify Mic call at 18.0s (400 Hz)
+        onset_mic = find_tone_onset_sample(decoded_samples, 400.0, 48000)
+        self.assertGreater(onset_mic, 0, f"Mic tone not detected in ({out_mp3})")
+        mic_err_ms = abs(onset_mic - (48000 * 18)) / 48000.0 * 1000.0
+        self.assertLess(
+            mic_err_ms,
+            25.0,
+            f"Mic arrival delayed by {mic_err_ms:.2f}ms in {out_mp3}!",
+        )
 
     # =========================================================================
     # TEST 6: Extended Scrim Simulation with Discord Mute Silence Injection (Long)

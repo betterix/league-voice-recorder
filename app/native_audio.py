@@ -7,7 +7,6 @@ Includes real-time VU audio meter monitoring and application/process selection.
 """
 
 import collections
-import ctypes
 import os
 import queue
 import struct
@@ -28,216 +27,6 @@ from app.discord_ipc import get_shared_discord_mute_watcher
 # Process-wide thread-safe singleton for PortAudio
 _SHARED_PYAUDIO = None
 _SHARED_PYAUDIO_LOCK = threading.Lock()
-
-_RNNOISE_LIB = None
-_RNNOISE_LOAD_ATTEMPTED = False
-_RNNOISE_LOCK = threading.Lock()
-
-
-def _find_rnnoise_dll():
-    """Locates rnnoise.dll across compiled bundles, application dir, and virtualenvs."""
-    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
-    module_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.abspath(os.path.join(module_dir, ".."))
-
-    candidates = [
-        # Alongside executable (Nuitka / compiled distribution root)
-        os.path.join(exe_dir, "rnnoise.dll"),
-        os.path.join(exe_dir, "pyrnnoise", "rnnoise.dll"),
-        os.path.join(exe_dir, "assets", "rnnoise.dll"),
-        # Current working directory / project root
-        os.path.join(project_root, "dist", "LeagueVoiceRecorder", "rnnoise.dll"),
-        os.path.join(project_root, "dist", "LeagueVoiceRecorder", "pyrnnoise", "rnnoise.dll"),
-        os.path.join(project_root, "rnnoise.dll"),
-        os.path.join(project_root, "assets", "rnnoise.dll"),
-        # Development environment site-packages
-        os.path.join(project_root, ".venv", "Lib", "site-packages", "pyrnnoise", "rnnoise.dll"),
-    ]
-
-    try:
-        import importlib.util
-
-        spec = importlib.util.find_spec("pyrnnoise")
-        if spec and spec.origin:
-            candidates.append(os.path.join(os.path.dirname(spec.origin), "rnnoise.dll"))
-    except Exception:
-        pass
-
-    for candidate in candidates:
-        if candidate and os.path.exists(candidate):
-            return os.path.abspath(candidate)
-    return None
-
-
-def _get_rnnoise_lib():
-    """Thread-safe loader for the native RNNoise C library."""
-    global _RNNOISE_LIB, _RNNOISE_LOAD_ATTEMPTED
-    with _RNNOISE_LOCK:
-        if _RNNOISE_LOAD_ATTEMPTED:
-            return _RNNOISE_LIB
-        _RNNOISE_LOAD_ATTEMPTED = True
-
-        dll_path = _find_rnnoise_dll()
-        if not dll_path or not os.path.exists(dll_path):
-            print("[NativeRecorder] rnnoise.dll could not be located on disk.")
-            return None
-
-        try:
-            lib = ctypes.CDLL(dll_path)
-            lib.rnnoise_create.argtypes = [ctypes.c_void_p]
-            lib.rnnoise_create.restype = ctypes.c_void_p
-            lib.rnnoise_destroy.argtypes = [ctypes.c_void_p]
-            lib.rnnoise_process_frame.argtypes = [
-                ctypes.c_void_p,
-                ctypes.c_void_p,
-                ctypes.c_void_p,
-            ]
-            lib.rnnoise_process_frame.restype = ctypes.c_float
-            lib.rnnoise_get_frame_size.restype = ctypes.c_int
-            _RNNOISE_LIB = lib
-            return lib
-        except Exception as e:
-            print(f"[NativeRecorder] Failed to load rnnoise.dll from {dll_path}: {e}")
-            return None
-
-
-def apply_rnnoise_to_wav(
-    in_wav_path: str,
-    out_wav_path: str,
-    log_callback=None,
-    progress_callback=None,
-) -> bool:
-    """
-    Applies RNNoise neural network noise suppression to a 16-bit PCM WAV file.
-    Suppresses mechanical keyboard clicks, fan hum, and background noise while preserving speech.
-    Guarantees bit-exact sample count and 1:1 timeline alignment with original audio.
-    Uses native C library bindings with multi-threaded chunk processing for blazing fast execution.
-    """
-    lib = _get_rnnoise_lib()
-    if lib is None:
-        msg = "[NativeRecorder] AI noise suppression unavailable: rnnoise.dll not found."
-        print(msg)
-        if log_callback:
-            log_callback(msg)
-        return False
-
-    if not in_wav_path or not os.path.exists(in_wav_path) or os.path.getsize(in_wav_path) <= 44:
-        return False
-
-    try:
-        from concurrent.futures import ThreadPoolExecutor
-
-        with wave.open(in_wav_path, "rb") as wf_in:
-            params = wf_in.getparams()
-            channels = params.nchannels
-            nframes = params.nframes
-            raw = wf_in.readframes(nframes)
-            data = np.frombuffer(raw, dtype=np.int16)
-
-        if len(data) == 0:
-            return False
-
-        frame_size = lib.rnnoise_get_frame_size()  # 480 samples @ 48kHz
-        stride = frame_size * 4  # 1920 bytes
-        num_workers = min(8, max(2, (os.cpu_count() or 4) - 1))
-
-        def process_mono_fast(mono_data, ch_progress_offset=0.0, ch_progress_weight=1.0):
-            total_samples = len(mono_data)
-            if total_samples == 0:
-                return mono_data
-
-            base_chunk = ((total_samples // num_workers) // frame_size) * frame_size
-            if base_chunk == 0:
-                base_chunk = total_samples
-
-            chunk_ranges = []
-            cur = 0
-            while cur < total_samples:
-                nxt = min(total_samples, cur + base_chunk)
-                chunk_ranges.append((cur, nxt))
-                cur = nxt
-
-            out_mono = np.empty_like(mono_data)
-            pre_roll_frames = 20
-            pre_roll_samples = pre_roll_frames * frame_size
-            completed_chunks = 0
-            prog_lock = threading.Lock()
-
-            def chunk_worker(c_idx):
-                nonlocal completed_chunks
-                c_start, c_end = chunk_ranges[c_idx]
-                c_len = c_end - c_start
-                n_frames = (c_len + frame_size - 1) // frame_size
-                padded_len = n_frames * frame_size
-
-                pr_slice = None
-                pr_frames = 0
-                if c_idx > 0:
-                    pr_start = max(0, c_start - pre_roll_samples)
-                    pr_slice = mono_data[pr_start:c_start]
-                    pr_frames = len(pr_slice) // frame_size
-
-                st = lib.rnnoise_create(None)
-                try:
-                    # Warm up recurrent neural network states with pre-roll
-                    if pr_slice is not None and pr_frames > 0:
-                        pr_buf = np.ascontiguousarray(
-                            pr_slice[: pr_frames * frame_size], dtype=np.float32
-                        )
-                        pr_ptr = pr_buf.ctypes.data
-                        for j in range(pr_frames):
-                            addr = pr_ptr + j * stride
-                            lib.rnnoise_process_frame(st, addr, addr)
-
-                    c_slice = mono_data[c_start:c_end]
-                    if len(c_slice) < padded_len:
-                        buf = np.pad(c_slice, (0, padded_len - len(c_slice))).astype(np.float32)
-                    else:
-                        buf = np.ascontiguousarray(c_slice, dtype=np.float32)
-
-                    b_ptr = buf.ctypes.data
-                    for j in range(n_frames):
-                        addr = b_ptr + j * stride
-                        lib.rnnoise_process_frame(st, addr, addr)
-
-                    out_mono[c_start:c_end] = np.clip(buf[:c_len], -32768, 32767).astype(np.int16)
-                finally:
-                    lib.rnnoise_destroy(st)
-
-                with prog_lock:
-                    completed_chunks += 1
-                    if progress_callback:
-                        sub_pct = completed_chunks / len(chunk_ranges)
-                        overall_pct = ch_progress_offset + (sub_pct * ch_progress_weight)
-                        progress_callback(overall_pct)
-
-            with ThreadPoolExecutor(max_workers=num_workers) as executor:
-                list(executor.map(chunk_worker, range(len(chunk_ranges))))
-
-            return out_mono
-
-        if channels == 1:
-            denoised_data = process_mono_fast(data, ch_progress_offset=0.0, ch_progress_weight=1.0)
-        else:
-            channel_outs = []
-            for ch_idx in range(channels):
-                ch_data = data[ch_idx::channels]
-                ch_off = ch_idx / channels
-                ch_w = 1.0 / channels
-                channel_outs.append(process_mono_fast(ch_data, ch_progress_offset=ch_off, ch_progress_weight=ch_w))
-            denoised_data = np.column_stack(channel_outs).flatten()
-
-        with wave.open(out_wav_path, "wb") as wf_out:
-            wf_out.setparams(params)
-            wf_out.writeframes(denoised_data.tobytes())
-
-        return True
-    except Exception as e:
-        msg = f"[NativeRecorder] Error applying RNNoise to WAV: {e}"
-        print(msg)
-        if log_callback:
-            log_callback(msg)
-        return False
 
 
 def get_shared_pyaudio():
@@ -767,7 +556,7 @@ class NativeAudioRecorder:
         target_name="Discord",
         mic_device=None,
         mic_device_name=None,
-        ai_noise_suppression=True,
+        ai_noise_suppression=False,
     ):
         self.record_folder = record_folder or os.path.abspath("recordings")
         self.log_callback = log_callback
@@ -776,7 +565,7 @@ class NativeAudioRecorder:
         self.target_name = target_name
         self.mic_device = mic_device
         self.mic_device_name = mic_device_name
-        self.ai_noise_suppression = ai_noise_suppression
+        self.ai_noise_suppression = False
 
         self.is_recording = False
         self.is_paused = False
@@ -1073,8 +862,7 @@ class NativeAudioRecorder:
         self.log(f"Microphone device set to: {name or f'Index {index}'}")
 
     def set_ai_noise_suppression(self, enabled: bool):
-        """Toggles AI noise suppression (RNNoise) for comms export."""
-        self.ai_noise_suppression = bool(enabled)
+        """No-op on main branch."""
 
     def start_recording(self, session_id, initial_game_time=0.0):
         """Starts asynchronous capture of target process audio and player microphone."""
@@ -1321,81 +1109,16 @@ class NativeAudioRecorder:
         if self._mic_writer_thread and self._mic_writer_thread.is_alive():
             self._mic_writer_thread.join(timeout=3.0)
 
-        should_suppress = bool(
-            self.ai_noise_suppression
-            and self.mic_wav_path
-            and os.path.exists(self.mic_wav_path)
-            and os.path.getsize(self.mic_wav_path) > 44
+        if progress_callback:
+            progress_callback(30.0, "Encoding MP3...")
+        final_mp3 = self._mix_to_mp3(
+            output_base_name,
+            initial_offset=initial_offset,
+            cleanup=True,
         )
-
-        from concurrent.futures import ThreadPoolExecutor
-
-        if should_suppress:
-            if progress_callback:
-                progress_callback(10.0, "AI Denoising & Mixing...")
-
-            suppressed_mic = self.mic_wav_path.replace(".wav", "_suppressed.wav")
-            final_mp3 = None
-
-            def run_raw_mix():
-                return self._mix_to_mp3(
-                    output_base_name,
-                    initial_offset=initial_offset,
-                    cleanup=False,
-                )
-
-            def on_rnnoise_prog(sub_pct):
-                if progress_callback:
-                    pct = 10.0 + (sub_pct * 65.0)  # 10% -> 75%
-                    progress_callback(pct, "AI Denoising Microphone")
-
-            def run_suppressed_pipeline():
-                ok = apply_rnnoise_to_wav(
-                    self.mic_wav_path,
-                    suppressed_mic,
-                    log_callback=self.log,
-                    progress_callback=on_rnnoise_prog,
-                )
-                if not ok:
-                    self.log("[NativeRecorder] AI noise suppression skipped: WAV filtering failed.")
-                    return None
-                if progress_callback:
-                    progress_callback(80.0, "Encoding AI Suppressed MP3...")
-                return self._mix_to_mp3(
-                    f"{output_base_name}_suppressed",
-                    initial_offset=initial_offset,
-                    custom_mic_path=suppressed_mic,
-                    cleanup=False,
-                )
-
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                future_raw = executor.submit(run_raw_mix)
-                future_supp = executor.submit(run_suppressed_pipeline)
-                final_mp3 = future_raw.result()
-                future_supp.result()
-
-            if os.path.exists(suppressed_mic):
-                try:
-                    os.remove(suppressed_mic)
-                except Exception:
-                    pass
-            self._cleanup_temp_wavs()
-
-            if progress_callback:
-                progress_callback(100.0, "Complete")
-
-            return final_mp3
-        else:
-            if progress_callback:
-                progress_callback(25.0, "Encoding MP3...")
-            final_mp3 = self._mix_to_mp3(
-                output_base_name,
-                initial_offset=initial_offset,
-                cleanup=True,
-            )
-            if progress_callback:
-                progress_callback(100.0, "Complete")
-            return final_mp3
+        if progress_callback:
+            progress_callback(100.0, "Complete")
+        return final_mp3
 
     def _cleanup_temp_wavs(self):
         """Removes temporary session WAV files."""

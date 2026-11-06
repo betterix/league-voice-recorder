@@ -128,9 +128,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 on_volume_changed=self._on_hud_volume_changed,
                 on_position_changed=self._on_hud_position_changed,
                 on_lock_changed=self._on_hud_lock_changed_from_overlay,
-                on_voice_mode_toggle=self._toggle_replay_voice_mode,
             )
-            self.hud.set_voice_mode(bool(self.config.get("prefer_suppressed_replay", False)))
         except Exception:
             self.hud = None
 
@@ -650,42 +648,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         )
         self.vol_slider.set(self.current_vol)
         self.vol_slider.grid(row=0, column=1, padx=(4, 10), pady=6, sticky="ew")
-
-        # Voice Track Selector (Standard Comms vs AI Suppressed)
-        self.track_frame = ctk.CTkFrame(
-            rep_card,
-            fg_color=("#F8FAFC", "#070D1E"),
-            corner_radius=6,
-            border_width=1,
-            border_color=("#E2E8F0", "#162038"),
-        )
-        self.track_frame.pack(fill="x", padx=14, pady=(0, 6))
-        self.track_frame.grid_columnconfigure(0, weight=1)
-        self.track_frame.grid_columnconfigure(1, weight=0)
-
-        self.track_label = ctk.CTkLabel(
-            self.track_frame,
-            text="🎙️ " + t("replay.voice_track") + ":",
-            font=ctk.CTkFont(size=11, weight="bold"),
-            text_color=("#0891B2", "#0AC8B9"),
-        )
-        self.track_label.grid(row=0, column=0, padx=(10, 4), pady=5, sticky="w")
-
-        is_supp = bool(self.config.get("prefer_suppressed_replay", False))
-        self.track_toggle_btn = ctk.CTkButton(
-            self.track_frame,
-            text=self._get_voice_mode_btn_text(is_supp),
-            font=ctk.CTkFont(size=11, weight="bold"),
-            height=26,
-            fg_color="#064E3B" if is_supp else ("#E2E8F0", "#1E293B"),
-            hover_color="#047857" if is_supp else ("#CBD5E1", "#334155"),
-            text_color="#6EE7B7" if is_supp else ("#0F172A", "#E2E8F0"),
-            border_width=1,
-            border_color="#10B981" if is_supp else ("#94A3B8", "#475569"),
-            corner_radius=6,
-            command=self._toggle_replay_voice_mode,
-        )
-        self.track_toggle_btn.grid(row=0, column=1, padx=(4, 8), pady=5, sticky="e")
 
         # 1-Click Replay API Auto-Configuration Row (Under Replay Controls)
         self.replay_api_row = ctk.CTkFrame(
@@ -1337,33 +1299,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         )
         self.settings_mic_menu.grid(row=3, column=1, padx=(6, 14), pady=6, sticky="ew")
 
-        # AI Noise Suppression (RNNoise)
-        self.ai_noise_suppression_lbl = ctk.CTkLabel(
-            card_interface,
-            text=t("settings.ai_noise_suppression"),
-            font=ctk.CTkFont(size=11, weight="bold"),
-            text_color=("#0F172A", "#CBD5E1"),
-        )
-        self.ai_noise_suppression_lbl.grid(row=4, column=0, padx=(14, 8), pady=(6, 12), sticky="w")
-
-        self.ai_noise_suppression_var = ctk.BooleanVar(
-            value=bool(self.config.get("ai_noise_suppression", True))
-        )
-        self.ai_noise_suppression_switch = ctk.CTkSwitch(
-            card_interface,
-            text=t("settings.ai_noise_suppression_info"),
-            variable=self.ai_noise_suppression_var,
-            onvalue=True,
-            offvalue=False,
-            command=self._on_ai_noise_suppression_toggled,
-            progress_color=("#0891B2", "#0AC8B9"),
-            button_color=("#0F172A", "#FFFFFF"),
-            button_hover_color=("#334155", "#E2E8F0"),
-            font=ctk.CTkFont(size=11),
-            text_color=("#64748B", "#94A3B8"),
-        )
-        self.ai_noise_suppression_switch.grid(row=4, column=1, padx=(6, 14), pady=(6, 12), sticky="w")
-
         # -------------------------------------------------------------
         # CARD 3: MATCH AUTOMATION & WORKFLOW
         # -------------------------------------------------------------
@@ -1709,13 +1644,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.config["hud_x"] = x
         self.config["hud_y"] = y
         save_config(self.config)
-
-    def _on_ai_noise_suppression_toggled(self):
-        val = bool(self.ai_noise_suppression_var.get())
-        self.config["ai_noise_suppression"] = val
-        save_config(self.config)
-        if hasattr(self, "recorder_worker") and self.recorder_worker and hasattr(self.recorder_worker, "native_recorder"):
-            self.recorder_worker.native_recorder.set_ai_noise_suppression(val)
 
     def _on_auto_champ_select_toggled(self):
         val = bool(self.auto_champ_select_var.get())
@@ -2154,10 +2082,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             else:
                 self.rep_btn.configure(text=t("replay.start_btn"))
             self.rep_info_lbl.configure(text=f"{t('replay.info')}\n• {t('replay.hotkey_hint')}")
-            if hasattr(self, "track_label"):
-                self.track_label.configure(text="🎙️ " + t("replay.voice_track") + ":")
-            if hasattr(self, "track_toggle_btn"):
-                self._update_voice_mode_button_visuals(bool(self.config.get("prefer_suppressed_replay", False)))
             self._update_volume_display()
             self._render_replay_status(*self.last_replay_status)
 
@@ -2211,9 +2135,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                         self.theme_menu.set(curr_theme_disp)
                 if hasattr(self, "settings_mic_lbl"):
                     self.settings_mic_lbl.configure(text=t("settings.mic_device"))
-                if hasattr(self, "ai_noise_suppression_lbl"):
-                    self.ai_noise_suppression_lbl.configure(text=t("settings.ai_noise_suppression"))
-                    self.ai_noise_suppression_switch.configure(text=t("settings.ai_noise_suppression_info"))
                 if hasattr(self, "automation_title_lbl"):
                     self.automation_title_lbl.configure(text=f"⚡ {t('settings.automation_title')}")
                 if hasattr(self, "auto_champ_select_lbl"):
@@ -2679,7 +2600,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             log_callback=self.log_message,
             status_callback=self.set_replay_status,
             mute_callback=self.set_replay_mute_state,
-            voice_mode_callback=self._on_replay_voice_mode_changed_from_worker,
         )
         if getattr(self, "_replay_muted", False):
             self.replay_worker.set_mute(True)
@@ -2777,57 +2697,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
     def _save_volume_to_config(self):
         save_config(self.config)
         self._save_vol_timer = None
-
-    def _get_voice_mode_btn_text(self, is_suppressed=None):
-        if is_suppressed is None:
-            is_suppressed = bool(self.config.get("prefer_suppressed_replay", False))
-        if is_suppressed:
-            return f"✨ {t('replay.voice_mode_suppressed')}"
-        return f"🎙️ {t('replay.voice_mode_raw')}"
-
-    def _update_voice_mode_button_visuals(self, is_suppressed):
-        if not hasattr(self, "track_toggle_btn"):
-            return
-        btn_text = self._get_voice_mode_btn_text(is_suppressed)
-        if is_suppressed:
-            self.track_toggle_btn.configure(
-                text=btn_text,
-                fg_color="#064E3B",
-                hover_color="#047857",
-                text_color="#6EE7B7",
-                border_color="#10B981",
-            )
-        else:
-            self.track_toggle_btn.configure(
-                text=btn_text,
-                fg_color=("#E2E8F0", "#1E293B"),
-                hover_color=("#CBD5E1", "#334155"),
-                text_color=("#0F172A", "#E2E8F0"),
-                border_color=("#94A3B8", "#475569"),
-            )
-
-    def _toggle_replay_voice_mode(self):
-        new_mode = not bool(self.config.get("prefer_suppressed_replay", False))
-        self.config["prefer_suppressed_replay"] = new_mode
-        save_config(self.config)
-        self._update_voice_mode_button_visuals(new_mode)
-        if getattr(self, "hud", None):
-            self.hud.set_voice_mode(new_mode)
-        if self.replay_worker:
-            self.replay_worker.set_voice_mode(new_mode)
-        else:
-            mode_label = (
-                t("replay.voice_mode_suppressed")
-                if new_mode
-                else t("replay.voice_mode_raw")
-            )
-            self.log_message(f"🎙️ Replay voice mode set to: {mode_label}")
-
-    def _on_replay_voice_mode_changed_from_worker(self, is_suppressed):
-        self.config["prefer_suppressed_replay"] = is_suppressed
-        self._update_voice_mode_button_visuals(is_suppressed)
-        if getattr(self, "hud", None):
-            self.hud.set_voice_mode(is_suppressed)
 
     def _stop_replay(self):
         if getattr(self, "hud", None) and not getattr(self, "_is_hud_previewing", False):
@@ -3286,7 +3155,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 "replay_volume": vol_val,
                 "language": selected_lang_code,
                 "theme": selected_theme_code,
-                "ai_noise_suppression": bool(self.ai_noise_suppression_var.get()) if hasattr(self, "ai_noise_suppression_var") else True,
                 "auto_start_champ_select": bool(self.auto_champ_select_var.get()),
                 "auto_start_replay": bool(self.auto_replay_var.get()),
                 "hud_overlay_enabled": bool(self.hud_enable_var.get()) if hasattr(self, "hud_enable_var") else True,
@@ -3361,8 +3229,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.config["auto_start_champ_select"] = bool(self.auto_champ_select_var.get())
             if hasattr(self, "auto_replay_var"):
                 self.config["auto_start_replay"] = bool(self.auto_replay_var.get())
-            if hasattr(self, "ai_noise_suppression_var"):
-                self.config["ai_noise_suppression"] = bool(self.ai_noise_suppression_var.get())
             if hasattr(self, "rec_folder_entry"):
                 folder = self.rec_folder_entry.get().strip()
                 if folder:

@@ -217,7 +217,7 @@ class ReplaySynchronizer:
         self.voice_mode_callback = voice_mode_callback
         self.audio_directory = self.config.get("record_folder", DEFAULT_AUDIO_DIRECTORY)
         self.volume = int(self.config.get("replay_volume", 80))
-        self.prefer_suppressed = bool(self.config.get("prefer_suppressed_replay", False))
+        self.prefer_suppressed = False
         self.current_player = None
         self.vlc_instance = None
         self.current_audio_path = None
@@ -226,7 +226,6 @@ class ReplaySynchronizer:
         self.running = False
         self.is_muted = False
         self.last_mute_toggle_time = 0.0
-        self.last_voice_mode_toggle_time = 0.0
         self.current_replay_pid = None
         self._hotkey_thread = None
         self.last_game_time = 0.0
@@ -302,95 +301,12 @@ class ReplaySynchronizer:
         return self.set_mute(not self.is_muted)
 
     def set_voice_mode(self, prefer_suppressed):
-        """Sets voice mode preference and signals active playback to swap tracks seamlessly."""
-        self.prefer_suppressed = bool(prefer_suppressed)
-        if self.current_player:
-            self._pending_voice_mode = self.prefer_suppressed
-        else:
-            if self.voice_mode_callback:
-                try:
-                    self.voice_mode_callback(self.prefer_suppressed)
-                except Exception:
-                    pass
-        return self.prefer_suppressed
+        """No-op on main branch."""
+        return False
 
     def toggle_voice_mode(self):
-        """Toggles between standard raw audio and AI-suppressed audio."""
-        now = time.time()
-        if now - self.last_voice_mode_toggle_time < 0.25:
-            return self.prefer_suppressed
-        self.last_voice_mode_toggle_time = now
-        current = (
-            self._pending_voice_mode
-            if self._pending_voice_mode is not None
-            else self.prefer_suppressed
-        )
-        return self.set_voice_mode(not current)
-
-    def _perform_voice_mode_switch(self, player, instance, target_suppressed: bool):
-        if not self.current_game_id or not self.audio_directory:
-            return False
-
-        new_file = find_matching_audio_file(
-            self.audio_directory,
-            self.current_game_id,
-            prefer_suppressed=target_suppressed,
-        )
-        if not new_file or not os.path.exists(new_file):
-            self.log(t("logs.voice_mode_file_not_found"))
-            return False
-
-        current_norm = (
-            os.path.normcase(os.path.abspath(self.current_audio_path))
-            if self.current_audio_path
-            else ""
-        )
-        new_norm = os.path.normcase(os.path.abspath(new_file))
-        if current_norm == new_norm:
-            # File is already the active track (e.g. only one version exists)
-            self.log(t("logs.voice_mode_no_alternate", file=os.path.basename(new_file)))
-            return False
-
-        try:
-            cur_ms = player.get_time() if hasattr(player, "get_time") else -1
-            cur_rate = player.get_rate() if hasattr(player, "get_rate") else 1.0
-            was_paused = self.is_paused
-
-            new_media = instance.media_new(os.path.abspath(new_file))
-            player.set_media(new_media)
-            player.play()
-            if cur_ms > 0:
-                player.set_time(cur_ms)
-            if cur_rate > 0:
-                player.set_rate(cur_rate)
-            if self.is_muted:
-                player.audio_set_mute(True)
-                player.audio_set_volume(0)
-            else:
-                player.audio_set_mute(False)
-                player.audio_set_volume(self.volume)
-            if was_paused:
-                player.pause()
-
-            self.current_audio_path = os.path.abspath(new_file)
-            self.prefer_suppressed = target_suppressed
-            mode_name = (
-                t("replay.voice_mode_suppressed")
-                if target_suppressed
-                else t("replay.voice_mode_raw")
-            )
-            self.log(
-                t("logs.voice_mode_switched", mode=mode_name, file=os.path.basename(new_file))
-            )
-            if self.voice_mode_callback:
-                try:
-                    self.voice_mode_callback(target_suppressed)
-                except Exception:
-                    pass
-            return True
-        except Exception as e:
-            self.log(f"Voice track switch error: {e}")
-            return False
+        """No-op on main branch."""
+        return False
 
     def _hotkey_listener_loop(self):
         """Background listener for M hotkey (VK_M = 0x4D) to mute/unmute replay audio."""
@@ -482,11 +398,6 @@ class ReplaySynchronizer:
         session.verify = False
 
         while not self.stop_event.is_set():
-            if self._pending_voice_mode is not None:
-                target_mode = self._pending_voice_mode
-                self._pending_voice_mode = None
-                self._perform_voice_mode_switch(player, instance, target_mode)
-
             try:
                 response = session.get(API_URL, timeout=0.25)
                 if response.status_code == 200:

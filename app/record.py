@@ -199,7 +199,6 @@ class LeagueRecorder:
             record_folder=self.record_folder,
             mic_device=self.config.get("mic_device_index"),
             mic_device_name=self.config.get("mic_device_name"),
-            ai_noise_suppression=self.config.get("ai_noise_suppression", True),
             log_callback=self.log,
         )
         self.native_recorder.set_target_process(
