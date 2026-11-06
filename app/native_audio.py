@@ -34,9 +34,10 @@ def apply_rnnoise_to_wav(in_wav_path: str, out_wav_path: str) -> bool:
     Applies RNNoise neural network noise suppression to a 16-bit PCM WAV file.
     Suppresses mechanical keyboard clicks, fan hum, and background noise while preserving speech.
     Guarantees bit-exact sample count and 1:1 timeline alignment with original audio.
+    Uses the native C library bindings directly without heavyweight video/audio decoding dependencies.
     """
     try:
-        from pyrnnoise import RNNoise
+        from pyrnnoise.rnnoise import create, destroy, process_mono_frame, FRAME_SIZE
     except Exception as e:
         print(f"[NativeRecorder] RNNoise import error: {e}")
         return False
@@ -48,7 +49,6 @@ def apply_rnnoise_to_wav(in_wav_path: str, out_wav_path: str) -> bool:
         with wave.open(in_wav_path, "rb") as wf_in:
             params = wf_in.getparams()
             channels = params.nchannels
-            rate = params.framerate
             nframes = params.nframes
             raw = wf_in.readframes(nframes)
             data = np.frombuffer(raw, dtype=np.int16)
@@ -56,30 +56,35 @@ def apply_rnnoise_to_wav(in_wav_path: str, out_wav_path: str) -> bool:
         if len(data) == 0:
             return False
 
-        rn = RNNoise(sample_rate=rate)
-        if channels > 1:
-            data_in = data.reshape(-1, channels).T
+        if channels == 1:
+            st = create()
+            try:
+                processed_chunks = []
+                for i in range(0, len(data), FRAME_SIZE):
+                    chunk = data[i : i + FRAME_SIZE]
+                    out_chunk, _ = process_mono_frame(st, chunk)
+                    processed_chunks.append(out_chunk)
+                denoised_data = np.concatenate(processed_chunks)[: len(data)]
+            finally:
+                destroy(st)
         else:
-            data_in = data.reshape(1, -1)
-
-        denoised_chunks = []
-        for _prob, frame in rn.denoise_chunk(data_in, partial=True):
-            denoised_chunks.append(frame)
-
-        if not denoised_chunks:
-            return False
-
-        denoised_data = np.concatenate(denoised_chunks, axis=-1)
-        if channels > 1:
-            denoised_data = denoised_data.T.flatten()
-        else:
-            denoised_data = denoised_data.flatten()
-
-        target_len = len(data)
-        if len(denoised_data) > target_len:
-            denoised_data = denoised_data[:target_len]
-        elif len(denoised_data) < target_len:
-            denoised_data = np.pad(denoised_data, (0, target_len - len(denoised_data)))
+            # Multi-channel: denoise each channel independently with dedicated state
+            channel_states = [create() for _ in range(channels)]
+            try:
+                channel_out = []
+                for ch_idx in range(channels):
+                    ch_data = data[ch_idx::channels]
+                    ch_chunks = []
+                    for i in range(0, len(ch_data), FRAME_SIZE):
+                        chunk = ch_data[i : i + FRAME_SIZE]
+                        out_chunk, _ = process_mono_frame(channel_states[ch_idx], chunk)
+                        ch_chunks.append(out_chunk)
+                    channel_out.append(np.concatenate(ch_chunks)[: len(ch_data)])
+                # Interleave back
+                denoised_data = np.column_stack(channel_out).flatten()
+            finally:
+                for st in channel_states:
+                    destroy(st)
 
         with wave.open(out_wav_path, "wb") as wf_out:
             wf_out.setparams(params)

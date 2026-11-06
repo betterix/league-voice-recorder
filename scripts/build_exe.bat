@@ -52,12 +52,20 @@ uv run --python 3.14.10 python -m nuitka ^
     --file-description="League Voice Recorder & Replay Synchronizer" ^
     --copyright="Copyright (c) 2026 betterix. GPL-3.0 License." ^
     --enable-plugin=tk-inter ^
+    --no-prefer-source-code ^
     --include-package=proctap ^
     --include-package=pyaudiowpatch ^
     --include-package=pycaw ^
+    --include-package-data=pyrnnoise ^
     --nofollow-import-to=scipy ^
     --nofollow-import-to=unittest ^
     --nofollow-import-to=doctest ^
+    --nofollow-import-to=av ^
+    --nofollow-import-to=audiolab ^
+    --nofollow-import-to=matplotlib ^
+    --nofollow-import-to=fontTools ^
+    --nofollow-import-to=PIL ^
+    --nofollow-import-to=soundfile ^
     --tcl-library-dir="%TCL_DIR%" ^
     --tk-library-dir="%TK_DIR%" ^
     --include-data-dir=locales=locales ^
@@ -101,6 +109,12 @@ if exist "LICENSE" (
 echo Copying README.md to output directory...
 if exist "README.md" (
     copy /y "README.md" "dist\LeagueVoiceRecorder\README.md" >nul
+)
+
+rem Ensure rnnoise.dll is bundled for AI noise suppression
+if exist ".venv\Lib\site-packages\pyrnnoise\rnnoise.dll" (
+    if not exist "dist\LeagueVoiceRecorder\pyrnnoise" mkdir "dist\LeagueVoiceRecorder\pyrnnoise"
+    copy /y ".venv\Lib\site-packages\pyrnnoise\rnnoise.dll" "dist\LeagueVoiceRecorder\pyrnnoise\rnnoise.dll" >nul
 )
 
 echo Cleaning up temporary build artifacts...
