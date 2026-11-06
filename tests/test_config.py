@@ -27,6 +27,7 @@ class TestConfigModule(unittest.TestCase):
         self.assertIn("hud_overlay_enabled", cfg)
         self.assertIn("hud_click_through", cfg)
         self.assertIn("hud_opacity", cfg)
+        self.assertIn("ai_noise_suppression", cfg)
 
     def test_recordings_dir_in_user_documents(self):
         rec_dir = get_current_user_documents_recordings_dir()

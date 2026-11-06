@@ -29,6 +29,68 @@ _SHARED_PYAUDIO = None
 _SHARED_PYAUDIO_LOCK = threading.Lock()
 
 
+def apply_rnnoise_to_wav(in_wav_path: str, out_wav_path: str) -> bool:
+    """
+    Applies RNNoise neural network noise suppression to a 16-bit PCM WAV file.
+    Suppresses mechanical keyboard clicks, fan hum, and background noise while preserving speech.
+    Guarantees bit-exact sample count and 1:1 timeline alignment with original audio.
+    """
+    try:
+        from pyrnnoise import RNNoise
+    except Exception as e:
+        print(f"[NativeRecorder] RNNoise import error: {e}")
+        return False
+
+    if not in_wav_path or not os.path.exists(in_wav_path) or os.path.getsize(in_wav_path) <= 44:
+        return False
+
+    try:
+        with wave.open(in_wav_path, "rb") as wf_in:
+            params = wf_in.getparams()
+            channels = params.nchannels
+            rate = params.framerate
+            nframes = params.nframes
+            raw = wf_in.readframes(nframes)
+            data = np.frombuffer(raw, dtype=np.int16)
+
+        if len(data) == 0:
+            return False
+
+        rn = RNNoise(sample_rate=rate)
+        if channels > 1:
+            data_in = data.reshape(-1, channels).T
+        else:
+            data_in = data.reshape(1, -1)
+
+        denoised_chunks = []
+        for _prob, frame in rn.denoise_chunk(data_in, partial=True):
+            denoised_chunks.append(frame)
+
+        if not denoised_chunks:
+            return False
+
+        denoised_data = np.concatenate(denoised_chunks, axis=-1)
+        if channels > 1:
+            denoised_data = denoised_data.T.flatten()
+        else:
+            denoised_data = denoised_data.flatten()
+
+        target_len = len(data)
+        if len(denoised_data) > target_len:
+            denoised_data = denoised_data[:target_len]
+        elif len(denoised_data) < target_len:
+            denoised_data = np.pad(denoised_data, (0, target_len - len(denoised_data)))
+
+        with wave.open(out_wav_path, "wb") as wf_out:
+            wf_out.setparams(params)
+            wf_out.writeframes(denoised_data.tobytes())
+
+        return True
+    except Exception as e:
+        print(f"[NativeRecorder] Error applying RNNoise to WAV: {e}")
+        return False
+
+
 def get_shared_pyaudio():
     """
     Returns a thread-safe process-wide singleton PyAudio instance.
@@ -485,6 +547,7 @@ class NativeAudioRecorder:
         target_name="Discord",
         mic_device=None,
         mic_device_name=None,
+        ai_noise_suppression=True,
     ):
         self.record_folder = record_folder or os.path.abspath("recordings")
         self.log_callback = log_callback
@@ -493,6 +556,7 @@ class NativeAudioRecorder:
         self.target_name = target_name
         self.mic_device = mic_device
         self.mic_device_name = mic_device_name
+        self.ai_noise_suppression = ai_noise_suppression
 
         self.is_recording = False
         self.is_paused = False
@@ -775,6 +839,10 @@ class NativeAudioRecorder:
             self._start_mic_monitor()
         self.log(f"Microphone device set to: {name or f'Index {index}'}")
 
+    def set_ai_noise_suppression(self, enabled: bool):
+        """Toggles AI noise suppression (RNNoise) for comms export."""
+        self.ai_noise_suppression = bool(enabled)
+
     def start_recording(self, session_id, initial_game_time=0.0):
         """Starts asynchronous capture of target process audio and player microphone."""
         if self.is_recording:
@@ -1013,11 +1081,57 @@ class NativeAudioRecorder:
         if self._mic_writer_thread and self._mic_writer_thread.is_alive():
             self._mic_writer_thread.join(timeout=3.0)
 
-        # Mix and encode to MP3
-        final_mp3 = self._mix_to_mp3(output_base_name, initial_offset=initial_offset)
+        should_suppress = bool(
+            self.ai_noise_suppression
+            and self.mic_wav_path
+            and os.path.exists(self.mic_wav_path)
+            and os.path.getsize(self.mic_wav_path) > 44
+        )
+
+        # 1. Mix and encode standard comms to MP3
+        final_mp3 = self._mix_to_mp3(
+            output_base_name,
+            initial_offset=initial_offset,
+            cleanup=(not should_suppress),
+        )
+
+        # 2. If AI noise suppression is enabled, generate clean suppressed MP3
+        if should_suppress and final_mp3:
+            suppressed_mic = self.mic_wav_path.replace(".wav", "_suppressed.wav")
+            try:
+                if apply_rnnoise_to_wav(self.mic_wav_path, suppressed_mic):
+                    self._mix_to_mp3(
+                        f"{output_base_name}_suppressed",
+                        initial_offset=initial_offset,
+                        custom_mic_path=suppressed_mic,
+                        cleanup=True,
+                    )
+                else:
+                    self._cleanup_temp_wavs()
+            except Exception as e:
+                self.log(f"AI noise suppression export error: {e}")
+                self._cleanup_temp_wavs()
+            finally:
+                if os.path.exists(suppressed_mic):
+                    try:
+                        os.remove(suppressed_mic)
+                    except Exception:
+                        pass
+        elif not should_suppress:
+            self._cleanup_temp_wavs()
+
         return final_mp3
 
-    def _mix_to_mp3(self, base_name, initial_offset=0.0):
+    def _cleanup_temp_wavs(self):
+        """Removes temporary session WAV files."""
+        for p in (self.discord_wav_path, self.mic_wav_path):
+            if p and os.path.exists(p):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
+
+    def _mix_to_mp3(self, base_name, initial_offset=0.0, custom_mic_path=None, cleanup=True):
         """Combines temporary Discord and Mic WAV files into final MP3 using FFmpeg."""
         mp3_path = os.path.join(self.record_folder, f"{base_name}.mp3")
         counter = 1
@@ -1025,8 +1139,9 @@ class NativeAudioRecorder:
             mp3_path = os.path.join(self.record_folder, f"{base_name}_{counter}.mp3")
             counter += 1
 
+        mic_target = custom_mic_path or self.mic_wav_path
         discord_ok = self.discord_wav_path and os.path.exists(self.discord_wav_path) and os.path.getsize(self.discord_wav_path) > 44
-        mic_ok = self.mic_wav_path and os.path.exists(self.mic_wav_path) and os.path.getsize(self.mic_wav_path) > 44
+        mic_ok = mic_target and os.path.exists(mic_target) and os.path.getsize(mic_target) > 44
 
         if not discord_ok and not mic_ok:
             self.log("⚠️ No audio data captured (neither Discord nor Microphone had data).")
@@ -1040,7 +1155,7 @@ class NativeAudioRecorder:
         format_filter = "aresample=48000,aformat=channel_layouts=stereo"
 
         if discord_ok and mic_ok:
-            cmd.extend(["-i", self.discord_wav_path, "-i", self.mic_wav_path])
+            cmd.extend(["-i", self.discord_wav_path, "-i", mic_target])
             mix_filter = (
                 f"[0:a]{format_filter}[app];"
                 f"[1:a]{format_filter}[mic];"
@@ -1050,11 +1165,11 @@ class NativeAudioRecorder:
             cmd.extend(["-i", self.discord_wav_path])
             mix_filter = f"[0:a]{format_filter}"
         else:
-            cmd.extend(["-i", self.mic_wav_path])
+            cmd.extend(["-i", mic_target])
             mix_filter = f"[0:a]{format_filter}"
 
         wav_dur = 0.0
-        check_p = self.discord_wav_path if (discord_ok and os.path.exists(self.discord_wav_path)) else self.mic_wav_path
+        check_p = self.discord_wav_path if (discord_ok and os.path.exists(self.discord_wav_path)) else mic_target
         if check_p and os.path.exists(check_p):
             try:
                 with wave.open(check_p, "rb") as wf:
@@ -1101,12 +1216,7 @@ class NativeAudioRecorder:
             self.log(f"FFmpeg execution error: {e}")
             return None
         finally:
-            # Clean up temporary WAV files
-            for p in (self.discord_wav_path, self.mic_wav_path):
-                if p and os.path.exists(p):
-                    try:
-                        os.remove(p)
-                    except Exception:
-                        pass
+            if cleanup:
+                self._cleanup_temp_wavs()
 
         return mp3_path

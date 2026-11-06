@@ -21,6 +21,7 @@ _KEY_MAPPINGS = (
     ("hud_opacity", "HUD_OPACITY"),
     ("hud_x", "HUD_X"),
     ("hud_y", "HUD_Y"),
+    ("ai_noise_suppression", "AI_NOISE_SUPPRESSION"),
 )
 
 
@@ -155,6 +156,7 @@ def get_clean_default_config():
         "hud_opacity": 0.85,
         "hud_x": -1,
         "hud_y": -1,
+        "ai_noise_suppression": True,
     }
 
 
@@ -198,6 +200,7 @@ def get_default_config():
         "hud_opacity": _parse_float(os.getenv("HUD_OPACITY", "0.85"), 0.85),
         "hud_x": _parse_int(os.getenv("HUD_X", "-1"), -1),
         "hud_y": _parse_int(os.getenv("HUD_Y", "-1"), -1),
+        "ai_noise_suppression": os.getenv("AI_NOISE_SUPPRESSION", "true").lower() in ("true", "1", "yes"),
     }
 
 
@@ -275,6 +278,8 @@ def save_config(config_data):
             merged_data["replay_volume"] = max(0, min(100, int(merged_data["replay_volume"])))
         except (ValueError, TypeError):
             merged_data["replay_volume"] = 100
+    if "ai_noise_suppression" in merged_data:
+        merged_data["ai_noise_suppression"] = bool(merged_data["ai_noise_suppression"])
 
     _CONFIG_CACHE = merged_data.copy()
     _CONFIG_MTIME = 0.0

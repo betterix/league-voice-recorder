@@ -1281,7 +1281,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color=("#0F172A", "#CBD5E1"),
         )
-        self.settings_mic_lbl.grid(row=3, column=0, padx=(14, 8), pady=(6, 12), sticky="w")
+        self.settings_mic_lbl.grid(row=3, column=0, padx=(14, 8), pady=6, sticky="w")
 
         self.settings_mic_menu = ctk.CTkOptionMenu(
             card_interface,
@@ -1297,7 +1297,34 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             dropdown_hover_color=("#F1F5F9", "#162038"),
             corner_radius=6,
         )
-        self.settings_mic_menu.grid(row=3, column=1, padx=(6, 14), pady=(6, 12), sticky="ew")
+        self.settings_mic_menu.grid(row=3, column=1, padx=(6, 14), pady=6, sticky="ew")
+
+        # AI Noise Suppression (RNNoise)
+        self.ai_noise_suppression_lbl = ctk.CTkLabel(
+            card_interface,
+            text=t("settings.ai_noise_suppression"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0F172A", "#CBD5E1"),
+        )
+        self.ai_noise_suppression_lbl.grid(row=4, column=0, padx=(14, 8), pady=(6, 12), sticky="w")
+
+        self.ai_noise_suppression_var = ctk.BooleanVar(
+            value=bool(self.config.get("ai_noise_suppression", True))
+        )
+        self.ai_noise_suppression_switch = ctk.CTkSwitch(
+            card_interface,
+            text=t("settings.ai_noise_suppression_info"),
+            variable=self.ai_noise_suppression_var,
+            onvalue=True,
+            offvalue=False,
+            command=self._on_ai_noise_suppression_toggled,
+            progress_color=("#0891B2", "#0AC8B9"),
+            button_color=("#0F172A", "#FFFFFF"),
+            button_hover_color=("#334155", "#E2E8F0"),
+            font=ctk.CTkFont(size=11),
+            text_color=("#64748B", "#94A3B8"),
+        )
+        self.ai_noise_suppression_switch.grid(row=4, column=1, padx=(6, 14), pady=(6, 12), sticky="w")
 
         # -------------------------------------------------------------
         # CARD 3: MATCH AUTOMATION & WORKFLOW
@@ -1644,6 +1671,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.config["hud_x"] = x
         self.config["hud_y"] = y
         save_config(self.config)
+
+    def _on_ai_noise_suppression_toggled(self):
+        val = bool(self.ai_noise_suppression_var.get())
+        self.config["ai_noise_suppression"] = val
+        save_config(self.config)
+        if hasattr(self, "recorder_worker") and self.recorder_worker and hasattr(self.recorder_worker, "native_recorder"):
+            self.recorder_worker.native_recorder.set_ai_noise_suppression(val)
 
     def _on_auto_champ_select_toggled(self):
         val = bool(self.auto_champ_select_var.get())
@@ -2141,6 +2175,9 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                         self.theme_menu.set(curr_theme_disp)
                 if hasattr(self, "settings_mic_lbl"):
                     self.settings_mic_lbl.configure(text=t("settings.mic_device"))
+                if hasattr(self, "ai_noise_suppression_lbl"):
+                    self.ai_noise_suppression_lbl.configure(text=t("settings.ai_noise_suppression"))
+                    self.ai_noise_suppression_switch.configure(text=t("settings.ai_noise_suppression_info"))
                 if hasattr(self, "automation_title_lbl"):
                     self.automation_title_lbl.configure(text=f"⚡ {t('settings.automation_title')}")
                 if hasattr(self, "auto_champ_select_lbl"):
@@ -3161,6 +3198,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 "replay_volume": vol_val,
                 "language": selected_lang_code,
                 "theme": selected_theme_code,
+                "ai_noise_suppression": bool(self.ai_noise_suppression_var.get()) if hasattr(self, "ai_noise_suppression_var") else True,
                 "auto_start_champ_select": bool(self.auto_champ_select_var.get()),
                 "auto_start_replay": bool(self.auto_replay_var.get()),
                 "hud_overlay_enabled": bool(self.hud_enable_var.get()) if hasattr(self, "hud_enable_var") else True,
@@ -3235,6 +3273,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.config["auto_start_champ_select"] = bool(self.auto_champ_select_var.get())
             if hasattr(self, "auto_replay_var"):
                 self.config["auto_start_replay"] = bool(self.auto_replay_var.get())
+            if hasattr(self, "ai_noise_suppression_var"):
+                self.config["ai_noise_suppression"] = bool(self.ai_noise_suppression_var.get())
             if hasattr(self, "rec_folder_entry"):
                 folder = self.rec_folder_entry.get().strip()
                 if folder:

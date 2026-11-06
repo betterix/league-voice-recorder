@@ -105,6 +105,8 @@
         "theme_light": "Light ☀️",
         "theme_system": "System Default 💻",
         "mic_device": "Microphone Input:",
+        "ai_noise_suppression": "AI Noise Suppression (RNNoise):",
+        "ai_noise_suppression_info": "Filters mechanical keyboard clicks & background noise, exporting <GameID>_suppressed.mp3",
         "auto_start_champ_select": "Auto-Start in Champ Select:",
         "auto_start_champ_select_info": "Automatically starts recording watcher when entering Champion Select",
         "auto_start_replay": "Auto-Start Replay Sync:",

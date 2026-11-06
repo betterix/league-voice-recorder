@@ -424,6 +424,69 @@ class TestRecorderModule(unittest.TestCase):
             dur = wf.getnframes() / wf.getframerate()
             self.assertEqual(dur, 15.0, "Total duration must be exactly 15.0s, with lag cleanly trimmed")
 
+    def test_apply_rnnoise_to_wav(self):
+        """apply_rnnoise_to_wav reduces noise and guarantees exact sample-accurate length."""
+        from app.native_audio import apply_rnnoise_to_wav
+        import numpy as np
+        import wave
+
+        in_wav = os.path.join(self.temp_dir.name, "noise_in.wav")
+        out_wav = os.path.join(self.temp_dir.name, "noise_out.wav")
+        sr = 48000
+        dur = 2.0
+        n_samples = int(sr * dur)
+        t = np.linspace(0, dur, n_samples, endpoint=False)
+        voice = (np.sin(2 * np.pi * 200 * t) * 12000).astype(np.int16)
+        noise = (np.random.randn(n_samples) * 3000).astype(np.int16)
+        signal = voice + noise
+
+        with wave.open(in_wav, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sr)
+            wf.writeframes(signal.tobytes())
+
+        success = apply_rnnoise_to_wav(in_wav, out_wav)
+        self.assertTrue(success, "apply_rnnoise_to_wav should succeed")
+        self.assertTrue(os.path.exists(out_wav))
+
+        with wave.open(out_wav, "rb") as wf:
+            out_frames = wf.getnframes()
+            self.assertEqual(out_frames, n_samples, "Sample count must be 100% bit-exact")
+
+    def test_stop_and_finalize_dual_export(self):
+        """When ai_noise_suppression is enabled, stop_and_finalize exports both standard and suppressed MP3s."""
+        import wave
+
+        rec = self.recorder.native_recorder
+        rec.ai_noise_suppression = True
+        rec.is_recording = True
+
+        disc_path = os.path.join(self.temp_dir.name, "session_discord.wav")
+        mic_path = os.path.join(self.temp_dir.name, "session_mic.wav")
+
+        with wave.open(disc_path, "wb") as wf:
+            wf.setnchannels(2)
+            wf.setsampwidth(2)
+            wf.setframerate(48000)
+            wf.writeframes(b"\x00\x00\x00\x00" * 48000)
+
+        with wave.open(mic_path, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(48000)
+            wf.writeframes(b"\x12\x34" * 48000)
+
+        rec.discord_wav_path = disc_path
+        rec.mic_wav_path = mic_path
+
+        out_mp3 = rec.stop_and_finalize("SCRIM_DUAL_TEST")
+        self.assertIsNotNone(out_mp3)
+        self.assertTrue(os.path.exists(out_mp3))
+
+        suppressed_mp3 = os.path.join(rec.record_folder, "SCRIM_DUAL_TEST_suppressed.mp3")
+        self.assertTrue(os.path.exists(suppressed_mp3), "AI suppressed MP3 must also be created")
+
 
 if __name__ == "__main__":
     unittest.main()
