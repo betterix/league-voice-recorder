@@ -1888,17 +1888,11 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
             # If user is directly interacting with or focusing the HUD overlay or hit-windows, keep it visible!
             if getattr(self, "hud", None):
-                hud_hwnds = [getattr(self.hud, "get_hwnd", lambda: 0)()]
-                if getattr(self.hud, "lock_hit_win", None):
-                    try:
-                        hud_hwnds.append(self.hud.lock_hit_win.winfo_id())
-                    except Exception:
-                        pass
-                if getattr(self.hud, "volume_hit_win", None):
-                    try:
-                        hud_hwnds.append(self.hud.volume_hit_win.winfo_id())
-                    except Exception:
-                        pass
+                hud_hwnds = (
+                    self.hud.get_all_hwnds()
+                    if hasattr(self.hud, "get_all_hwnds")
+                    else {getattr(self.hud, "get_hwnd", lambda: 0)()}
+                )
                 if hwnd in hud_hwnds and hwnd != 0:
                     return True
 

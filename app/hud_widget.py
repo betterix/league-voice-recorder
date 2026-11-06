@@ -21,6 +21,7 @@ import tkinter as tk
 GWL_EXSTYLE = -20
 WS_EX_LAYERED = 0x00080000
 WS_EX_TRANSPARENT = 0x00000020
+WS_EX_NOACTIVATE = 0x08000000
 
 
 def set_window_click_through(hwnd: int, enable: bool = False) -> None:
@@ -41,6 +42,37 @@ def set_window_click_through(hwnd: int, enable: bool = False) -> None:
             new_style = style & ~WS_EX_TRANSPARENT
         if new_style != style:
             set_long(hwnd, GWL_EXSTYLE, new_style)
+            SWP_NOMOVE = 0x0002
+            SWP_NOSIZE = 0x0001
+            SWP_NOZORDER = 0x0004
+            SWP_FRAMECHANGED = 0x0020
+            u32.SetWindowPos(
+                hwnd,
+                0,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED,
+            )
+    except Exception:
+        pass
+
+
+def set_window_no_activate(hwnd: int) -> None:
+    """Configures a Windows window with WS_EX_NOACTIVATE so clicking it does not steal focus."""
+    if sys.platform != "win32" or not hwnd:
+        return
+    try:
+        import ctypes
+
+        u32 = ctypes.windll.user32
+        get_long = getattr(u32, "GetWindowLongPtrW", u32.GetWindowLongW)
+        set_long = getattr(u32, "SetWindowLongPtrW", u32.SetWindowLongW)
+
+        style = get_long(hwnd, GWL_EXSTYLE)
+        if not (style & WS_EX_NOACTIVATE):
+            set_long(hwnd, GWL_EXSTYLE, style | WS_EX_NOACTIVATE)
             SWP_NOMOVE = 0x0002
             SWP_NOSIZE = 0x0001
             SWP_NOZORDER = 0x0004
@@ -260,6 +292,36 @@ class LeagueHUDWidget:
         except Exception:
             return 0
 
+    def get_all_hwnds(self) -> set[int]:
+        """Returns the set of all Win32 HWNDs associated with this overlay and its hit-windows."""
+        hwnds: set[int] = set()
+        windows = (
+            getattr(self, "window", None),
+            getattr(self, "lock_hit_win", None),
+            getattr(self, "volume_hit_win", None),
+            getattr(self, "track_hit_win", None),
+        )
+        for win in windows:
+            if win:
+                try:
+                    wid = win.winfo_id()
+                    if wid:
+                        hwnds.add(int(wid))
+                        if sys.platform == "win32":
+                            import ctypes
+
+                            u32 = ctypes.windll.user32
+                            parent = u32.GetParent(wid)
+                            if parent:
+                                hwnds.add(int(parent))
+                            GA_ROOT = 2
+                            root = getattr(u32, "GetAncestor", lambda w, f: 0)(wid, GA_ROOT)
+                            if root:
+                                hwnds.add(int(root))
+                except Exception:
+                    pass
+        return hwnds
+
     def _init_lock_hit_window(self) -> None:
         """Creates a tiny transparent hit-test window over the lock icon for click-through mode."""
         try:
@@ -291,6 +353,15 @@ class LeagueHUDWidget:
                 self.lock_hit_win.deiconify()
                 self.lock_hit_win.attributes("-topmost", True)
                 self.lock_hit_win.attributes("-alpha", 0.01)
+                try:
+                    wid = self.lock_hit_win.winfo_id()
+                    if sys.platform == "win32":
+                        import ctypes
+
+                        parent = ctypes.windll.user32.GetParent(wid)
+                        set_window_no_activate(int(parent if parent else wid))
+                except Exception:
+                    pass
             except Exception:
                 pass
         else:
@@ -338,6 +409,15 @@ class LeagueHUDWidget:
                 self.volume_hit_win.deiconify()
                 self.volume_hit_win.attributes("-topmost", True)
                 self.volume_hit_win.attributes("-alpha", 0.01)
+                try:
+                    wid = self.volume_hit_win.winfo_id()
+                    if sys.platform == "win32":
+                        import ctypes
+
+                        parent = ctypes.windll.user32.GetParent(wid)
+                        set_window_no_activate(int(parent if parent else wid))
+                except Exception:
+                    pass
             except Exception:
                 pass
         else:
@@ -384,6 +464,15 @@ class LeagueHUDWidget:
                 self.track_hit_win.deiconify()
                 self.track_hit_win.attributes("-topmost", True)
                 self.track_hit_win.attributes("-alpha", 0.01)
+                try:
+                    wid = self.track_hit_win.winfo_id()
+                    if sys.platform == "win32":
+                        import ctypes
+
+                        parent = ctypes.windll.user32.GetParent(wid)
+                        set_window_no_activate(int(parent if parent else wid))
+                except Exception:
+                    pass
             except Exception:
                 pass
         else:

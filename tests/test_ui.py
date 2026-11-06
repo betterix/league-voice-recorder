@@ -284,6 +284,25 @@ class TestUIApp(unittest.TestCase):
         self.app._sync_hud_visibility_and_state()
         self.assertFalse(self.app.hud.is_visible)
 
+    def test_hud_hit_window_clicking_does_not_hide_hud(self):
+        """Interacting with track_hit_win or lock_hit_win counts as active foreground and never hides HUD."""
+        self.app.hud.show()
+        self.app.hud.set_mode("REPLAY")
+        self.app.hud.set_locked(True)
+
+        hwnds = self.app.hud.get_all_hwnds()
+        self.assertTrue(len(hwnds) > 0)
+        track_wid = self.app.hud.track_hit_win.winfo_id()
+        self.assertIn(track_wid, hwnds)
+
+        # Mock foreground window being the track_hit_win
+        with patch("ctypes.windll.user32.GetForegroundWindow", return_value=track_wid):
+            self.assertTrue(self.app._is_league_game_foreground())
+
+        lock_wid = self.app.hud.lock_hit_win.winfo_id()
+        with patch("ctypes.windll.user32.GetForegroundWindow", return_value=lock_wid):
+            self.assertTrue(self.app._is_league_game_foreground())
+
     def test_replay_api_button_click(self):
         """Clicking enable replay api calls enable_replay_api and logs message without error."""
         with (
