@@ -38,7 +38,10 @@ class TestReplaySyncModule(unittest.TestCase):
         self.assertEqual(sync.volume, 0)
 
         sync.set_volume(150)
-        self.assertEqual(sync.volume, 100)
+        self.assertEqual(sync.volume, 150)
+
+        sync.set_volume(250)
+        self.assertEqual(sync.volume, 200)
 
     def test_find_matching_audio_file_standard(self):
         with tempfile.TemporaryDirectory() as tmpdir:

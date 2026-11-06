@@ -155,6 +155,13 @@ class TestUIApp(unittest.TestCase):
         self.assertFalse(self.app._replay_muted)
         self.assertIn("75%", self.app.vol_label.cget("text"))
 
+    def test_ui_volume_slider_can_reach_200_percent(self):
+        """Volume slider and configuration allow boosting volume up to 200%."""
+        self.app.vol_slider.set(200)
+        self.app._on_replay_volume_slider_changed(200)
+        self.assertEqual(self.app.config.get("replay_volume"), 200)
+        self.assertIn("200%", self.app.vol_label.cget("text"))
+
     def test_ui_key_m_handler(self):
         """Pressing M key toggles mute unless an entry field is focused."""
         self.assertFalse(self.app._replay_muted)

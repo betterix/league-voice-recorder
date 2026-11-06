@@ -616,7 +616,7 @@ class LeagueHUDWidget:
         self.time_str = time_str
         self.current_time = max(0.0, float(current_time))
         self.total_duration = max(1.0, float(total_duration))
-        self.volume = max(0, min(100, int(volume)))
+        self.volume = max(0, min(200, int(volume)))
         self.is_paused = bool(is_paused)
         self.is_muted = bool(is_muted)
         self.speed = float(speed)
@@ -865,7 +865,7 @@ class LeagueHUDWidget:
         # Row 2: Volume Slider Track
         slider_x1, slider_x2 = self.SLIDER_X1, self.SLIDER_X2
         effective_vol = 0 if self.is_muted else self.volume
-        vol_pct = max(0.0, min(1.0, effective_vol / 100.0))
+        vol_pct = max(0.0, min(1.0, effective_vol / 200.0))
         knob_x = slider_x1 + vol_pct * self.TRACK_WIDTH
 
         # Background track capsule
@@ -1184,7 +1184,7 @@ class LeagueHUDWidget:
     def _update_volume_from_mouse(self, mouse_x: float) -> None:
         """Computes volume percentage from mouse X coordinate in slider track."""
         clamped_x = max(self.SLIDER_X1, min(self.SLIDER_X2, mouse_x))
-        pct = round(((clamped_x - self.SLIDER_X1) / self.TRACK_WIDTH) * 100)
+        pct = round(((clamped_x - self.SLIDER_X1) / self.TRACK_WIDTH) * 200)
         self.volume = pct
         self.render()
         if self.on_volume_changed:

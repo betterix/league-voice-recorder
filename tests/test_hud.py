@@ -107,20 +107,20 @@ class TestLeagueHUDWidget(unittest.TestCase):
     def test_volume_slider_mouse_calculation(self):
         """Dragging volume updates percentage and invokes callback."""
         self.hud.set_mode("REPLAY")
-        # Middle of slider: 88 + 152/2 = 164 -> 50%
+        # Middle of slider: 88 + 152/2 = 164 -> 100% (half of 200%)
         self.hud._update_volume_from_mouse(164.0)
-        self.assertEqual(self.hud.volume, 50)
-        self.mock_volume_callback.assert_called_with(50)
+        self.assertEqual(self.hud.volume, 100)
+        self.mock_volume_callback.assert_called_with(100)
 
         # Clamping left edge (< 88 -> 0%)
         self.hud._update_volume_from_mouse(50.0)
         self.assertEqual(self.hud.volume, 0)
         self.mock_volume_callback.assert_called_with(0)
 
-        # Clamping right edge (> 240 -> 100%)
+        # Clamping right edge (> 240 -> 200%)
         self.hud._update_volume_from_mouse(280.0)
-        self.assertEqual(self.hud.volume, 100)
-        self.mock_volume_callback.assert_called_with(100)
+        self.assertEqual(self.hud.volume, 200)
+        self.mock_volume_callback.assert_called_with(200)
 
     def test_opacity_and_click_through_toggle(self):
         """Opacity and position lock can be modified dynamically."""
@@ -244,12 +244,12 @@ class TestLeagueHUDWidget(unittest.TestCase):
         self.hud.set_locked(True)
 
         class SliderClickEvent:
-            x = 164  # Middle of volume slider (50%)
+            x = 164  # Middle of volume slider (100% of 200%)
             y = 54
 
         # Clicking volume slider adjusts sound
         self.hud._on_mouse_down(SliderClickEvent())
-        self.assertEqual(self.hud.volume, 50)
+        self.assertEqual(self.hud.volume, 100)
 
     def test_locked_volume_hit_window_lifecycle_and_drag(self):
         """volume_hit_win is active only in locked REPLAY mode and enables dragging volume."""
@@ -262,10 +262,10 @@ class TestLeagueHUDWidget(unittest.TestCase):
 
         # In locked mode, dragging volume via hit window updates volume
         class DragEvent:
-            x = 82  # ~50% of the 164px track
+            x = 82  # ~50% of the 164px track -> 100%
 
         self.hud._on_volume_hit_event(DragEvent())
-        self.assertAlmostEqual(self.hud.volume, 50, delta=2)
+        self.assertAlmostEqual(self.hud.volume, 100, delta=4)
         self.mock_volume_callback.assert_called()
 
         # Switching to RECORD mode hides volume_hit_win

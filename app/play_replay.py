@@ -260,8 +260,8 @@ class ReplaySynchronizer:
         return 0.0
 
     def set_volume(self, volume):
-        """Dynamically update playback volume (0 - 100)."""
-        self.volume = max(0, min(100, int(volume)))
+        """Dynamically update playback volume (0 - 200)."""
+        self.volume = max(0, min(200, int(volume)))
         if self.current_player and not self.is_muted:
             try:
                 self.current_player.audio_set_volume(self.volume)

@@ -637,8 +637,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.vol_slider = ctk.CTkSlider(
             vol_frame,
             from_=0,
-            to=100,
-            number_of_steps=100,
+            to=200,
+            number_of_steps=200,
             command=self._on_replay_volume_slider_changed,
             progress_color=("#0891B2", "#0AC8B9"),
             button_color=("#06B6D4", "#5EEAD4"),
@@ -3100,7 +3100,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             if hasattr(self, "replay_vol_entry"):
                 v_str = self.replay_vol_entry.get().strip()
                 if v_str.isdigit():
-                    v_val = max(0, min(100, int(v_str)))
+                    v_val = max(0, min(200, int(v_str)))
                     if v_val != self.config.get("replay_volume"):
                         self.config["replay_volume"] = v_val
                         if hasattr(self, "vol_slider"):
@@ -3136,7 +3136,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
     def _save_settings(self):
         try:
             vol_val = int(self.replay_vol_entry.get().strip() or 80)
-            vol_val = max(0, min(100, vol_val))
+            vol_val = max(0, min(200, vol_val))
             selected_lang_name = self.lang_menu.get()
             selected_lang_code = self.lang_name_to_code.get(selected_lang_name, "en")
 

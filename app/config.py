@@ -272,7 +272,7 @@ def save_config(config_data):
             merged_data["hud_opacity"] = 0.85
     if "replay_volume" in merged_data:
         try:
-            merged_data["replay_volume"] = max(0, min(100, int(merged_data["replay_volume"])))
+            merged_data["replay_volume"] = max(0, min(200, int(merged_data["replay_volume"])))
         except (ValueError, TypeError):
             merged_data["replay_volume"] = 100
 
