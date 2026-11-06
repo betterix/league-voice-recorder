@@ -481,11 +481,10 @@ class LeagueHUDWidget:
             except Exception:
                 pass
 
-    def _on_track_hit_click(self, event: tk.Event) -> str:
+    def _on_track_hit_click(self, event: tk.Event) -> None:
         """Called when clicking the voice track button while overlay is locked in Replay mode."""
         if self.on_voice_mode_toggle:
             self.on_voice_mode_toggle()
-        return "break"
 
     def set_voice_mode(self, prefer_suppressed: bool) -> None:
         """Updates the active voice track indicator on the HUD."""
