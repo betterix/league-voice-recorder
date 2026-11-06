@@ -89,8 +89,8 @@ def _get_rnnoise_lib():
             lib.rnnoise_destroy.argtypes = [ctypes.c_void_p]
             lib.rnnoise_process_frame.argtypes = [
                 ctypes.c_void_p,
-                ctypes.POINTER(ctypes.c_float),
-                ctypes.POINTER(ctypes.c_float),
+                ctypes.c_void_p,
+                ctypes.c_void_p,
             ]
             lib.rnnoise_process_frame.restype = ctypes.c_float
             lib.rnnoise_get_frame_size.restype = ctypes.c_int
@@ -101,12 +101,17 @@ def _get_rnnoise_lib():
             return None
 
 
-def apply_rnnoise_to_wav(in_wav_path: str, out_wav_path: str, log_callback=None) -> bool:
+def apply_rnnoise_to_wav(
+    in_wav_path: str,
+    out_wav_path: str,
+    log_callback=None,
+    progress_callback=None,
+) -> bool:
     """
     Applies RNNoise neural network noise suppression to a 16-bit PCM WAV file.
     Suppresses mechanical keyboard clicks, fan hum, and background noise while preserving speech.
     Guarantees bit-exact sample count and 1:1 timeline alignment with original audio.
-    Uses the native C library bindings directly without heavyweight video/audio decoding dependencies.
+    Uses native C library bindings with multi-threaded chunk processing for blazing fast execution.
     """
     lib = _get_rnnoise_lib()
     if lib is None:
@@ -120,6 +125,8 @@ def apply_rnnoise_to_wav(in_wav_path: str, out_wav_path: str, log_callback=None)
         return False
 
     try:
+        from concurrent.futures import ThreadPoolExecutor
+
         with wave.open(in_wav_path, "rb") as wf_in:
             params = wf_in.getparams()
             channels = params.nchannels
@@ -131,38 +138,94 @@ def apply_rnnoise_to_wav(in_wav_path: str, out_wav_path: str, log_callback=None)
             return False
 
         frame_size = lib.rnnoise_get_frame_size()  # 480 samples @ 48kHz
+        stride = frame_size * 4  # 1920 bytes
+        num_workers = min(8, max(2, (os.cpu_count() or 4) - 1))
 
-        def process_mono_array(st, mono_data):
-            processed = []
-            for i in range(0, len(mono_data), frame_size):
-                chunk = mono_data[i : i + frame_size]
-                chunk_len = len(chunk)
-                if chunk_len < frame_size:
-                    padded = np.pad(chunk, (0, frame_size - chunk_len)).astype(np.float32)
-                else:
-                    padded = chunk.astype(np.float32)
-                ptr = padded.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-                lib.rnnoise_process_frame(st, ptr, ptr)
-                processed.append(padded.astype(np.int16)[:chunk_len])
-            return np.concatenate(processed)[: len(mono_data)]
+        def process_mono_fast(mono_data, ch_progress_offset=0.0, ch_progress_weight=1.0):
+            total_samples = len(mono_data)
+            if total_samples == 0:
+                return mono_data
+
+            base_chunk = ((total_samples // num_workers) // frame_size) * frame_size
+            if base_chunk == 0:
+                base_chunk = total_samples
+
+            chunk_ranges = []
+            cur = 0
+            while cur < total_samples:
+                nxt = min(total_samples, cur + base_chunk)
+                chunk_ranges.append((cur, nxt))
+                cur = nxt
+
+            out_mono = np.empty_like(mono_data)
+            pre_roll_frames = 20
+            pre_roll_samples = pre_roll_frames * frame_size
+            completed_chunks = 0
+            prog_lock = threading.Lock()
+
+            def chunk_worker(c_idx):
+                nonlocal completed_chunks
+                c_start, c_end = chunk_ranges[c_idx]
+                c_len = c_end - c_start
+                n_frames = (c_len + frame_size - 1) // frame_size
+                padded_len = n_frames * frame_size
+
+                pr_slice = None
+                pr_frames = 0
+                if c_idx > 0:
+                    pr_start = max(0, c_start - pre_roll_samples)
+                    pr_slice = mono_data[pr_start:c_start]
+                    pr_frames = len(pr_slice) // frame_size
+
+                st = lib.rnnoise_create(None)
+                try:
+                    # Warm up recurrent neural network states with pre-roll
+                    if pr_slice is not None and pr_frames > 0:
+                        pr_buf = np.ascontiguousarray(
+                            pr_slice[: pr_frames * frame_size], dtype=np.float32
+                        )
+                        pr_ptr = pr_buf.ctypes.data
+                        for j in range(pr_frames):
+                            addr = pr_ptr + j * stride
+                            lib.rnnoise_process_frame(st, addr, addr)
+
+                    c_slice = mono_data[c_start:c_end]
+                    if len(c_slice) < padded_len:
+                        buf = np.pad(c_slice, (0, padded_len - len(c_slice))).astype(np.float32)
+                    else:
+                        buf = np.ascontiguousarray(c_slice, dtype=np.float32)
+
+                    b_ptr = buf.ctypes.data
+                    for j in range(n_frames):
+                        addr = b_ptr + j * stride
+                        lib.rnnoise_process_frame(st, addr, addr)
+
+                    out_mono[c_start:c_end] = np.clip(buf[:c_len], -32768, 32767).astype(np.int16)
+                finally:
+                    lib.rnnoise_destroy(st)
+
+                with prog_lock:
+                    completed_chunks += 1
+                    if progress_callback:
+                        sub_pct = completed_chunks / len(chunk_ranges)
+                        overall_pct = ch_progress_offset + (sub_pct * ch_progress_weight)
+                        progress_callback(overall_pct)
+
+            with ThreadPoolExecutor(max_workers=num_workers) as executor:
+                list(executor.map(chunk_worker, range(len(chunk_ranges))))
+
+            return out_mono
 
         if channels == 1:
-            st = lib.rnnoise_create(None)
-            try:
-                denoised_data = process_mono_array(st, data)
-            finally:
-                lib.rnnoise_destroy(st)
+            denoised_data = process_mono_fast(data, ch_progress_offset=0.0, ch_progress_weight=1.0)
         else:
-            channel_states = [lib.rnnoise_create(None) for _ in range(channels)]
-            try:
-                channel_out = []
-                for ch_idx in range(channels):
-                    ch_data = data[ch_idx::channels]
-                    channel_out.append(process_mono_array(channel_states[ch_idx], ch_data))
-                denoised_data = np.column_stack(channel_out).flatten()
-            finally:
-                for st in channel_states:
-                    lib.rnnoise_destroy(st)
+            channel_outs = []
+            for ch_idx in range(channels):
+                ch_data = data[ch_idx::channels]
+                ch_off = ch_idx / channels
+                ch_w = 1.0 / channels
+                channel_outs.append(process_mono_fast(ch_data, ch_progress_offset=ch_off, ch_progress_weight=ch_w))
+            denoised_data = np.column_stack(channel_outs).flatten()
 
         with wave.open(out_wav_path, "wb") as wf_out:
             wf_out.setparams(params)
@@ -588,10 +651,61 @@ class TimelineWavWriter:
             n = len(pcm_bytes) // self.frame_size
             self.current_frame += n
 
+    def write_frames_at_time(self, pcm_bytes, game_time):
+        """
+        Writes PCM frames at the exact timeline position matching League match clock (game_time).
+        - If the match clock is ahead of current file size (e.g. silence period), fills silence up to game_time.
+        - Ensures audio spoken at 10:42 is placed at 10:42:000, and at 20:42 is placed at 20:42:000.
+        - Eliminates any clock drift or sliding over the entire match.
+        """
+        with self.lock:
+            if self.file.closed or not pcm_bytes:
+                return
+            if game_time is None or game_time < 0:
+                self.file.seek(0, 2)
+                self.file.write(pcm_bytes)
+                self.current_frame += len(pcm_bytes) // self.frame_size
+                return
+
+            target_frame = int(game_time * self.sample_rate)
+            target_byte = 44 + target_frame * self.frame_size
+            fsize = self.file_size()
+
+            if target_byte > fsize:
+                gap = target_byte - fsize
+                self.file.seek(fsize)
+                chunk = b"\x00" * 65536
+                while gap > 0:
+                    w = min(gap, len(chunk))
+                    self.file.write(chunk[:w])
+                    gap -= w
+                self.current_frame = target_frame
+            elif target_byte < fsize:
+                self.file.seek(target_byte)
+
+            self.file.write(pcm_bytes)
+            written_frames = len(pcm_bytes) // self.frame_size
+            new_byte_pos = target_byte + len(pcm_bytes)
+            if new_byte_pos >= fsize:
+                self.current_frame = target_frame + written_frames
+
     def close(self, final_game_time=None):
         with self.lock:
             if self.file.closed:
                 return
+            if final_game_time is not None and final_game_time > 0:
+                target_byte = 44 + int(final_game_time * self.sample_rate) * self.frame_size
+                fsize = self.file_size()
+                if target_byte > fsize:
+                    gap = target_byte - fsize
+                    self.file.seek(fsize)
+                    chunk = b"\x00" * 65536
+                    while gap > 0:
+                        w = min(gap, len(chunk))
+                        self.file.write(chunk[:w])
+                        gap -= w
+                    self.current_frame = int(final_game_time * self.sample_rate)
+
             fsize = self.file_size()
             total_data = max(0, fsize - 44)
 
@@ -666,6 +780,9 @@ class NativeAudioRecorder:
 
         # Thread synchronization lock and pause-detection staging buffers
         self._buffer_lock = threading.Lock()
+        self._time_lock = threading.Lock()
+        self._base_game_time = 0.0
+        self._base_game_monotonic = time.monotonic()
         self._discord_staging = collections.deque()
         self._mic_staging = collections.deque()
         self._staging_delay_sec = 2.0
@@ -696,11 +813,27 @@ class NativeAudioRecorder:
 
     def update_game_time(self, game_time):
         """
-        Updates the current match clock timestamp from Riot's Live Client Data API.
-        Does NOT inject artificial silence during live play to preserve 1:1 acoustic timing.
+        Updates current live game time from Riot's Live Client Data API.
+        Locks in-game match clock for sample-accurate frame anchoring.
         """
         if game_time is not None and game_time >= 0:
-            self.latest_game_time = float(game_time)
+            now = time.monotonic()
+            with self._time_lock:
+                self._base_game_time = float(game_time)
+                self._base_game_monotonic = now
+                self.latest_game_time = float(game_time)
+
+    set_live_game_time = update_game_time
+
+    def get_current_game_time(self) -> float:
+        """Returns the high-precision League match clock timestamp right now."""
+        with self._time_lock:
+            if self._base_game_time is None:
+                return 0.0
+            if self.is_paused:
+                return self._base_game_time
+            dt = time.monotonic() - self._base_game_monotonic
+            return max(0.0, self._base_game_time + dt)
 
     def log(self, message):
         try:
@@ -934,7 +1067,14 @@ class NativeAudioRecorder:
         self.is_recording = True
         if hasattr(self, "discord_mute_watcher") and self.discord_mute_watcher:
             self.discord_mute_watcher.is_recording = True
-        self.latest_game_time = max(0.0, float(initial_game_time or 0.0))
+
+        init_gt = max(0.0, float(initial_game_time or 0.0))
+        now = time.monotonic()
+        with self._time_lock:
+            self._base_game_time = init_gt
+            self._base_game_monotonic = now
+            self.latest_game_time = init_gt
+
         with self._buffer_lock:
             self._discord_staging.clear()
             self._mic_staging.clear()
@@ -990,12 +1130,13 @@ class NativeAudioRecorder:
 
                 def mic_callback(in_data, frames, time_info, status):
                     if not self.is_paused and self.is_recording:
+                        now_gt = self.get_current_game_time()
                         if self.is_discord_muted():
                             # Inject silence zeros while maintaining exact frame timeline alignment
-                            self._mic_queue.put(b"\x00" * len(in_data))
+                            self._mic_queue.put((b"\x00" * len(in_data), now_gt))
                             self.current_mic_level = 0.0
                         else:
-                            self._mic_queue.put(bytes(in_data))
+                            self._mic_queue.put((bytes(in_data), now_gt))
                     return (None, pyaudio.paContinue)
 
                 self._mic_stream = pa.open(
@@ -1021,7 +1162,7 @@ class NativeAudioRecorder:
     def _capture_discord_loop(self, pid, wav_path):
         """
         Polls Discord process audio frames from WASAPI ProcessLoopback.
-        Writes directly to TimelineWavWriter with continuous in-game clock alignment.
+        Writes directly to TimelineWavWriter matching League match clock exactly.
         """
         try:
             from proctap._native import ProcessLoopback
@@ -1041,11 +1182,7 @@ class NativeAudioRecorder:
             if self.latest_game_time > 2.0:
                 writer.sync_to_game_time(self.latest_game_time)
 
-            t_last = time.perf_counter()
-
             while not self.stop_event.is_set():
-                now = time.perf_counter()
-
                 d = loop.read()
                 if d:
                     floats = np.frombuffer(d, dtype=np.float32)
@@ -1056,22 +1193,12 @@ class NativeAudioRecorder:
                     if not self.is_paused:
                         ints = np.clip(floats * 32767.0, -32768, 32767).astype(np.int16)
                         raw_bytes = ints.tobytes()
-                        writer.write_frames(raw_bytes)
-                    t_last = now
+                        now_gt = self.get_current_game_time()
+                        writer.write_frames_at_time(raw_bytes, now_gt)
                 else:
-                    # Empty read: Discord is quiet / silence period
-                    # Inject exact silence matching elapsed time only when active (not paused)
-                    dt = now - t_last
-                    if not self.is_paused:
-                        if dt >= 0.01:
-                            silence_frames = int(dt * 48000)
-                            writer.write_frames(b"\x00" * (silence_frames * 4))
-                            t_last = now
-                    else:
-                        t_last = now
-                    time.sleep(0.001)
+                    time.sleep(0.002)
 
-            writer.close(final_game_time=self.latest_game_time)
+            writer.close(final_game_time=self.get_current_game_time())
             loop.stop()
         except Exception as e:
             self.log(f"Discord process audio capture error: {e}")
@@ -1087,8 +1214,12 @@ class NativeAudioRecorder:
 
             while not self.stop_event.is_set() or not self._mic_queue.empty():
                 try:
-                    chunk = self._mic_queue.get(timeout=0.05)
-                    writer.write_frames(chunk)
+                    item = self._mic_queue.get(timeout=0.05)
+                    if isinstance(item, tuple):
+                        chunk, chunk_gt = item
+                    else:
+                        chunk, chunk_gt = item, None
+                    writer.write_frames_at_time(chunk, chunk_gt)
                     try:
                         floats = np.frombuffer(chunk, dtype=np.int16)
                         if len(floats) > 0:
@@ -1099,14 +1230,19 @@ class NativeAudioRecorder:
                 except queue.Empty:
                     continue
 
-            writer.close(final_game_time=self.latest_game_time)
+            writer.close(final_game_time=self.get_current_game_time())
         except Exception as e:
             self.log(f"Mic writer error: {e}")
 
     def pause(self, pause_game_time=None):
         """Marks recording paused when match is paused and trims detection lag."""
-        with self._buffer_lock:
+        with self._time_lock:
             self.is_paused = True
+            if pause_game_time is not None and pause_game_time >= 0:
+                self._base_game_time = float(pause_game_time)
+                self.latest_game_time = float(pause_game_time)
+
+        with self._buffer_lock:
             self._discord_staging.clear()
             self._mic_staging.clear()
 
@@ -1119,7 +1255,6 @@ class NativeAudioRecorder:
 
         # Trim frames written during detection lag back to the moment the game paused
         if pause_game_time is not None and pause_game_time > 0:
-            self.latest_game_time = pause_game_time
             if self._discord_writer:
                 self._discord_writer.truncate_to_game_time(pause_game_time)
             if self._mic_writer:
@@ -1129,17 +1264,23 @@ class NativeAudioRecorder:
 
     def resume(self):
         """Resumes audio recording when match resumes."""
-        with self._buffer_lock:
+        with self._time_lock:
             self.is_paused = False
+            self._base_game_monotonic = time.monotonic()
+        with self._buffer_lock:
+            pass
         self.log("Recording resumed.")
 
-    def stop_and_finalize(self, output_base_name, initial_offset=0.0):
+    def stop_and_finalize(self, output_base_name, initial_offset=0.0, progress_callback=None):
         """
-        Stops active capture streams, mixes Discord + Microphone via FFmpeg,
-        applies sample-accurate time alignment, and outputs <output_base_name>.mp3.
+        Stops active capture streams, mixes Discord + Microphone via FFmpeg in parallel,
+        applies sample-accurate time alignment, and outputs MP3s with percentage progress.
         """
         if not self.is_recording:
             return None
+
+        if progress_callback:
+            progress_callback(5.0, "Stopping audio capture...")
 
         self.stop_event.set()
         self.is_recording = False
@@ -1168,40 +1309,74 @@ class NativeAudioRecorder:
             and os.path.getsize(self.mic_wav_path) > 44
         )
 
-        # 1. Mix and encode standard comms to MP3
-        final_mp3 = self._mix_to_mp3(
-            output_base_name,
-            initial_offset=initial_offset,
-            cleanup=(not should_suppress),
-        )
+        from concurrent.futures import ThreadPoolExecutor
 
-        # 2. If AI noise suppression is enabled, generate clean suppressed MP3
-        if should_suppress and final_mp3:
+        if should_suppress:
+            if progress_callback:
+                progress_callback(10.0, "AI Denoising & Mixing...")
+
             suppressed_mic = self.mic_wav_path.replace(".wav", "_suppressed.wav")
-            try:
-                if apply_rnnoise_to_wav(self.mic_wav_path, suppressed_mic, log_callback=self.log):
-                    self._mix_to_mp3(
-                        f"{output_base_name}_suppressed",
-                        initial_offset=initial_offset,
-                        custom_mic_path=suppressed_mic,
-                        cleanup=True,
-                    )
-                else:
+            final_mp3 = None
+
+            def run_raw_mix():
+                return self._mix_to_mp3(
+                    output_base_name,
+                    initial_offset=initial_offset,
+                    cleanup=False,
+                )
+
+            def on_rnnoise_prog(sub_pct):
+                if progress_callback:
+                    pct = 10.0 + (sub_pct * 65.0)  # 10% -> 75%
+                    progress_callback(pct, "AI Denoising Microphone")
+
+            def run_suppressed_pipeline():
+                ok = apply_rnnoise_to_wav(
+                    self.mic_wav_path,
+                    suppressed_mic,
+                    log_callback=self.log,
+                    progress_callback=on_rnnoise_prog,
+                )
+                if not ok:
                     self.log("[NativeRecorder] AI noise suppression skipped: WAV filtering failed.")
-                    self._cleanup_temp_wavs()
-            except Exception as e:
-                self.log(f"AI noise suppression export error: {e}")
-                self._cleanup_temp_wavs()
-            finally:
-                if os.path.exists(suppressed_mic):
-                    try:
-                        os.remove(suppressed_mic)
-                    except Exception:
-                        pass
-        elif not should_suppress:
+                    return None
+                if progress_callback:
+                    progress_callback(80.0, "Encoding AI Suppressed MP3...")
+                return self._mix_to_mp3(
+                    f"{output_base_name}_suppressed",
+                    initial_offset=initial_offset,
+                    custom_mic_path=suppressed_mic,
+                    cleanup=False,
+                )
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                future_raw = executor.submit(run_raw_mix)
+                future_supp = executor.submit(run_suppressed_pipeline)
+                final_mp3 = future_raw.result()
+                future_supp.result()
+
+            if os.path.exists(suppressed_mic):
+                try:
+                    os.remove(suppressed_mic)
+                except Exception:
+                    pass
             self._cleanup_temp_wavs()
 
-        return final_mp3
+            if progress_callback:
+                progress_callback(100.0, "Complete")
+
+            return final_mp3
+        else:
+            if progress_callback:
+                progress_callback(25.0, "Encoding MP3...")
+            final_mp3 = self._mix_to_mp3(
+                output_base_name,
+                initial_offset=initial_offset,
+                cleanup=True,
+            )
+            if progress_callback:
+                progress_callback(100.0, "Complete")
+            return final_mp3
 
     def _cleanup_temp_wavs(self):
         """Removes temporary session WAV files."""

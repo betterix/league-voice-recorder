@@ -498,8 +498,21 @@ class LeagueRecorder:
         base_name = (
             self.real_game_id if self.real_game_id else f"Scrim_{time.strftime('%Y%m%d_%H%M%S')}"
         )
+
+        last_milestone = [-1]
+
+        def on_finalize_progress(pct, detail):
+            int_pct = int(pct)
+            self.update_status("SAVING", f"{int_pct}% — {detail}")
+            for m in (25, 50, 75, 100):
+                if int_pct >= m and last_milestone[0] < m:
+                    last_milestone[0] = m
+                    self.log(f"⏳ Finalizing: {int_pct}% ({detail})")
+
         final_mp3 = self.native_recorder.stop_and_finalize(
-            base_name, initial_offset=self.first_game_time
+            base_name,
+            initial_offset=self.first_game_time,
+            progress_callback=on_finalize_progress,
         )
         if final_mp3:
             self.log(t("logs.saved_mp3", path=final_mp3))
