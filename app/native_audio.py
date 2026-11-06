@@ -696,17 +696,11 @@ class NativeAudioRecorder:
 
     def update_game_time(self, game_time):
         """
-        Synchronizes audio write timeline with in-game League match clock.
-        If recording started mid-game, pads initial silence to match game_time.
-        If audio rushed ahead due to a pause, seeks back to game_time
-        and overwrites, ensuring zero timeline desynchronization without cutting seconds.
+        Updates the current match clock timestamp from Riot's Live Client Data API.
+        Does NOT inject artificial silence during live play to preserve 1:1 acoustic timing.
         """
         if game_time is not None and game_time >= 0:
             self.latest_game_time = float(game_time)
-            if self._discord_writer:
-                self._discord_writer.sync_to_game_time(self.latest_game_time)
-            if self._mic_writer:
-                self._mic_writer.sync_to_game_time(self.latest_game_time)
 
     def log(self, message):
         try:
@@ -1044,7 +1038,7 @@ class NativeAudioRecorder:
             writer = TimelineWavWriter(wav_path, channels=2, sample_rate=48000)
             self._discord_writer = writer
 
-            if self.latest_game_time > 0:
+            if self.latest_game_time > 2.0:
                 writer.sync_to_game_time(self.latest_game_time)
 
             t_last = time.perf_counter()
@@ -1088,7 +1082,7 @@ class NativeAudioRecorder:
             writer = TimelineWavWriter(wav_path, channels=channels, sample_rate=rate)
             self._mic_writer = writer
 
-            if self.latest_game_time > 0:
+            if self.latest_game_time > 2.0:
                 writer.sync_to_game_time(self.latest_game_time)
 
             while not self.stop_event.is_set() or not self._mic_queue.empty():
