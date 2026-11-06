@@ -7,6 +7,7 @@ Includes real-time VU audio meter monitoring and application/process selection.
 """
 
 import collections
+import ctypes
 import os
 import queue
 import struct
@@ -28,18 +29,91 @@ from app.discord_ipc import get_shared_discord_mute_watcher
 _SHARED_PYAUDIO = None
 _SHARED_PYAUDIO_LOCK = threading.Lock()
 
+_RNNOISE_LIB = None
+_RNNOISE_LOAD_ATTEMPTED = False
+_RNNOISE_LOCK = threading.Lock()
 
-def apply_rnnoise_to_wav(in_wav_path: str, out_wav_path: str) -> bool:
+
+def _find_rnnoise_dll():
+    """Locates rnnoise.dll across compiled bundles, application dir, and virtualenvs."""
+    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+    module_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.abspath(os.path.join(module_dir, ".."))
+
+    candidates = [
+        # Alongside executable (Nuitka / compiled distribution root)
+        os.path.join(exe_dir, "rnnoise.dll"),
+        os.path.join(exe_dir, "pyrnnoise", "rnnoise.dll"),
+        os.path.join(exe_dir, "assets", "rnnoise.dll"),
+        # Current working directory / project root
+        os.path.join(project_root, "dist", "LeagueVoiceRecorder", "rnnoise.dll"),
+        os.path.join(project_root, "dist", "LeagueVoiceRecorder", "pyrnnoise", "rnnoise.dll"),
+        os.path.join(project_root, "rnnoise.dll"),
+        os.path.join(project_root, "assets", "rnnoise.dll"),
+        # Development environment site-packages
+        os.path.join(project_root, ".venv", "Lib", "site-packages", "pyrnnoise", "rnnoise.dll"),
+    ]
+
+    try:
+        import importlib.util
+
+        spec = importlib.util.find_spec("pyrnnoise")
+        if spec and spec.origin:
+            candidates.append(os.path.join(os.path.dirname(spec.origin), "rnnoise.dll"))
+    except Exception:
+        pass
+
+    for candidate in candidates:
+        if candidate and os.path.exists(candidate):
+            return os.path.abspath(candidate)
+    return None
+
+
+def _get_rnnoise_lib():
+    """Thread-safe loader for the native RNNoise C library."""
+    global _RNNOISE_LIB, _RNNOISE_LOAD_ATTEMPTED
+    with _RNNOISE_LOCK:
+        if _RNNOISE_LOAD_ATTEMPTED:
+            return _RNNOISE_LIB
+        _RNNOISE_LOAD_ATTEMPTED = True
+
+        dll_path = _find_rnnoise_dll()
+        if not dll_path or not os.path.exists(dll_path):
+            print("[NativeRecorder] rnnoise.dll could not be located on disk.")
+            return None
+
+        try:
+            lib = ctypes.CDLL(dll_path)
+            lib.rnnoise_create.argtypes = [ctypes.c_void_p]
+            lib.rnnoise_create.restype = ctypes.c_void_p
+            lib.rnnoise_destroy.argtypes = [ctypes.c_void_p]
+            lib.rnnoise_process_frame.argtypes = [
+                ctypes.c_void_p,
+                ctypes.POINTER(ctypes.c_float),
+                ctypes.POINTER(ctypes.c_float),
+            ]
+            lib.rnnoise_process_frame.restype = ctypes.c_float
+            lib.rnnoise_get_frame_size.restype = ctypes.c_int
+            _RNNOISE_LIB = lib
+            return lib
+        except Exception as e:
+            print(f"[NativeRecorder] Failed to load rnnoise.dll from {dll_path}: {e}")
+            return None
+
+
+def apply_rnnoise_to_wav(in_wav_path: str, out_wav_path: str, log_callback=None) -> bool:
     """
     Applies RNNoise neural network noise suppression to a 16-bit PCM WAV file.
     Suppresses mechanical keyboard clicks, fan hum, and background noise while preserving speech.
     Guarantees bit-exact sample count and 1:1 timeline alignment with original audio.
     Uses the native C library bindings directly without heavyweight video/audio decoding dependencies.
     """
-    try:
-        from pyrnnoise.rnnoise import create, destroy, process_mono_frame, FRAME_SIZE
-    except Exception as e:
-        print(f"[NativeRecorder] RNNoise import error: {e}")
+    lib = _get_rnnoise_lib()
+    if lib is None:
+        msg = "[NativeRecorder] AI noise suppression unavailable: rnnoise.dll not found."
+        print(msg)
+        if log_callback:
+            log_callback(msg)
         return False
 
     if not in_wav_path or not os.path.exists(in_wav_path) or os.path.getsize(in_wav_path) <= 44:
@@ -56,35 +130,39 @@ def apply_rnnoise_to_wav(in_wav_path: str, out_wav_path: str) -> bool:
         if len(data) == 0:
             return False
 
+        frame_size = lib.rnnoise_get_frame_size()  # 480 samples @ 48kHz
+
+        def process_mono_array(st, mono_data):
+            processed = []
+            for i in range(0, len(mono_data), frame_size):
+                chunk = mono_data[i : i + frame_size]
+                chunk_len = len(chunk)
+                if chunk_len < frame_size:
+                    padded = np.pad(chunk, (0, frame_size - chunk_len)).astype(np.float32)
+                else:
+                    padded = chunk.astype(np.float32)
+                ptr = padded.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+                lib.rnnoise_process_frame(st, ptr, ptr)
+                processed.append(padded.astype(np.int16)[:chunk_len])
+            return np.concatenate(processed)[: len(mono_data)]
+
         if channels == 1:
-            st = create()
+            st = lib.rnnoise_create(None)
             try:
-                processed_chunks = []
-                for i in range(0, len(data), FRAME_SIZE):
-                    chunk = data[i : i + FRAME_SIZE]
-                    out_chunk, _ = process_mono_frame(st, chunk)
-                    processed_chunks.append(out_chunk)
-                denoised_data = np.concatenate(processed_chunks)[: len(data)]
+                denoised_data = process_mono_array(st, data)
             finally:
-                destroy(st)
+                lib.rnnoise_destroy(st)
         else:
-            # Multi-channel: denoise each channel independently with dedicated state
-            channel_states = [create() for _ in range(channels)]
+            channel_states = [lib.rnnoise_create(None) for _ in range(channels)]
             try:
                 channel_out = []
                 for ch_idx in range(channels):
                     ch_data = data[ch_idx::channels]
-                    ch_chunks = []
-                    for i in range(0, len(ch_data), FRAME_SIZE):
-                        chunk = ch_data[i : i + FRAME_SIZE]
-                        out_chunk, _ = process_mono_frame(channel_states[ch_idx], chunk)
-                        ch_chunks.append(out_chunk)
-                    channel_out.append(np.concatenate(ch_chunks)[: len(ch_data)])
-                # Interleave back
+                    channel_out.append(process_mono_array(channel_states[ch_idx], ch_data))
                 denoised_data = np.column_stack(channel_out).flatten()
             finally:
                 for st in channel_states:
-                    destroy(st)
+                    lib.rnnoise_destroy(st)
 
         with wave.open(out_wav_path, "wb") as wf_out:
             wf_out.setparams(params)
@@ -92,7 +170,10 @@ def apply_rnnoise_to_wav(in_wav_path: str, out_wav_path: str) -> bool:
 
         return True
     except Exception as e:
-        print(f"[NativeRecorder] Error applying RNNoise to WAV: {e}")
+        msg = f"[NativeRecorder] Error applying RNNoise to WAV: {e}"
+        print(msg)
+        if log_callback:
+            log_callback(msg)
         return False
 
 
@@ -1104,7 +1185,7 @@ class NativeAudioRecorder:
         if should_suppress and final_mp3:
             suppressed_mic = self.mic_wav_path.replace(".wav", "_suppressed.wav")
             try:
-                if apply_rnnoise_to_wav(self.mic_wav_path, suppressed_mic):
+                if apply_rnnoise_to_wav(self.mic_wav_path, suppressed_mic, log_callback=self.log):
                     self._mix_to_mp3(
                         f"{output_base_name}_suppressed",
                         initial_offset=initial_offset,
@@ -1112,6 +1193,7 @@ class NativeAudioRecorder:
                         cleanup=True,
                     )
                 else:
+                    self.log("[NativeRecorder] AI noise suppression skipped: WAV filtering failed.")
                     self._cleanup_temp_wavs()
             except Exception as e:
                 self.log(f"AI noise suppression export error: {e}")

@@ -113,6 +113,7 @@ if exist "README.md" (
 
 rem Ensure rnnoise.dll is bundled for AI noise suppression
 if exist ".venv\Lib\site-packages\pyrnnoise\rnnoise.dll" (
+    copy /y ".venv\Lib\site-packages\pyrnnoise\rnnoise.dll" "dist\LeagueVoiceRecorder\rnnoise.dll" >nul
     if not exist "dist\LeagueVoiceRecorder\pyrnnoise" mkdir "dist\LeagueVoiceRecorder\pyrnnoise"
     copy /y ".venv\Lib\site-packages\pyrnnoise\rnnoise.dll" "dist\LeagueVoiceRecorder\pyrnnoise\rnnoise.dll" >nul
 )
