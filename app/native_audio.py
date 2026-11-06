@@ -590,9 +590,11 @@ def get_default_microphone_info():
 
 class TimelineWavWriter:
     """
-    Direct-to-disk PCM WAV writer that maintains match clock synchronization.
-    - If recording starts mid-match (e.g. 29:30), fills blank silence up to game_time.
-    - Writes PCM frames sequentially without backwards seeking, preventing voice cracking/tearing.
+    Direct-to-disk PCM WAV writer that maintains sample-accurate match clock synchronization.
+    - Sample 0 in the file ALWAYS corresponds to game_time = 0.000 (00:00:000).
+    - Writes PCM frames sequentially without backwards seeking, guaranteeing pristine voice quality.
+    - If audio is silent (e.g. Discord inactive), pads exact silence frames so the next utterance
+      begins at the exact match clock timestamp.
     - Finalizes with standard 44-byte RIFF WAVE header.
     """
 
@@ -607,107 +609,125 @@ class TimelineWavWriter:
         self.current_frame = 0
 
     def file_size(self):
-        self.file.seek(0, 2)
-        return self.file.tell()
-
-    def sync_to_game_time(self, game_time):
         with self.lock:
-            if game_time is None or game_time < 0:
+            if self.file.closed:
+                return 44 + self.current_frame * self.frame_size
+            self.file.seek(0, 2)
+            return self.file.tell()
+
+    def write_frames(self, pcm_bytes: bytes):
+        """Writes PCM frames sequentially to disk. Never seeks backwards."""
+        if not pcm_bytes:
+            return
+        with self.lock:
+            if self.file.closed:
+                return
+            self.file.write(pcm_bytes)
+            self.current_frame += len(pcm_bytes) // self.frame_size
+
+    def write_silence(self, num_frames: int):
+        """Pads exact silence zeros sequentially."""
+        if num_frames <= 0:
+            return
+        with self.lock:
+            if self.file.closed:
+                return
+            bytes_needed = num_frames * self.frame_size
+            chunk = b"\x00" * min(bytes_needed, 65536)
+            rem = bytes_needed
+            while rem > 0:
+                w = min(rem, len(chunk))
+                self.file.write(chunk[:w])
+                rem -= w
+            self.current_frame += num_frames
+
+    def sync_to_game_time(self, game_time: float):
+        """
+        If the current file length is behind game_time (e.g. initial start offset or Discord silence gap),
+        pads exact silence up to int(game_time * sample_rate).
+        NEVER truncates or seeks backwards if file length is ahead, preserving continuous speech.
+        """
+        if game_time is None or game_time <= 0:
+            return
+        with self.lock:
+            if self.file.closed:
                 return
             target_frame = int(game_time * self.sample_rate)
-            target_byte = 44 + target_frame * self.frame_size
-            fsize = self.file_size()
-
-            if target_byte > fsize:
-                # Game time is ahead (e.g. started mid-game): pad silence to align timeline
-                self.file.seek(fsize)
-                gap = target_byte - fsize
-                chunk = b"\x00" * 65536
-                while gap > 0:
-                    w = min(gap, len(chunk))
+            if target_frame > self.current_frame:
+                gap_frames = target_frame - self.current_frame
+                bytes_needed = gap_frames * self.frame_size
+                chunk = b"\x00" * min(bytes_needed, 65536)
+                rem = bytes_needed
+                while rem > 0:
+                    w = min(rem, len(chunk))
                     self.file.write(chunk[:w])
-                    gap -= w
+                    rem -= w
                 self.current_frame = target_frame
 
-    def truncate_to_game_time(self, game_time):
+    def write_frames_at_time(self, pcm_bytes: bytes, game_time: float):
+        """
+        Writes PCM frames anchored to the in-game League match clock.
+        If there was an extended silence gap (>10ms), pads silence up to game_time
+        so the upcoming utterance starts at the exact match clock timestamp.
+        During continuous active speech, writes sequentially without seeking backwards,
+        guaranteeing pristine, unclipped studio audio quality.
+        """
+        if not pcm_bytes:
+            return
+        if game_time is not None and game_time > 0:
+            with self.lock:
+                if not self.file.closed:
+                    target_frame = int(game_time * self.sample_rate)
+                    # Require at least 10ms (480 frames @ 48kHz) gap before inserting silence,
+                    # eliminating micro-gap stutter during active sentences
+                    if target_frame > (self.current_frame + 480):
+                        gap_frames = target_frame - self.current_frame
+                        bytes_needed = gap_frames * self.frame_size
+                        chunk = b"\x00" * min(bytes_needed, 65536)
+                        rem = bytes_needed
+                        while rem > 0:
+                            w = min(rem, len(chunk))
+                            self.file.write(chunk[:w])
+                            rem -= w
+                        self.current_frame = target_frame
+
+        self.write_frames(pcm_bytes)
+
+    def truncate_to_game_time(self, game_time: float):
         """
         Rewinds and truncates the WAV file back to the exact frame of game_time.
-        Removes any audio frames written during pause-detection lag.
+        Used strictly during in-game pause detection to trim the ~400ms detection lag.
         """
+        if game_time is None or game_time < 0:
+            return
         with self.lock:
-            if self.file.closed or game_time is None or game_time < 0:
+            if self.file.closed:
                 return
             target_frame = int(game_time * self.sample_rate)
-            target_byte = 44 + target_frame * self.frame_size
-            fsize = self.file_size()
-            if target_byte < fsize:
+            if target_frame < self.current_frame:
+                target_byte = 44 + target_frame * self.frame_size
                 self.file.seek(target_byte)
                 self.file.truncate()
                 self.current_frame = target_frame
-
-    def write_frames(self, pcm_bytes):
-        with self.lock:
-            self.file.write(pcm_bytes)
-            n = len(pcm_bytes) // self.frame_size
-            self.current_frame += n
-
-    def write_frames_at_time(self, pcm_bytes, game_time):
-        """
-        Writes PCM frames at the exact timeline position matching League match clock (game_time).
-        - If the match clock is ahead of current file size (e.g. silence period), fills silence up to game_time.
-        - Ensures audio spoken at 10:42 is placed at 10:42:000, and at 20:42 is placed at 20:42:000.
-        - Eliminates any clock drift or sliding over the entire match.
-        """
-        with self.lock:
-            if self.file.closed or not pcm_bytes:
-                return
-            if game_time is None or game_time < 0:
-                self.file.seek(0, 2)
-                self.file.write(pcm_bytes)
-                self.current_frame += len(pcm_bytes) // self.frame_size
-                return
-
-            target_frame = int(game_time * self.sample_rate)
-            target_byte = 44 + target_frame * self.frame_size
-            fsize = self.file_size()
-
-            if target_byte > fsize:
-                gap = target_byte - fsize
-                self.file.seek(fsize)
-                chunk = b"\x00" * 65536
-                while gap > 0:
-                    w = min(gap, len(chunk))
-                    self.file.write(chunk[:w])
-                    gap -= w
-                self.current_frame = target_frame
-            elif target_byte < fsize:
-                self.file.seek(target_byte)
-
-            self.file.write(pcm_bytes)
-            written_frames = len(pcm_bytes) // self.frame_size
-            new_byte_pos = target_byte + len(pcm_bytes)
-            if new_byte_pos >= fsize:
-                self.current_frame = target_frame + written_frames
 
     def close(self, final_game_time=None):
         with self.lock:
             if self.file.closed:
                 return
             if final_game_time is not None and final_game_time > 0:
-                target_byte = 44 + int(final_game_time * self.sample_rate) * self.frame_size
-                fsize = self.file_size()
-                if target_byte > fsize:
-                    gap = target_byte - fsize
-                    self.file.seek(fsize)
-                    chunk = b"\x00" * 65536
-                    while gap > 0:
-                        w = min(gap, len(chunk))
+                target_frame = int(final_game_time * self.sample_rate)
+                if target_frame > self.current_frame:
+                    gap_frames = target_frame - self.current_frame
+                    bytes_needed = gap_frames * self.frame_size
+                    chunk = b"\x00" * min(bytes_needed, 65536)
+                    rem = bytes_needed
+                    while rem > 0:
+                        w = min(rem, len(chunk))
                         self.file.write(chunk[:w])
-                        gap -= w
-                    self.current_frame = int(final_game_time * self.sample_rate)
+                        rem -= w
+                    self.current_frame = target_frame
 
-            fsize = self.file_size()
-            total_data = max(0, fsize - 44)
+            total_data = self.current_frame * self.frame_size
 
             # Write standard 44-byte RIFF WAVE header
             self.file.seek(0)
@@ -1130,13 +1150,12 @@ class NativeAudioRecorder:
 
                 def mic_callback(in_data, frames, time_info, status):
                     if not self.is_paused and self.is_recording:
-                        now_gt = self.get_current_game_time()
                         if self.is_discord_muted():
                             # Inject silence zeros while maintaining exact frame timeline alignment
-                            self._mic_queue.put((b"\x00" * len(in_data), now_gt))
+                            self._mic_queue.put(b"\x00" * len(in_data))
                             self.current_mic_level = 0.0
                         else:
-                            self._mic_queue.put((bytes(in_data), now_gt))
+                            self._mic_queue.put(bytes(in_data))
                     return (None, pyaudio.paContinue)
 
                 self._mic_stream = pa.open(
@@ -1161,29 +1180,33 @@ class NativeAudioRecorder:
 
     def _capture_discord_loop(self, pid, wav_path):
         """
-        Polls Discord process audio frames from WASAPI ProcessLoopback.
-        Writes directly to TimelineWavWriter matching League match clock exactly.
+        Polls Discord process audio frames via proctap.ProcessAudioCapture.
+        Guarantees standard 48000 Hz stereo format regardless of Windows soundcard settings (7.1, 96kHz, etc.).
+        Writes sequentially to TimelineWavWriter with exact match clock synchronization.
         """
         try:
-            from proctap._native import ProcessLoopback
+            from proctap import ProcessAudioCapture
 
-            loop = ProcessLoopback(pid)
-            loop.start()
+            tap = ProcessAudioCapture(pid, resample_quality="best")
+            tap.start()
 
             # Strict isolation check: ensure capture is strictly process-specific to Discord.
-            if not loop.is_process_specific():
-                self.log("❌ ERROR: Process loopback is NOT process-specific! Aborting capture to prevent recording background audio.")
-                loop.stop()
-                return
+            if hasattr(tap, "_backend") and hasattr(tap._backend, "_native"):
+                native_loop = tap._backend._native
+                if hasattr(native_loop, "is_process_specific") and not native_loop.is_process_specific():
+                    self.log("❌ ERROR: Process loopback is NOT process-specific! Aborting capture to prevent recording background audio.")
+                    tap.stop()
+                    return
 
             writer = TimelineWavWriter(wav_path, channels=2, sample_rate=48000)
             self._discord_writer = writer
 
-            if self.latest_game_time > 2.0:
-                writer.sync_to_game_time(self.latest_game_time)
+            init_gt = self.get_current_game_time()
+            if init_gt > 0:
+                writer.sync_to_game_time(init_gt)
 
             while not self.stop_event.is_set():
-                d = loop.read()
+                d = tap.read(timeout=0.01)
                 if d:
                     floats = np.frombuffer(d, dtype=np.float32)
                     if len(floats) > 0:
@@ -1195,11 +1218,9 @@ class NativeAudioRecorder:
                         raw_bytes = ints.tobytes()
                         now_gt = self.get_current_game_time()
                         writer.write_frames_at_time(raw_bytes, now_gt)
-                else:
-                    time.sleep(0.002)
 
             writer.close(final_game_time=self.get_current_game_time())
-            loop.stop()
+            tap.stop()
         except Exception as e:
             self.log(f"Discord process audio capture error: {e}")
 
@@ -1209,17 +1230,15 @@ class NativeAudioRecorder:
             writer = TimelineWavWriter(wav_path, channels=channels, sample_rate=rate)
             self._mic_writer = writer
 
-            if self.latest_game_time > 2.0:
-                writer.sync_to_game_time(self.latest_game_time)
+            init_gt = self.get_current_game_time()
+            if init_gt > 0:
+                writer.sync_to_game_time(init_gt)
 
             while not self.stop_event.is_set() or not self._mic_queue.empty():
                 try:
                     item = self._mic_queue.get(timeout=0.05)
-                    if isinstance(item, tuple):
-                        chunk, chunk_gt = item
-                    else:
-                        chunk, chunk_gt = item, None
-                    writer.write_frames_at_time(chunk, chunk_gt)
+                    chunk = item[0] if isinstance(item, tuple) else item
+                    writer.write_frames(chunk)
                     try:
                         floats = np.frombuffer(chunk, dtype=np.int16)
                         if len(floats) > 0:

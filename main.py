@@ -1899,7 +1899,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             fg_pid = ctypes.c_ulong()
             u32.GetWindowThreadProcessId(hwnd, ctypes.byref(fg_pid))
             target_pid = fg_pid.value
-            if not target_pid or target_pid == os.getpid():
+
+            # If foreground window belongs to our own app process (e.g. user clicked HUD hit-window or track toggle)
+            # preserve visibility if the active game was previously in foreground!
+            if target_pid == os.getpid():
+                return bool(getattr(self, "_last_fg_is_game", False))
+
+            if not target_pid:
                 return False
 
             # Check cached result for identical hwnd
