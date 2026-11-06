@@ -324,8 +324,9 @@ def save_config(config_data):
 @functools.lru_cache(maxsize=1)
 def get_ffmpeg_path():
     """Finds the ffmpeg executable (system PATH, local, or winget install)."""
-    if shutil.which("ffmpeg"):
-        return "ffmpeg"
+    which_path = shutil.which("ffmpeg")
+    if which_path:
+        return which_path
 
     for candidate in [
         os.path.join(PROJECT_ROOT, "ffmpeg.exe"),
