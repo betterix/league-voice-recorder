@@ -29,10 +29,10 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev --python 3.14.10
 
-      - name: Install VLC Media Player
+      - name: Install VLC Media Player and FFmpeg
         shell: pwsh
         run: |
-          choco install vlc --no-progress -y
+          choco install vlc ffmpeg --no-progress -y
 
       - name: Run automated test suite
         run: uv run pytest

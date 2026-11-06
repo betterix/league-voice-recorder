@@ -426,7 +426,15 @@ class TestRecorderModule(unittest.TestCase):
 
     def test_stop_and_finalize_export(self):
         """stop_and_finalize mixes Discord and Mic into final MP3."""
+        import subprocess
         import wave
+        from app.config import get_ffmpeg_path
+
+        ffmpeg_cmd = get_ffmpeg_path()
+        try:
+            subprocess.run([ffmpeg_cmd, "-version"], capture_output=True, check=True)
+        except Exception:
+            self.skipTest("FFmpeg binary not available in test environment.")
 
         rec = self.recorder.native_recorder
         rec.is_recording = True
