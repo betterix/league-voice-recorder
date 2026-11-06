@@ -94,11 +94,11 @@ def is_process_running(pid):
         return False
 
 
-def find_matching_audio_file(audio_directory, game_id):
+def find_matching_audio_file(audio_directory, game_id, prefer_suppressed=False):
     """
     Finds the best matching audio file for the game ID.
-    Supports <game_id>.mp3, <game_id>_1.mp3, etc.
-    Prioritizes valid non-empty files (>10 KB) and picks the largest/latest recording.
+    Supports <game_id>.mp3, <game_id>_suppressed.mp3, <game_id>_1.mp3, etc.
+    Prioritizes valid non-empty files (>10 KB) and honors prefer_suppressed preference with fallback.
     """
     if not game_id or not audio_directory or not os.path.exists(audio_directory):
         return None
@@ -124,9 +124,26 @@ def find_matching_audio_file(audio_directory, game_id):
     valid_candidates = [c for c in candidates if c[1] > 10 * 1024]
     pool = valid_candidates if valid_candidates else candidates
 
-    # Sort by file size descending, then modification time descending
-    pool.sort(key=lambda c: (c[1], c[2]), reverse=True)
-    return pool[0][0]
+    # Separate into suppressed and raw pools
+    suppressed_pool = [c for c in pool if "_suppressed" in os.path.basename(c[0]).lower()]
+    raw_pool = [c for c in pool if "_suppressed" not in os.path.basename(c[0]).lower()]
+
+    # Sort each pool by file size descending, then modification time descending
+    suppressed_pool.sort(key=lambda c: (c[1], c[2]), reverse=True)
+    raw_pool.sort(key=lambda c: (c[1], c[2]), reverse=True)
+
+    if prefer_suppressed:
+        if suppressed_pool:
+            return suppressed_pool[0][0]
+        if raw_pool:
+            return raw_pool[0][0]
+    else:
+        if raw_pool:
+            return raw_pool[0][0]
+        if suppressed_pool:
+            return suppressed_pool[0][0]
+
+    return None
 
 
 def create_vlc_instance():
@@ -191,17 +208,25 @@ class ReplaySynchronizer:
         log_callback=None,
         status_callback=None,
         mute_callback=None,
+        voice_mode_callback=None,
     ):
         self.config = config or load_config()
         self.log_callback = log_callback
         self.status_callback = status_callback
         self.mute_callback = mute_callback
+        self.voice_mode_callback = voice_mode_callback
         self.audio_directory = self.config.get("record_folder", DEFAULT_AUDIO_DIRECTORY)
         self.volume = int(self.config.get("replay_volume", 80))
+        self.prefer_suppressed = bool(self.config.get("prefer_suppressed_replay", False))
         self.current_player = None
+        self.vlc_instance = None
+        self.current_audio_path = None
+        self.current_game_id = None
+        self._pending_voice_mode = None
         self.running = False
         self.is_muted = False
         self.last_mute_toggle_time = 0.0
+        self.last_voice_mode_toggle_time = 0.0
         self.current_replay_pid = None
         self._hotkey_thread = None
         self.last_game_time = 0.0
@@ -276,6 +301,97 @@ class ReplaySynchronizer:
         self.last_mute_toggle_time = now
         return self.set_mute(not self.is_muted)
 
+    def set_voice_mode(self, prefer_suppressed):
+        """Sets voice mode preference and signals active playback to swap tracks seamlessly."""
+        self.prefer_suppressed = bool(prefer_suppressed)
+        if self.current_player:
+            self._pending_voice_mode = self.prefer_suppressed
+        else:
+            if self.voice_mode_callback:
+                try:
+                    self.voice_mode_callback(self.prefer_suppressed)
+                except Exception:
+                    pass
+        return self.prefer_suppressed
+
+    def toggle_voice_mode(self):
+        """Toggles between standard raw audio and AI-suppressed audio."""
+        now = time.time()
+        if now - self.last_voice_mode_toggle_time < 0.25:
+            return self.prefer_suppressed
+        self.last_voice_mode_toggle_time = now
+        current = (
+            self._pending_voice_mode
+            if self._pending_voice_mode is not None
+            else self.prefer_suppressed
+        )
+        return self.set_voice_mode(not current)
+
+    def _perform_voice_mode_switch(self, player, instance, target_suppressed: bool):
+        if not self.current_game_id or not self.audio_directory:
+            return False
+
+        new_file = find_matching_audio_file(
+            self.audio_directory,
+            self.current_game_id,
+            prefer_suppressed=target_suppressed,
+        )
+        if not new_file or not os.path.exists(new_file):
+            self.log(t("logs.voice_mode_file_not_found"))
+            return False
+
+        current_norm = (
+            os.path.normcase(os.path.abspath(self.current_audio_path))
+            if self.current_audio_path
+            else ""
+        )
+        new_norm = os.path.normcase(os.path.abspath(new_file))
+        if current_norm == new_norm:
+            # File is already the active track (e.g. only one version exists)
+            self.log(t("logs.voice_mode_no_alternate", file=os.path.basename(new_file)))
+            return False
+
+        try:
+            cur_ms = player.get_time() if hasattr(player, "get_time") else -1
+            cur_rate = player.get_rate() if hasattr(player, "get_rate") else 1.0
+            was_paused = self.is_paused
+
+            new_media = instance.media_new(os.path.abspath(new_file))
+            player.set_media(new_media)
+            player.play()
+            if cur_ms > 0:
+                player.set_time(cur_ms)
+            if cur_rate > 0:
+                player.set_rate(cur_rate)
+            if self.is_muted:
+                player.audio_set_mute(True)
+                player.audio_set_volume(0)
+            else:
+                player.audio_set_mute(False)
+                player.audio_set_volume(self.volume)
+            if was_paused:
+                player.pause()
+
+            self.current_audio_path = os.path.abspath(new_file)
+            self.prefer_suppressed = target_suppressed
+            mode_name = (
+                t("replay.voice_mode_suppressed")
+                if target_suppressed
+                else t("replay.voice_mode_raw")
+            )
+            self.log(
+                t("logs.voice_mode_switched", mode=mode_name, file=os.path.basename(new_file))
+            )
+            if self.voice_mode_callback:
+                try:
+                    self.voice_mode_callback(target_suppressed)
+                except Exception:
+                    pass
+            return True
+        except Exception as e:
+            self.log(f"Voice track switch error: {e}")
+            return False
+
     def _hotkey_listener_loop(self):
         """Background listener for M hotkey (VK_M = 0x4D) to mute/unmute replay audio."""
         if not sys.platform.startswith("win"):
@@ -316,8 +432,10 @@ class ReplaySynchronizer:
             except Exception:
                 pass
 
-    def run_sync_loop(self, audio_path, replay_pid=None):
+    def run_sync_loop(self, audio_path, replay_pid=None, game_id=None):
         abs_path = os.path.abspath(audio_path)
+        self.current_audio_path = abs_path
+        self.current_game_id = game_id
         self.current_replay_pid = replay_pid
 
         try:
@@ -332,6 +450,7 @@ class ReplaySynchronizer:
                 player.audio_set_mute(False)
                 player.audio_set_volume(self.volume)
             self.current_player = player
+            self.vlc_instance = instance
         except Exception as e:
             self.log(t("logs.vlc_init_error", error=e))
             return
@@ -363,6 +482,11 @@ class ReplaySynchronizer:
         session.verify = False
 
         while not self.stop_event.is_set():
+            if self._pending_voice_mode is not None:
+                target_mode = self._pending_voice_mode
+                self._pending_voice_mode = None
+                self._perform_voice_mode_switch(player, instance, target_mode)
+
             try:
                 response = session.get(API_URL, timeout=0.25)
                 if response.status_code == 200:
@@ -386,7 +510,8 @@ class ReplaySynchronizer:
                         ended_state = getattr(vlc.State, "Ended", 6) if vlc else 6
                         if current_state == ended_state:
                             player.stop()
-                            player.set_media(media)
+                            active_file = self.current_audio_path or abs_path
+                            player.set_media(instance.media_new(active_file))
                             self.log(t("logs.vlc_end_reload"))
 
                         vlc_time = (
@@ -529,6 +654,10 @@ class ReplaySynchronizer:
         except Exception:
             pass
         self.current_player = None
+        self.vlc_instance = None
+        self.current_audio_path = None
+        self.current_game_id = None
+        self._pending_voice_mode = None
 
     def run_loop(self):
         self.stop_event.clear()
@@ -558,12 +687,15 @@ class ReplaySynchronizer:
                 game_id = parse_rofl_game_id(rofl_path)
 
                 if game_id:
-                    matched_file = find_matching_audio_file(self.audio_directory, game_id)
+                    self.current_game_id = game_id
+                    matched_file = find_matching_audio_file(
+                        self.audio_directory, game_id, prefer_suppressed=self.prefer_suppressed
+                    )
 
                     if matched_file:
                         self.log(t("logs.audio_found", file=os.path.basename(matched_file)))
                         last_handled_path = rofl_path
-                        self.run_sync_loop(matched_file, replay_pid=rofl_pid)
+                        self.run_sync_loop(matched_file, replay_pid=rofl_pid, game_id=game_id)
                         if not is_process_running(rofl_pid):
                             break
                         self.update_status("WATCHING", t("replay.waiting_for_replay"))

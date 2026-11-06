@@ -67,6 +67,9 @@
         "stop_btn": "⏹ Replay Auto-Sync leállítása",
         "stopping_btn": "Leállítás folyamatban...",
         "volume": "Hangerő",
+        "voice_track": "Hangsáv",
+        "voice_mode_raw": "Normál beszéd",
+        "voice_mode_suppressed": "AI Zajszűrt",
         "muted_label": "NÉMÍTVA (M)",
         "hotkey_hint": "M billentyű: Replay hang némítása / visszakapcsolása",
         "info": "• Automatikusan felismeri a megnyitott .rofl visszajátszást\n• Game ID alapján társítja és VLC-ben szinkronizálja a hangot"
@@ -190,6 +193,9 @@
         "replay_watcher_stopped": "🛑 Replay Auto-Sync leállítva.",
         "vlc_end_reload": "ℹ️ A lejátszó a fájl végén volt, újratöltve a visszatekeréshez.",
         "replay_api_waiting": "ℹ️ API még nem válaszol ({error}), várakozás...",
-        "replay_init_wait": "⏳ Várakozás a League motor elindulására..."
+        "replay_init_wait": "⏳ Várakozás a League motor elindulására...",
+        "voice_mode_switched": "🔀 Replay hangsáv átváltva: {mode} ({file})",
+        "voice_mode_no_alternate": "ℹ️ Nincs alternatív hangsáv ehhez a fájlhoz: {file}",
+        "voice_mode_file_not_found": "⚠️ A megcélzott hangsáv nem található a lemezen."
     }
 }

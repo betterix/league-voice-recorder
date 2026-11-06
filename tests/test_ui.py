@@ -341,6 +341,38 @@ class TestUIApp(unittest.TestCase):
             items.append(self.app.msg_queue.get_nowait())
         self.assertTrue(any("SETTINGS" in str(item) for item in items))
 
+    def test_replay_voice_mode_toggle_before_and_during_replay(self):
+        """Voice track button allows toggling between raw and AI suppressed audio before and during replay."""
+        self.assertTrue(hasattr(self.app, "track_toggle_btn"))
+        self.assertTrue(hasattr(self.app, "track_label"))
+
+        # 1. Before replay starts: toggle from raw to suppressed
+        self.app.config["prefer_suppressed_replay"] = False
+        self.app._update_voice_mode_button_visuals(False)
+        self.assertIn("Standard", self.app.track_toggle_btn.cget("text"))
+
+        # Click the button
+        self.app._toggle_replay_voice_mode()
+        self.assertTrue(self.app.config["prefer_suppressed_replay"])
+        self.assertIn("AI", self.app.track_toggle_btn.cget("text"))
+        self.assertTrue(self.app.hud.prefer_suppressed)
+
+        # 2. During replay: mock active worker and toggle
+        mock_worker = MagicMock()
+        self.app.replay_worker = mock_worker
+        self.app._toggle_replay_voice_mode()
+
+        self.assertFalse(self.app.config["prefer_suppressed_replay"])
+        self.assertIn("Standard", self.app.track_toggle_btn.cget("text"))
+        self.assertFalse(self.app.hud.prefer_suppressed)
+        mock_worker.set_voice_mode.assert_called_with(False)
+
+        # 3. Callback from worker updates UI and HUD
+        self.app._on_replay_voice_mode_changed_from_worker(True)
+        self.assertTrue(self.app.config["prefer_suppressed_replay"])
+        self.assertIn("AI", self.app.track_toggle_btn.cget("text"))
+        self.assertTrue(self.app.hud.prefer_suppressed)
+
 
 if __name__ == "__main__":
     unittest.main()

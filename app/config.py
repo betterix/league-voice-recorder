@@ -22,6 +22,7 @@ _KEY_MAPPINGS = (
     ("hud_x", "HUD_X"),
     ("hud_y", "HUD_Y"),
     ("ai_noise_suppression", "AI_NOISE_SUPPRESSION"),
+    ("prefer_suppressed_replay", "PREFER_SUPPRESSED_REPLAY"),
 )
 
 
@@ -157,6 +158,7 @@ def get_clean_default_config():
         "hud_x": -1,
         "hud_y": -1,
         "ai_noise_suppression": True,
+        "prefer_suppressed_replay": False,
     }
 
 
@@ -201,6 +203,7 @@ def get_default_config():
         "hud_x": _parse_int(os.getenv("HUD_X", "-1"), -1),
         "hud_y": _parse_int(os.getenv("HUD_Y", "-1"), -1),
         "ai_noise_suppression": os.getenv("AI_NOISE_SUPPRESSION", "true").lower() in ("true", "1", "yes"),
+        "prefer_suppressed_replay": os.getenv("PREFER_SUPPRESSED_REPLAY", "false").lower() in ("true", "1", "yes"),
     }
 
 

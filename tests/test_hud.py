@@ -280,6 +280,43 @@ class TestLeagueHUDWidget(unittest.TestCase):
         self.hud.set_locked(False)
         self.assertEqual(self.hud.volume_hit_win.state(), "withdrawn")
 
+    def test_voice_mode_toggle_and_track_hit_window(self):
+        """Track toggle button fires callback in replay mode and operates via hit window when locked."""
+        toggle_called = []
+        self.hud.on_voice_mode_toggle = lambda: toggle_called.append(True)
+        self.hud.set_mode("REPLAY")
+
+        # 1. Test set_voice_mode updates state
+        self.hud.set_voice_mode(True)
+        self.assertTrue(self.hud.prefer_suppressed)
+        self.hud.set_voice_mode(False)
+        self.assertFalse(self.hud.prefer_suppressed)
+
+        # 2. Clicking track button in Replay mode triggers toggle callback
+        class TrackClickEvent:
+            x = 40
+            y = 22
+
+        self.hud._on_mouse_down(TrackClickEvent())
+        self.assertEqual(len(toggle_called), 1)
+
+        # 3. When locked and visible, track_hit_win is active
+        self.hud.show()
+        self.hud.set_locked(True)
+        self.assertIsNotNone(self.hud.track_hit_win)
+        self.assertEqual(self.hud.track_hit_win.state(), "normal")
+
+        # Clicking via hit window triggers toggle
+        class DummyEvent:
+            pass
+
+        self.hud._on_track_hit_click(DummyEvent())
+        self.assertEqual(len(toggle_called), 2)
+
+        # Switching to RECORD hides track_hit_win
+        self.hud.set_mode("RECORD")
+        self.assertEqual(self.hud.track_hit_win.state(), "withdrawn")
+
 
 if __name__ == "__main__":
     unittest.main()

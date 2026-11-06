@@ -115,6 +115,10 @@ class LeagueHUDWidget:
     LOCK_Y = 22
     TIMER_X = 300
     TIMER_Y = 52
+    TRACK_BTN_X1 = 12.0
+    TRACK_BTN_X2 = 80.0
+    TRACK_BTN_Y1 = 11.0
+    TRACK_BTN_Y2 = 33.0
 
     # Design color palette from mockups
     COLOR_BG = "#0E1116"
@@ -140,6 +144,7 @@ class LeagueHUDWidget:
         on_volume_changed: Callable[[int], None] | None = None,
         on_position_changed: Callable[[int, int], None] | None = None,
         on_lock_changed: Callable[[bool], None] | None = None,
+        on_voice_mode_toggle: Callable[[], None] | None = None,
     ) -> None:
         self.master = master
         self.opacity = max(0.3, min(1.0, float(opacity)))
@@ -148,9 +153,11 @@ class LeagueHUDWidget:
         self.on_volume_changed = on_volume_changed
         self.on_position_changed = on_position_changed
         self.on_lock_changed = on_lock_changed
+        self.on_voice_mode_toggle = on_voice_mode_toggle
 
         self.mode = "RECORD"  # "RECORD" or "REPLAY"
         self.is_visible = False
+        self.prefer_suppressed = False
 
         # Live state variables
         self.time_str = "00:00"
@@ -212,11 +219,13 @@ class LeagueHUDWidget:
         self.canvas.bind("<Button-3>", self._on_right_click)
         self.canvas.bind("<Motion>", self._on_mouse_hover)
 
-        # Dedicated transparent hit-test windows for Lock icon and Volume slider in click-through mode
+        # Dedicated transparent hit-test windows for Lock icon, Volume slider, and Track toggle in click-through mode
         self.lock_hit_win = None
         self.volume_hit_win = None
+        self.track_hit_win = None
         self._init_lock_hit_window()
         self._init_volume_hit_window()
+        self._init_track_hit_window()
 
         # Initial render
         self.render()
@@ -342,10 +351,63 @@ class LeagueHUDWidget:
         canvas_x = self.SLIDER_X1 - 6 + event.x
         self._update_volume_from_mouse(canvas_x)
 
+    def _init_track_hit_window(self) -> None:
+        """Creates a transparent hit-test window over the voice track mode button in Replay mode."""
+        try:
+            self.track_hit_win = tk.Toplevel(self.master)
+            self.track_hit_win.overrideredirect(True)
+            self.track_hit_win.withdraw()
+            try:
+                self.track_hit_win.attributes("-topmost", True)
+                self.track_hit_win.attributes("-alpha", 0.01)
+            except Exception:
+                pass
+            self.track_hit_win.config(cursor="hand2")
+            self.track_hit_win.bind("<ButtonPress-1>", self._on_track_hit_click)
+            self.track_hit_win.bind("<Button-3>", lambda e: None)
+        except Exception:
+            self.track_hit_win = None
+
+    def _sync_track_hit_window(self) -> None:
+        """Positions the voice track hit window precisely over the button when locked, visible, and in REPLAY mode."""
+        if not getattr(self, "track_hit_win", None):
+            return
+        if getattr(self, "is_visible", False) and self.locked and getattr(self, "mode", "") == "REPLAY":
+            try:
+                wx = self.window.winfo_x()
+                wy = self.window.winfo_y()
+                bx = wx + int(self.TRACK_BTN_X1)
+                by = wy + int(self.TRACK_BTN_Y1)
+                bw = int(self.TRACK_BTN_X2 - self.TRACK_BTN_X1)
+                bh = int(self.TRACK_BTN_Y2 - self.TRACK_BTN_Y1)
+                self.track_hit_win.geometry(f"{bw}x{bh}+{bx}+{by}")
+                self.track_hit_win.deiconify()
+                self.track_hit_win.attributes("-topmost", True)
+                self.track_hit_win.attributes("-alpha", 0.01)
+            except Exception:
+                pass
+        else:
+            try:
+                self.track_hit_win.withdraw()
+            except Exception:
+                pass
+
+    def _on_track_hit_click(self, event: tk.Event) -> None:
+        """Called when clicking the voice track button while overlay is locked in Replay mode."""
+        if self.on_voice_mode_toggle:
+            self.on_voice_mode_toggle()
+
+    def set_voice_mode(self, prefer_suppressed: bool) -> None:
+        """Updates the active voice track indicator on the HUD."""
+        self.prefer_suppressed = bool(prefer_suppressed)
+        if self.is_visible:
+            self.render()
+
     def _sync_hit_windows(self) -> None:
-        """Synchronizes all hit-test windows (lock icon and volume slider) with the overlay position."""
+        """Synchronizes all hit-test windows (lock icon, volume slider, track button) with the overlay position."""
         self._sync_lock_hit_window()
         self._sync_volume_hit_window()
+        self._sync_track_hit_window()
 
     def _apply_click_through(self, enable: bool) -> None:
         """Applies or removes the Windows WS_EX_TRANSPARENT style strictly on the top-level window."""
@@ -637,14 +699,30 @@ class LeagueHUDWidget:
 
     def _render_replay_content(self) -> None:
         """Renders the Replay HUD (AUDIO wave with playhead, VOLUME slider, REPLAY, Timer, Lock)."""
-        # Row 1: AUDIO Label
+        # Row 1: Voice Track Mode Button (STD vs AI)
+        btn_bg = "#064E3B" if self.prefer_suppressed else "#1E293B"
+        btn_border = "#10B981" if self.prefer_suppressed else "#475569"
+        btn_text = "✨ AI" if self.prefer_suppressed else "🎙️ RAW"
+        btn_text_color = "#6EE7B7" if self.prefer_suppressed else "#CBD5E1"
+
+        draw_rounded_rect(
+            self.canvas,
+            self.TRACK_BTN_X1,
+            self.TRACK_BTN_Y1,
+            self.TRACK_BTN_X2,
+            self.TRACK_BTN_Y2,
+            radius=4.0,
+            fill=btn_bg,
+            outline=btn_border,
+            width=1.0,
+        )
         self.canvas.create_text(
-            16,
+            (self.TRACK_BTN_X1 + self.TRACK_BTN_X2) / 2.0,
             22,
-            text="AUDIO",
-            anchor="w",
-            fill=self.COLOR_LABEL,
-            font=("Segoe UI", 10, "bold"),
+            text=btn_text,
+            anchor="center",
+            fill=btn_text_color,
+            font=("Segoe UI", 8, "bold"),
         )
 
         # Row 1: Audio waveform vertical bars with moving playhead cursor
@@ -883,6 +961,9 @@ class LeagueHUDWidget:
     def _is_volume_slider_hit(self, x: float, y: float) -> bool:
         return self.mode == "REPLAY" and (self.SLIDER_X1 - 6) <= x <= (self.SLIDER_X2 + 6) and 42 <= y <= 66
 
+    def _is_track_btn_hit(self, x: float, y: float) -> bool:
+        return self.mode == "REPLAY" and (self.TRACK_BTN_X1 <= x <= self.TRACK_BTN_X2) and (self.TRACK_BTN_Y1 <= y <= self.TRACK_BTN_Y2)
+
     def _forward_click(self, button: str = "right") -> None:
         """Forwards mouse clicks through the locked overlay into the game window beneath."""
         if getattr(self, "_is_forwarding_click", False):
@@ -942,12 +1023,19 @@ class LeagueHUDWidget:
             self._update_volume_from_mouse(event.x)
             return
 
-        # 3. If locked, window cannot be dragged! Instead, forward the left-click into the game!
+        # 3. Click on Voice Track mode button in Replay mode
+        # ALLOWED EVEN WHEN LOCKED! (User requirement: switch between mp3s in replay)
+        if self._is_track_btn_hit(event.x, event.y):
+            if self.on_voice_mode_toggle:
+                self.on_voice_mode_toggle()
+            return
+
+        # 4. If locked, window cannot be dragged! Instead, forward the left-click into the game!
         if self.locked:
             self._forward_click(button="left")
             return
 
-        # 4. Unlocked: Drag the overlay window
+        # 5. Unlocked: Drag the overlay window
         self._is_dragging = True
         self._drag_start_x = event.x
         self._drag_start_y = event.y
@@ -990,7 +1078,11 @@ class LeagueHUDWidget:
         """Dynamically updates mouse cursor to reflect actionable elements."""
         try:
             if self._is_lock_hit(event.x, event.y) or (
-                self.mode == "REPLAY" and self._is_volume_slider_hit(event.x, event.y)
+                self.mode == "REPLAY"
+                and (
+                    self._is_volume_slider_hit(event.x, event.y)
+                    or self._is_track_btn_hit(event.x, event.y)
+                )
             ):
                 self.canvas.config(cursor="hand2")
             elif not self.locked:

@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from unittest.mock import MagicMock
 
 from app.play_replay import (
     ReplaySynchronizer,
@@ -180,6 +181,91 @@ class TestReplaySyncModule(unittest.TestCase):
         # Immediate second toggle within debounce window (<0.25s) should be ignored
         sync.toggle_mute()
         self.assertTrue(sync.is_muted)
+
+    def test_find_matching_audio_file_prefer_suppressed(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            raw_path = os.path.join(tmpdir, "999999.mp3")
+            suppressed_path = os.path.join(tmpdir, "999999_suppressed.mp3")
+
+            # Create dummy files > 10KB
+            with open(raw_path, "wb") as f:
+                f.write(b"0" * 15000)
+            with open(suppressed_path, "wb") as f:
+                f.write(b"1" * 15000)
+
+            # When prefer_suppressed=False, should return raw_path
+            self.assertEqual(
+                find_matching_audio_file(tmpdir, "999999", prefer_suppressed=False),
+                raw_path,
+            )
+            # When prefer_suppressed=True, should return suppressed_path
+            self.assertEqual(
+                find_matching_audio_file(tmpdir, "999999", prefer_suppressed=True),
+                suppressed_path,
+            )
+
+    def test_find_matching_audio_file_fallback_behavior(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            raw_only = os.path.join(tmpdir, "111111.mp3")
+            with open(raw_only, "wb") as f:
+                f.write(b"0" * 15000)
+
+            # Requesting suppressed when only raw exists -> falls back to raw
+            self.assertEqual(
+                find_matching_audio_file(tmpdir, "111111", prefer_suppressed=True),
+                raw_only,
+            )
+
+            suppressed_only = os.path.join(tmpdir, "222222_suppressed.mp3")
+            with open(suppressed_only, "wb") as f:
+                f.write(b"0" * 15000)
+
+            # Requesting raw when only suppressed exists -> falls back to suppressed
+            self.assertEqual(
+                find_matching_audio_file(tmpdir, "222222", prefer_suppressed=False),
+                suppressed_only,
+            )
+
+    def test_voice_mode_toggle_and_callback(self):
+        callback_results = []
+        sync = ReplaySynchronizer(
+            config={"replay_volume": 80, "prefer_suppressed_replay": False},
+            voice_mode_callback=lambda mode: callback_results.append(mode),
+        )
+        self.assertFalse(sync.prefer_suppressed)
+
+        sync.set_voice_mode(True)
+        self.assertTrue(sync.prefer_suppressed)
+        self.assertEqual(callback_results, [True])
+
+        sync.toggle_voice_mode()
+        self.assertFalse(sync.prefer_suppressed)
+        self.assertEqual(callback_results, [True, False])
+
+    def test_perform_voice_mode_switch_mock(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            raw_path = os.path.join(tmpdir, "333333.mp3")
+            suppressed_path = os.path.join(tmpdir, "333333_suppressed.mp3")
+            with open(raw_path, "wb") as f:
+                f.write(b"0" * 15000)
+            with open(suppressed_path, "wb") as f:
+                f.write(b"1" * 15000)
+
+            sync = ReplaySynchronizer(config={"record_folder": tmpdir, "replay_volume": 80})
+            sync.current_game_id = "333333"
+            sync.current_audio_path = raw_path
+
+            mock_player = MagicMock()
+            mock_player.get_time.return_value = 45000
+            mock_player.get_rate.return_value = 1.0
+            mock_instance = MagicMock()
+
+            # Switch from raw to suppressed
+            success = sync._perform_voice_mode_switch(mock_player, mock_instance, target_suppressed=True)
+            self.assertTrue(success)
+            self.assertTrue(sync.prefer_suppressed)
+            self.assertEqual(sync.current_audio_path, os.path.abspath(suppressed_path))
+            mock_player.set_time.assert_called_with(45000)
 
 
 if __name__ == "__main__":

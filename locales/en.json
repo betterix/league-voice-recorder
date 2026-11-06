@@ -67,6 +67,9 @@
         "stop_btn": "⏹ Stop Replay Auto-Sync",
         "stopping_btn": "Stopping...",
         "volume": "Volume",
+        "voice_track": "Voice Track",
+        "voice_mode_raw": "Standard Comms",
+        "voice_mode_suppressed": "AI Suppressed",
         "muted_label": "MUTED (M)",
         "hotkey_hint": "Press M to Mute/Unmute replay voice",
         "info": "• Auto-detects opened .rofl replay in League\n• Matches Game ID & syncs voice in VLC with replay time"
@@ -190,6 +193,9 @@
         "replay_watcher_stopped": "🛑 Replay Auto-Sync stopped.",
         "vlc_end_reload": "ℹ️ Audio reached end, reloaded for seeking.",
         "replay_api_waiting": "ℹ️ Replay API not responding yet ({error}), waiting...",
-        "replay_init_wait": "⏳ Waiting for League replay engine to initialize..."
+        "replay_init_wait": "⏳ Waiting for League replay engine to initialize...",
+        "voice_mode_switched": "🔀 Switched replay audio to: {mode} ({file})",
+        "voice_mode_no_alternate": "ℹ️ No alternate voice track found for {file}",
+        "voice_mode_file_not_found": "⚠️ Target audio track not found on disk."
     }
 }
