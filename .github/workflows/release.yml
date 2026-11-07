@@ -15,10 +15,10 @@ jobs:
 
     steps:
       - name: 📥 Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: ⚡ Set up uv & Python 3.14
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           python-version: "3.14.10"
@@ -44,7 +44,7 @@ jobs:
           Write-Host "::endgroup::"
 
       - name: 💾 Restore Nuitka Compiler Cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~\AppData\Local\Nuitka\Nuitka\Cache
@@ -208,7 +208,7 @@ jobs:
           "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8
 
       - name: 📤 Upload Build Artifacts (Actions Tab)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: LeagueVoiceRecorder-Windows-x64
           path: |
