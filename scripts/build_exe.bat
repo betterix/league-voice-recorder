@@ -121,22 +121,25 @@ echo [OK] Standalone distribution assembled in dist\LeagueVoiceRecorder\
 echo.
 echo [4/5] Checking for Inno Setup compiler...
 set "ISCC_EXE="
-where iscc >nul 2>nul && set "ISCC_EXE=iscc"
-if not defined ISCC_EXE if exist "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" set "ISCC_EXE=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
-if not defined ISCC_EXE if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" set "ISCC_EXE=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
-if not defined ISCC_EXE if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" set "ISCC_EXE=%ProgramFiles%\Inno Setup 6\ISCC.exe"
+if exist "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" set "ISCC_EXE=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
+if exist "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" set "ISCC_EXE=C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+if exist "C:\Program Files\Inno Setup 6\ISCC.exe" set "ISCC_EXE=C:\Program Files\Inno Setup 6\ISCC.exe"
+if not defined ISCC_EXE (
+    where iscc >nul 2>nul
+    if !ERRORLEVEL! EQU 0 set "ISCC_EXE=iscc"
+)
 
 if defined ISCC_EXE (
     echo Compiling Windows Setup Installer with Inno Setup...
     "%ISCC_EXE%" installer.iss
-    if %ERRORLEVEL% EQU 0 (
+    if !ERRORLEVEL! EQU 0 (
         echo [OK] Installer created successfully!
     ) else (
-        echo [WARN] Inno Setup compilation reported warnings/issues.
+        echo [WARN] Inno Setup compilation reported warnings or issues.
     )
 ) else (
-    echo [INFO] Inno Setup compiler (ISCC) not found on PATH.
-    echo        To build installer: winget install JRSoftware.InnoSetup
+    echo [INFO] Inno Setup compiler ISCC not found on PATH.
+    echo        To build installer run: winget install JRSoftware.InnoSetup
 )
 
 echo.
