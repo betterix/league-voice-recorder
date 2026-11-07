@@ -11,12 +11,12 @@ echo ========================================================
 echo.
 
 rem Check for clean build argument (e.g. "build_exe.bat clean")
-if /i "%1"=="clean" (
-    echo [INFO] Clean build requested. Purging all build caches and dist folders...
+if /i "%~1"=="clean" (
+    echo [INFO] Clean build requested. Purging build caches and dist folders...
     if exist "dist\main.build" rd /s /q "dist\main.build"
     if exist "dist\build" rd /s /q "dist\build"
 ) else (
-    echo [INFO] Incremental build mode active (preserves compiler cache).
+    echo [INFO] Incremental build mode active - preserving compiler cache.
     echo [INFO] Pass 'clean' argument to force a full re-compilation.
 )
 
@@ -37,7 +37,8 @@ if %ERRORLEVEL% NEQ 0 (
 
 rem Resolve Tcl and Tk library directories for Python 3.14.10
 for /f "tokens=*" %%i in ('uv run --python 3.14.10 python -c "import sys, os; print(os.path.join(sys.base_prefix, 'tcl'))"') do set "TCL_DIR=%%i"
-for /f "tokens=*" %%i in ('uv run --python 3.14.10 python -c "import sys, os; tcl = os.path.join(sys.base_prefix, 'tcl'); tk9 = os.path.join(tcl, 'tk9.0'); tk8 = os.path.join(tcl, 'tk8.6'); print(tk9 if os.path.exists(tk9) else (tk8 if os.path.exists(tk8) else tcl))"') do set "TK_DIR=%%i"
+for /f "tokens=*" %%i in ('uv run --python 3.14.10 python -c "import sys, os; print(os.path.join(sys.base_prefix, 'tcl', 'tk9.0'))"') do set "TK_DIR=%%i"
+if not exist "%TK_DIR%" set "TK_DIR=%TCL_DIR%"
 
 echo [OK] Tcl directory: %TCL_DIR%
 echo [OK] Tk directory:  %TK_DIR%
