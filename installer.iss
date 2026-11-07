@@ -29,6 +29,16 @@ SolidCompression=yes
 WizardStyle=modern
 CloseApplications=yes
 RestartApplications=no
+ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed=x64compatible
+MinVersion=10.0
+PrivilegesRequiredOverridesAllowed=dialog
+VersionInfoVersion={#MyAppVersion}.0
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription={#MyAppName} Setup Wizard
+VersionInfoCopyright=Copyright (C) 2026 {#MyAppPublisher}. GPL-3.0 License.
+VersionInfoProductName={#MyAppName}
+VersionInfoProductVersion={#MyAppVersion}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
