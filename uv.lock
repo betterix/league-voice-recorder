@@ -710,6 +710,7 @@ dependencies = [
 dev = [
     { name = "gradex" },
     { name = "nuitka" },
+    { name = "osv-scan" },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -733,6 +734,7 @@ requires-dist = [
 dev = [
     { name = "gradex", specifier = ">=0.1.1" },
     { name = "nuitka", specifier = ">=4.3.4" },
+    { name = "osv-scan", specifier = ">=0.2.0" },
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "ruff", specifier = ">=0.17.3" },
 ]
@@ -1077,6 +1079,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/19/14/cf3a6b6448849656e1e5f4e2101f3988dc6789724050096aba1bc5ccf592/opentelemetry_api-1.45.2.tar.gz", hash = "sha256:d7b0008e21e5fd61cbe7a7f34ca3b6905a78ab677d9bc395e299359c75cda6b4", size = 73277, upload-time = "2026-10-29T17:29:37.888Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a9/2d/610db864d7513158cebb8f36cc88e67e73bd6c7aa1905ef18d89e1281c81/opentelemetry_api-1.45.2-py3-none-any.whl", hash = "sha256:2cbd737377e710ee740d261c94e93fa0f08e6d037c18f17513cc0a2d94479a34", size = 60335, upload-time = "2026-10-29T17:29:06.955Z" },
+]
+
+[[package]]
+name = "osv-scan"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/78/8b/6ee89fce9e4f908d1a0be9b5ad6bcf8adea90752cf55b5c68bc03fb26c35/osv_scan-0.2.0.tar.gz", hash = "sha256:da491007239e9e44e0eab5c33993b2a84fa5954a4dcaf3acb6f35ecf5bf2f3dd", size = 18549, upload-time = "2026-08-05T01:32:47.275Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ab/39/423dcd0203612e36cd0b82ebc109bd33c7932e63f25ba6f2b3002632be07/osv_scan-0.2.0-py3-none-any.whl", hash = "sha256:c522a20079d7b72f967559499d5a1fdf08cc96420bc57d3299d05ac778d1197d", size = 18448, upload-time = "2026-08-05T01:32:46.182Z" },
 ]
 
 [[package]]

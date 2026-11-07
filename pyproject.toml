@@ -59,6 +59,7 @@ filterwarnings = [
 dev = [
     "gradex>=0.1.1",
     "nuitka>=4.3.4",
+    "osv-scan>=0.2.0",
     "pytest>=9.2.0",
     "ruff>=0.17.3",
 ]
