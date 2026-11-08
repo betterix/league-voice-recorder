@@ -50,7 +50,7 @@ uv run --python 3.14.10 python -m nuitka ^
     --standalone ^
     --jobs=%NUMBER_OF_PROCESSORS% ^
     --lto=no ^
-    --windows-console-mode=force ^
+    --windows-console-mode=disable ^
     --assume-yes-for-downloads ^
     --include-windows-runtime-dlls=yes ^
     --windows-icon-from-ico=assets\icon.ico ^

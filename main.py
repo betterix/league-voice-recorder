@@ -1,4 +1,5 @@
 import datetime
+import io
 import os
 import queue
 import subprocess
@@ -25,6 +26,10 @@ from app.play_replay import ReplaySynchronizer
 from app.record import LeagueRecorder
 
 if sys.platform.startswith("win"):
+    if sys.stdout is None:
+        sys.stdout = io.StringIO()
+    if sys.stderr is None:
+        sys.stderr = io.StringIO()
     try:
         import ctypes
 
