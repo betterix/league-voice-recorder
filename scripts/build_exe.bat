@@ -50,7 +50,7 @@ uv run --python 3.14.10 python -m nuitka ^
     --standalone ^
     --jobs=%NUMBER_OF_PROCESSORS% ^
     --lto=no ^
-    --windows-console-mode=disable ^
+    --windows-console-mode=force ^
     --assume-yes-for-downloads ^
     --include-windows-runtime-dlls=yes ^
     --windows-icon-from-ico=assets\icon.ico ^
@@ -74,8 +74,6 @@ uv run --python 3.14.10 python -m nuitka ^
     --nofollow-import-to=pydoc ^
     --nofollow-import-to=pdb ^
     --nofollow-import-to=difflib ^
-    --nofollow-import-to=sqlite3 ^
-    --nofollow-import-to=email ^
     --nofollow-import-to=distutils ^
     --nofollow-import-to=setuptools ^
     --nofollow-import-to=pip ^
@@ -83,8 +81,6 @@ uv run --python 3.14.10 python -m nuitka ^
     --nofollow-import-to=audiolab ^
     --nofollow-import-to=matplotlib ^
     --nofollow-import-to=fontTools ^
-    --nofollow-import-to=PIL ^
-    --nofollow-import-to=soundfile ^
     --tcl-library-dir="%TCL_DIR%" ^
     --tk-library-dir="%TK_DIR%" ^
     --include-data-dir=locales=locales ^

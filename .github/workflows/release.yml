@@ -74,7 +74,7 @@ jobs:
             --msvc=latest `
             --jobs=$env:NUMBER_OF_PROCESSORS `
             --lto=no `
-            --windows-console-mode=disable `
+            --windows-console-mode=force `
             --assume-yes-for-downloads `
             --include-windows-runtime-dlls=yes `
             --windows-icon-from-ico=assets/icon.ico `
@@ -101,6 +101,7 @@ jobs:
             --nofollow-import-to=distutils `
             --nofollow-import-to=setuptools `
             --nofollow-import-to=pip `
+            --nofollow-import-to=av `
             --nofollow-import-to=audiolab `
             --nofollow-import-to=matplotlib `
             --nofollow-import-to=fontTools `
