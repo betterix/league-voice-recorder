@@ -1123,9 +1123,9 @@ self.geometry(f"{app_width}x{app_height}+{x}+{y}")</code></pre>
 
         <!-- 2.5 In-Game HUD -->
         <div id="main-hud" style="margin-top: 32px;">
-          <h3 class="docs-h3">2.5 In-Game Floating HUD Overlay Coordination</h3>
+          <h3 class="docs-h3">2.5 In-Game Floating Overlay Coordination</h3>
           <p class="docs-p">
-            <code>main.py</code> manages the <code>LeagueHUDWidget</code> overlay and enforces an <strong>Anti-Bleed Game-Exclusive Focus Guard</strong>:
+            <code>main.py</code> manages the <code>LeagueOverlay</code> and enforces an <strong>Anti-Bleed Game-Exclusive Focus Guard</strong>:
           </p>
           <ul style="color: var(--text-secondary); margin-left: 24px; margin-bottom: 20px; line-height: 1.8;">
             <li><strong>Foreground Window Check</strong>: Queries <code>user32.GetForegroundWindow()</code> to verify that the active window is <code>League of Legends.exe</code>.</li>
@@ -1347,8 +1347,8 @@ self._update_wav_header()</code></pre>
                 <td>Running ROFL process detection, Replay Playback API synchronization, VLC playback engine, and 'M' observer mute hotkey.</td>
               </tr>
               <tr>
-                <td><span class="module-code-badge">app/hud_widget.py</span></td>
-                <td>HUD Overlay</td>
+                <td><span class="module-code-badge">app/overlay.py</span></td>
+                <td>In-Game Overlay</td>
                 <td>Borderless in-game floating overlay, dual animated oscilloscopes, click-through (WS_EX_TRANSPARENT), and dedicated hit targets.</td>
               </tr>
               <tr>

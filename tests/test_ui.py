@@ -7,8 +7,8 @@ from main import LeagueVoiceRecorderApp
 
 
 class TestUIApp(unittest.TestCase):
-    def setUp(self):
-        # Ensure default English for predictable baseline
+    @classmethod
+    def setUpClass(cls):
         reset_listeners()
         set_language("en")
         with (
@@ -17,18 +17,45 @@ class TestUIApp(unittest.TestCase):
             patch("main.LeagueVoiceRecorderApp._refresh_microphones"),
             patch("main.LeagueVoiceRecorderApp._start_audio_meter_loop"),
             patch("main.LeagueVoiceRecorderApp._start_auto_detect_monitor"),
+            patch("main.LeagueVoiceRecorderApp._check_update_background"),
+            patch("main.LeagueVoiceRecorderApp._apply_window_icon"),
         ):
-            self.app = LeagueVoiceRecorderApp()
-        self.app._in_test_suite = True
-        self.app.withdraw()  # Prevent window flashing during automated tests
-
-    def tearDown(self):
+            cls.app = LeagueVoiceRecorderApp()
+        cls.app._in_test_suite = True
+        cls.app.withdraw()
         try:
-            self.app.eval("foreach i [after info] { after cancel $i }")
-            self.app.destroy()
+            for aid in cls.app.tk.eval("after info").split():
+                cls.app.after_cancel(aid)
+        except Exception:
+            pass
+
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            for aid in cls.app.tk.eval("after info").split():
+                cls.app.after_cancel(aid)
+            cls.app.destroy()
         except Exception:
             pass
         reset_listeners()
+        set_language("en")
+
+    def setUp(self):
+        try:
+            for aid in self.app.tk.eval("after info").split():
+                self.app.after_cancel(aid)
+        except Exception:
+            pass
+        from app.i18n import get_language
+
+        if get_language() != "en":
+            set_language("en")
+            self.app._update_ui_texts()
+        self.app.is_recording = False
+        self.app.is_syncing = False
+        self.app._replay_muted = False
+
+    def tearDown(self):
         set_language("en")
 
     def test_initial_window_state(self):
@@ -296,18 +323,18 @@ class TestUIApp(unittest.TestCase):
         self.assertFalse(self.app.hud.is_visible)
 
     def test_hud_hit_window_clicking_does_not_hide_hud(self):
-        """Interacting with track_hit_win or lock_hit_win counts as active foreground and never hides HUD."""
+        """Interacting with volume_hit_win or lock_hit_win counts as active foreground and never hides overlay."""
         self.app.hud.show()
         self.app.hud.set_mode("REPLAY")
         self.app.hud.set_locked(True)
 
         hwnds = self.app.hud.get_all_hwnds()
         self.assertTrue(len(hwnds) > 0)
-        track_wid = self.app.hud.track_hit_win.winfo_id()
-        self.assertIn(track_wid, hwnds)
+        volume_wid = self.app.hud.volume_hit_win.winfo_id()
+        self.assertIn(volume_wid, hwnds)
 
-        # Mock foreground window being the track_hit_win
-        with patch("ctypes.windll.user32.GetForegroundWindow", return_value=track_wid):
+        # Mock foreground window being the volume_hit_win
+        with patch("ctypes.windll.user32.GetForegroundWindow", return_value=volume_wid):
             self.assertTrue(self.app._is_league_game_foreground())
 
         lock_wid = self.app.hud.lock_hit_win.winfo_id()

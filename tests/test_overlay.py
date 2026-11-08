@@ -2,36 +2,66 @@ import tkinter as tk
 import unittest
 from unittest.mock import MagicMock
 
-from app.hud_widget import LeagueHUDWidget
+from app.overlay import LeagueOverlay
 
 
-class TestLeagueHUDWidget(unittest.TestCase):
-    def setUp(self):
-        self.root = tk.Tk()
-        self.root.withdraw()
+class TestLeagueOverlay(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.root = tk.Tk()
+        cls.root.withdraw()
 
-        self.mock_volume_callback = MagicMock()
-        self.mock_pos_callback = MagicMock()
-        self.mock_lock_callback = MagicMock()
+        cls.mock_volume_callback = MagicMock()
+        cls.mock_pos_callback = MagicMock()
+        cls.mock_lock_callback = MagicMock()
 
-        self.hud = LeagueHUDWidget(
-            self.root,
+        cls.hud = LeagueOverlay(
+            cls.root,
             opacity=0.85,
             click_through=False,
             locked=False,
             initial_x=120,
             initial_y=80,
-            on_volume_changed=self.mock_volume_callback,
-            on_position_changed=self.mock_pos_callback,
-            on_lock_changed=self.mock_lock_callback,
+            on_volume_changed=cls.mock_volume_callback,
+            on_position_changed=cls.mock_pos_callback,
+            on_lock_changed=cls.mock_lock_callback,
         )
 
-    def tearDown(self):
+    @classmethod
+    def tearDownClass(cls):
         try:
-            self.hud.destroy()
-            self.root.destroy()
+            cls.hud.destroy()
+            cls.root.destroy()
         except Exception:
             pass
+
+    def setUp(self):
+        self.mock_volume_callback.reset_mock()
+        self.mock_pos_callback.reset_mock()
+        self.mock_lock_callback.reset_mock()
+
+        self.hud.on_volume_changed = self.mock_volume_callback
+        self.hud.on_position_changed = self.mock_pos_callback
+        self.hud.on_lock_changed = self.mock_lock_callback
+        self.hud.on_voice_mode_toggle = None
+
+        self.hud.set_mode("RECORD")
+        self.hud.set_locked(False)
+        self.hud.set_opacity(0.85)
+        self.hud.hide()
+        self.hud.time_str = "00:00"
+        self.hud.mic_level = 0.0
+        self.hud.discord_level = 0.0
+        self.hud.is_paused = False
+        self.hud.is_muted = False
+        self.hud.volume = 100
+        self.hud.speed = 1.0
+        self.hud.audio_level = 0.0
+        self.hud.prefer_suppressed = False
+        self.hud.window.geometry(f"{self.hud.WIDTH}x{self.hud.HEIGHT}+120+80")
+
+    def tearDown(self):
+        pass
 
     def test_hud_dimensions_and_properties(self):
         """HUD matches 350x76 specifications and starts withdrawn."""
@@ -280,42 +310,25 @@ class TestLeagueHUDWidget(unittest.TestCase):
         self.hud.set_locked(False)
         self.assertEqual(self.hud.volume_hit_win.state(), "withdrawn")
 
-    def test_voice_mode_toggle_and_track_hit_window(self):
-        """Track toggle button fires callback in replay mode and operates via hit window when locked."""
-        toggle_called = []
-        self.hud.on_voice_mode_toggle = lambda: toggle_called.append(True)
+    def test_replay_audio_label_and_streamlined_layout(self):
+        """Replay mode renders clean AUDIO label and no longer relies on track toggle hit windows."""
         self.hud.set_mode("REPLAY")
-
-        # 1. Test set_voice_mode updates state
-        self.hud.set_voice_mode(True)
-        self.assertTrue(self.hud.prefer_suppressed)
-        self.hud.set_voice_mode(False)
-        self.assertFalse(self.hud.prefer_suppressed)
-
-        # 2. Clicking track button in Replay mode triggers toggle callback
-        class TrackClickEvent:
-            x = 40
-            y = 22
-
-        self.hud._on_mouse_down(TrackClickEvent())
-        self.assertEqual(len(toggle_called), 1)
-
-        # 3. When locked and visible, track_hit_win is active
         self.hud.show()
         self.hud.set_locked(True)
-        self.assertIsNotNone(self.hud.track_hit_win)
-        self.assertEqual(self.hud.track_hit_win.state(), "normal")
 
-        # Clicking via hit window triggers toggle
-        class DummyEvent:
-            pass
+        # Confirm track_hit_win no longer exists
+        self.assertFalse(hasattr(self.hud, "track_hit_win"))
 
-        self.hud._on_track_hit_click(DummyEvent())
-        self.assertEqual(len(toggle_called), 2)
+        # Verify all active hit window HWNDs only include main window, lock, and volume
+        all_hwnds = self.hud.get_all_hwnds()
+        self.assertTrue(len(all_hwnds) > 0)
 
-        # Switching to RECORD hides track_hit_win
-        self.hud.set_mode("RECORD")
-        self.assertEqual(self.hud.track_hit_win.state(), "withdrawn")
+        # Canvas item verification
+        items = self.hud.canvas.find_all()
+        texts = [self.hud.canvas.itemcget(item, "text") for item in items if self.hud.canvas.type(item) == "text"]
+        self.assertIn("AUDIO", texts)
+        self.assertIn("VOLUME", texts)
+        self.assertNotIn("🎙️ COMMS", texts)
 
 
 if __name__ == "__main__":

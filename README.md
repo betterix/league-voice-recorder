@@ -358,7 +358,7 @@ League Voice Recorder/
 │   ├── i18n.py             # Internationalization and community translation loader
 │   ├── record.py           # LeagueRecorder engine (WASAPI capture & FFmpeg alignment)
 │   ├── native_audio.py     # Native WASAPI audio capture (Discord loopback & mic)
-│   ├── hud_widget.py       # In-Game floating HUD overlay widget (translucent live & replay HUD)
+│   ├── overlay.py          # In-Game floating overlay (translucent live & replay overlay)
 │   ├── play_replay.py      # ReplaySynchronizer engine (process watcher & VLC sync)
 │   └── updater.py          # Auto-updater (GitHub releases, zip extraction, in-place replace)
 │

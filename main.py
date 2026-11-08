@@ -117,13 +117,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.bind("<Key-m>", self._on_key_m)
         self.bind("<Key-M>", self._on_key_m)
 
-        # In-Game Floating HUD Widget (Translucent overlay for live scrim recording & replays)
+        # In-Game Floating Overlay (Translucent overlay for live scrim recording & replays)
         self._is_hud_previewing = False
         try:
-            from app.hud_widget import LeagueHUDWidget
+            from app.overlay import LeagueOverlay
 
             is_locked = bool(self.config.get("hud_locked", self.config.get("hud_click_through", False)))
-            self.hud = LeagueHUDWidget(
+            self.overlay = LeagueOverlay(
                 self,
                 opacity=float(self.config.get("hud_opacity", 0.85)),
                 locked=is_locked,
@@ -134,7 +134,9 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 on_position_changed=self._on_hud_position_changed,
                 on_lock_changed=self._on_hud_lock_changed_from_overlay,
             )
+            self.hud = self.overlay
         except Exception:
+            self.overlay = None
             self.hud = None
 
         # Handle window close
@@ -2075,10 +2077,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.app_meter_title.configure(text="🔊 " + t("record.app_sound") + ":")
                 self._last_mic_muted_state = None
                 self.mic_meter_title.configure(text="🎤 " + t("record.microphone") + ":", text_color="#94A3B8")
-                self._refresh_audio_targets()
             if hasattr(self, "mic_input_lbl"):
                 self.mic_input_lbl.configure(text=t("record.mic_input"))
-                self._refresh_microphones()
             self._render_rec_status(*self.last_rec_status)
 
             self.rep_header_lbl.configure(text=t("replay.title"))
@@ -2150,7 +2150,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                     self.auto_replay_switch.configure(text=t("settings.auto_start_replay_info"))
                 if hasattr(self, "replay_api_btn"):
                     self.replay_api_btn.configure(text=t("settings.enable_replay_api_btn"))
-                    self._refresh_replay_api_ui_status()
                 if hasattr(self, "hud_title_lbl"):
                     self.hud_title_lbl.configure(text=f"🎮 {t('settings.hud_section_title')}")
                     self.hud_enable_lbl.configure(text=t("settings.hud_overlay_enabled"))

@@ -38,7 +38,7 @@ League Voice Recorder/
 │   ├── i18n.py             # Internationalization and community translation loader
 │   ├── record.py           # LeagueRecorder engine (WASAPI capture & FFmpeg alignment)
 │   ├── native_audio.py     # Native WASAPI audio capture (Discord loopback & mic)
-│   ├── hud_widget.py       # In-Game floating HUD overlay widget (translucent live & replay HUD)
+│   ├── overlay.py          # In-Game floating overlay (translucent live & replay overlay)
 │   ├── play_replay.py      # ReplaySynchronizer engine (process watcher & VLC sync)
 │   ├── replay_config.py    # 1-Click Replay API Auto-Configuration (game.cfg parser & backup)
 │   └── updater.py          # Auto-updater (GitHub releases, zip extraction, in-place replace)
@@ -266,7 +266,7 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
   - In compiled Windows binary mode: spawns a detached background updater script (`cmd.exe /c updater.bat` with `CREATE_NO_WINDOW`) that waits for the active application process to exit, copies all updated files cleanly via `robocopy` into the app directory, relaunches `LeagueVoiceRecorder.exe`, and cleans up temporary archives.
   - In development mode: returns extracted target directory without modifying the local Python runtime environment.
 
-### 3.7 In-Game Floating HUD Overlay (`app/hud_widget.py`)
+### 3.7 In-Game Floating Overlay (`app/overlay.py`)
 - **Game-Exclusive Display & Anti-Bleed Isolation**:
   - The HUD overlay **ONLY** appears when actively recording a live scrim match (`RECORDING` or `PAUSED`) or actively synchronizing a replay (`SYNCING` or `PAUSED`) AND the foreground window is the actual League game engine (`League of Legends.exe`).
   - **ChampSelect Pre-Warming & Loading Screen Launch**: Pre-warms resources in memory during ChampSelect with 0 CPU hitch; stays 100% hidden through ChampSelect, lobby, Discord, browser, or desktop, and automatically appears the exact moment `League of Legends.exe` displays the Loading Screen.

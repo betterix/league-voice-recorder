@@ -23,6 +23,9 @@ WS_EX_LAYERED = 0x00080000
 WS_EX_TRANSPARENT = 0x00000020
 WS_EX_NOACTIVATE = 0x08000000
 
+# Cache of HWNDs configured with WS_EX_NOACTIVATE to avoid redundant Win32 system calls
+_CONFIGURED_NOACTIVATE_HWNDS: set[int] = set()
+
 
 def set_window_click_through(hwnd: int, enable: bool = False) -> None:
     """Configures a Windows window for click-through transparency."""
@@ -61,7 +64,7 @@ def set_window_click_through(hwnd: int, enable: bool = False) -> None:
 
 def set_window_no_activate(hwnd: int) -> None:
     """Configures a Windows window with WS_EX_NOACTIVATE so clicking it does not steal focus."""
-    if sys.platform != "win32" or not hwnd:
+    if sys.platform != "win32" or not hwnd or hwnd in _CONFIGURED_NOACTIVATE_HWNDS:
         return
     try:
         import ctypes
@@ -86,6 +89,7 @@ def set_window_no_activate(hwnd: int) -> None:
                 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED,
             )
+        _CONFIGURED_NOACTIVATE_HWNDS.add(hwnd)
     except Exception:
         pass
 
@@ -125,9 +129,9 @@ def draw_rounded_rect(
     return canvas.create_polygon(points, smooth=True, **kwargs)
 
 
-class LeagueHUDWidget:
+class LeagueOverlay:
     """
-    Floating, translucent, borderless in-game HUD overlay matching the PNG mockups.
+    Floating, translucent, borderless in-game overlay matching esports Hextech designs.
     Supports two modes: 'RECORD' and 'REPLAY'.
     """
 
@@ -147,10 +151,6 @@ class LeagueHUDWidget:
     LOCK_Y = 22
     TIMER_X = 300
     TIMER_Y = 52
-    TRACK_BTN_X1 = 12.0
-    TRACK_BTN_X2 = 80.0
-    TRACK_BTN_Y1 = 11.0
-    TRACK_BTN_Y2 = 33.0
 
     # Design color palette from mockups
     COLOR_BG = "#0E1116"
@@ -164,6 +164,22 @@ class LeagueHUDWidget:
     COLOR_AMBER = "#F59E0B"
     COLOR_UPCOMING_WAVE = "#3C4655"
     COLOR_TRACK = "#232B37"
+
+    # Precomputed GradeX Waveform Constants & Geometry
+    _ACTIVE_BAR_CONSTANTS: tuple[tuple[float, float, float, float, float], ...] = ()
+    _RESTING_MIC_BARS: tuple[tuple[float, float, float], ...] = ()
+    _RESTING_DISCORD_BARS: tuple[tuple[float, float, float], ...] = ()
+    _REPLAY_HARMONICS: tuple[tuple[float, float, float], ...] = ()
+
+    # Precomputed Hit Target Boundaries
+    _LOCK_HIT_X1 = LOCK_X - 14
+    _LOCK_HIT_X2 = LOCK_X + 14
+    _LOCK_HIT_Y1 = LOCK_Y - 14
+    _LOCK_HIT_Y2 = LOCK_Y + 14
+    _SLIDER_HIT_X1 = SLIDER_X1 - 6
+    _SLIDER_HIT_X2 = SLIDER_X2 + 6
+    _SLIDER_HIT_Y1 = 42
+    _SLIDER_HIT_Y2 = 66
 
     def __init__(
         self,
@@ -251,13 +267,11 @@ class LeagueHUDWidget:
         self.canvas.bind("<Button-3>", self._on_right_click)
         self.canvas.bind("<Motion>", self._on_mouse_hover)
 
-        # Dedicated transparent hit-test windows for Lock icon, Volume slider, and Track toggle in click-through mode
+        # Dedicated transparent hit-test windows for Lock icon and Volume slider in click-through mode
         self.lock_hit_win = None
         self.volume_hit_win = None
-        self.track_hit_win = None
         self._init_lock_hit_window()
         self._init_volume_hit_window()
-        self._init_track_hit_window()
 
         # Initial render
         self.render()
@@ -299,7 +313,6 @@ class LeagueHUDWidget:
             getattr(self, "window", None),
             getattr(self, "lock_hit_win", None),
             getattr(self, "volume_hit_win", None),
-            getattr(self, "track_hit_win", None),
         )
         for win in windows:
             if win:
@@ -431,81 +444,26 @@ class LeagueHUDWidget:
         canvas_x = self.SLIDER_X1 - 6 + event.x
         self._update_volume_from_mouse(canvas_x)
 
-    def _init_track_hit_window(self) -> None:
-        """Creates a transparent hit-test window over the voice track mode button in Replay mode."""
-        try:
-            self.track_hit_win = tk.Toplevel(self.master)
-            self.track_hit_win.overrideredirect(True)
-            self.track_hit_win.withdraw()
-            try:
-                self.track_hit_win.attributes("-topmost", True)
-                self.track_hit_win.attributes("-alpha", 0.01)
-            except Exception:
-                pass
-            self.track_hit_win.config(cursor="hand2")
-            self.track_hit_win.bind("<ButtonPress-1>", self._on_track_hit_click)
-            self.track_hit_win.bind("<Button-3>", lambda e: None)
-        except Exception:
-            self.track_hit_win = None
-
-    def _sync_track_hit_window(self) -> None:
-        """Positions the voice track hit window precisely over the button when locked, visible, and in REPLAY mode."""
-        if not getattr(self, "track_hit_win", None):
-            return
-        if getattr(self, "is_visible", False) and self.locked and getattr(self, "mode", "") == "REPLAY":
-            try:
-                wx = self.window.winfo_x()
-                wy = self.window.winfo_y()
-                bx = wx + int(self.TRACK_BTN_X1)
-                by = wy + int(self.TRACK_BTN_Y1)
-                bw = int(self.TRACK_BTN_X2 - self.TRACK_BTN_X1)
-                bh = int(self.TRACK_BTN_Y2 - self.TRACK_BTN_Y1)
-                self.track_hit_win.geometry(f"{bw}x{bh}+{bx}+{by}")
-                self.track_hit_win.deiconify()
-                self.track_hit_win.attributes("-topmost", True)
-                self.track_hit_win.attributes("-alpha", 0.01)
-                try:
-                    wid = self.track_hit_win.winfo_id()
-                    if sys.platform == "win32":
-                        import ctypes
-
-                        parent = ctypes.windll.user32.GetParent(wid)
-                        set_window_no_activate(int(parent if parent else wid))
-                except Exception:
-                    pass
-            except Exception:
-                pass
-        else:
-            try:
-                self.track_hit_win.withdraw()
-            except Exception:
-                pass
-
-    def _on_track_hit_click(self, event: tk.Event) -> None:
-        """Called when clicking the voice track button while overlay is locked in Replay mode."""
-        if self.on_voice_mode_toggle:
-            self.on_voice_mode_toggle()
-
     def set_voice_mode(self, prefer_suppressed: bool) -> None:
-        """Updates the active voice track indicator on the HUD."""
+        """Legacy helper for voice mode state compatibility."""
         self.prefer_suppressed = bool(prefer_suppressed)
-        if self.is_visible:
-            self.render()
 
     def _sync_hit_windows(self) -> None:
-        """Synchronizes all hit-test windows (lock icon, volume slider, track button) with the overlay position."""
+        """Synchronizes all hit-test windows (lock icon, volume slider) with the overlay position."""
         self._sync_lock_hit_window()
         self._sync_volume_hit_window()
-        self._sync_track_hit_window()
 
     def _apply_click_through(self, enable: bool) -> None:
         """Applies or removes the Windows WS_EX_TRANSPARENT style strictly on the top-level window."""
         try:
             if sys.platform != "win32":
                 return
+            if getattr(self, "_current_click_through_style", None) == enable:
+                return
             parent = self.get_hwnd()
             if parent:
                 set_window_click_through(parent, enable)
+                self._current_click_through_style = enable
         except Exception:
             pass
 
@@ -595,9 +553,7 @@ class LeagueHUDWidget:
         self.discord_level = max(0.0, min(1.0, float(discord_level)))
         self.is_paused = bool(is_paused)
         self.is_muted = bool(is_muted)
-        self._wave_phase += 0.14
-        if self._wave_phase > 200.0:
-            self._wave_phase = 0.0
+        self._wave_phase = (self._wave_phase + 0.14) % (math.pi * 200.0)
         if self.is_visible and self.mode == "RECORD":
             self.render()
 
@@ -621,9 +577,7 @@ class LeagueHUDWidget:
         self.is_muted = bool(is_muted)
         self.speed = float(speed)
         self.audio_level = max(0.0, min(1.0, float(audio_level)))
-        self._wave_phase += 0.14
-        if self._wave_phase > 200.0:
-            self._wave_phase = 0.0
+        self._wave_phase = (self._wave_phase + 0.14) % (math.pi * 200.0)
         if self.is_visible and self.mode == "REPLAY":
             self.render()
 
@@ -787,31 +741,15 @@ class LeagueHUDWidget:
         )
 
     def _render_replay_content(self) -> None:
-        """Renders the Replay HUD (AUDIO wave with playhead, VOLUME slider, REPLAY, Timer, Lock)."""
-        # Row 1: Voice Track Label (COMMS)
-        btn_bg = "#1E293B"
-        btn_border = "#475569"
-        btn_text = "🎙️ COMMS"
-        btn_text_color = "#CBD5E1"
-
-        draw_rounded_rect(
-            self.canvas,
-            self.TRACK_BTN_X1,
-            self.TRACK_BTN_Y1,
-            self.TRACK_BTN_X2,
-            self.TRACK_BTN_Y2,
-            radius=4.0,
-            fill=btn_bg,
-            outline=btn_border,
-            width=1.0,
-        )
+        """Renders the Replay Overlay (AUDIO wave with playhead, VOLUME slider, REPLAY, Timer, Lock)."""
+        # Row 1: AUDIO Label
         self.canvas.create_text(
-            (self.TRACK_BTN_X1 + self.TRACK_BTN_X2) / 2.0,
+            16,
             22,
-            text=btn_text,
-            anchor="center",
-            fill=btn_text_color,
-            font=("Segoe UI", 8, "bold"),
+            text="AUDIO",
+            anchor="w",
+            fill=self.COLOR_LABEL,
+            font=("Segoe UI", 10, "bold"),
         )
 
         # Row 1: Audio waveform vertical bars with moving playhead cursor
@@ -969,27 +907,33 @@ class LeagueHUDWidget:
     ) -> tuple[list[tuple[float, float, float]], list[tuple[float, float, float]]]:
         """Splits the replay waveform into played (left) and upcoming (right) vertical bars."""
         pts = self._replay_wave_points
+        clamped_level = max(0.0, min(1.0, float(audio_level)))
+        eff_audio = min(1.0, (clamped_level ** 0.45) * 1.55) if clamped_level > 0.012 else 0.0
+
+        if eff_audio <= 0.0:
+            played = []
+            upcoming = []
+            for pt in pts:
+                if pt[0] <= cursor_x:
+                    played.append(pt)
+                else:
+                    upcoming.append(pt)
+            return played, upcoming
+
         played = []
         upcoming = []
         center_y = 22.0
-        clamped_level = max(0.0, min(1.0, float(audio_level)))
-        eff_audio = min(1.0, (clamped_level ** 0.45) * 1.55) if clamped_level > 0.012 else 0.0
-        mod_phase = self._wave_phase if eff_audio > 0.0 else 0.0
+        mod_phase = self._wave_phase
+        neg_phase_term = -mod_phase * 0.8
+        harmonics = self._REPLAY_HARMONICS
 
         for i, (x, y1, y2) in enumerate(pts):
             if x <= cursor_x:
-                if eff_audio > 0.0:
-                    norm = i / max(1, len(pts) - 1)
-                    envelope = 0.40 + 0.60 * (math.sin(norm * math.pi) ** 0.6)
-                    bounce = (
-                        math.sin(norm * 5.0 * math.pi + mod_phase) * 0.6
-                        + math.cos(norm * 10.0 * math.pi - mod_phase * 0.8) * 0.4
-                    )
-                    h = (y2 - center_y) + abs(bounce) * eff_audio * 4.5 * envelope
-                    h = min(9.2, max(1.8, h))
-                    played.append((x, center_y - h, center_y + h))
-                else:
-                    played.append((x, y1, y2))
+                env_boost, f1, f2 = harmonics[i]
+                bounce = math.sin(f1 + mod_phase) * 0.6 + math.cos(f2 + neg_phase_term) * 0.4
+                h = (y2 - center_y) + abs(bounce) * eff_audio * env_boost
+                h = min(9.2, max(1.8, h))
+                played.append((x, center_y - h, center_y + h))
             else:
                 upcoming.append((x, y1, y2))
 
@@ -1003,40 +947,25 @@ class LeagueHUDWidget:
         seed: float = 0.0,
     ) -> list[tuple[float, float, float]]:
         """Generates sleek, vertical visualizer bars (x, y_top, y_bottom) modulated by live VU levels."""
-        width = self.TRACK_WIDTH
-        start_x = self.TRACK_START_X
-        num_bars = self.NUM_BARS
-        step = width / (num_bars - 1)
-        bars = []
-
-        min_half_h = 1.8  # Resting pill half-height (total 3.6px)
-        max_boost = 7.5   # Max dynamic audio expansion
-
-        # High-sensitivity voice expansion curve:
-        # Voice audio peaks in WASAPI typically hover between 0.05 and 0.35 during normal talking.
-        # Compressing dynamic range with a perceptual root curve allows even soft or normal speech
-        # to produce lively, dancing equalizer bars instead of staying static.
         clamped_level = max(0.0, min(1.0, float(level)))
-        if clamped_level > 0.012:
-            eff_level = min(1.0, (clamped_level ** 0.45) * 1.55)
-        else:
-            eff_level = 0.0
+        if clamped_level <= 0.012:
+            if center_y == 22.0:
+                return list(self._RESTING_MIC_BARS)
+            elif center_y == 54.0:
+                return list(self._RESTING_DISCORD_BARS)
+            return [(x, center_y - 1.8, center_y + 1.8) for x, *_ in self._ACTIVE_BAR_CONSTANTS]
 
-        for i in range(num_bars):
-            x = start_x + i * step
-            norm = i / (num_bars - 1)
-
-            # Dynamic harmonic frequency oscillation for lively equalizer animation
-            w1 = math.sin(norm * 4.2 * math.pi + phase + seed)
-            w2 = math.cos(norm * 8.4 * math.pi - phase * 0.9 + seed * 1.6) * 0.45
-            w3 = math.sin(norm * 12.6 * math.pi + phase * 1.4) * 0.25
-            variation = 0.35 + 0.65 * (abs(w1 + w2 + w3) / 1.7)
-
-            # Envelope keeping center prominent while keeping outer bars animated
-            envelope = 0.40 + 0.60 * (math.sin(norm * math.pi) ** 0.6)
-
-            h = min_half_h + (eff_level * max_boost * variation * envelope)
-            h = min(9.2, max(min_half_h, h))
+        eff_level = min(1.0, (clamped_level ** 0.45) * 1.55)
+        p1 = phase + seed
+        p2 = -phase * 0.9 + seed * 1.6
+        p3 = phase * 1.4
+        bars = []
+        for x, f1, f2, f3, env_boost in self._ACTIVE_BAR_CONSTANTS:
+            w1 = math.sin(f1 + p1)
+            w2 = math.cos(f2 + p2) * 0.45
+            w3 = math.sin(f3 + p3) * 0.25
+            var = 0.35 + 0.3823529411764706 * abs(w1 + w2 + w3)
+            h = min(9.2, 1.8 + eff_level * env_boost * var)
             bars.append((x, center_y - h, center_y + h))
 
         return bars
@@ -1045,13 +974,10 @@ class LeagueHUDWidget:
     # MOUSE INTERACTION & DRAGGING
     # ==========================================
     def _is_lock_hit(self, x: float, y: float) -> bool:
-        return (self.LOCK_X - 14) <= x <= (self.LOCK_X + 14) and (self.LOCK_Y - 14) <= y <= (self.LOCK_Y + 14)
+        return self._LOCK_HIT_X1 <= x <= self._LOCK_HIT_X2 and self._LOCK_HIT_Y1 <= y <= self._LOCK_HIT_Y2
 
     def _is_volume_slider_hit(self, x: float, y: float) -> bool:
-        return self.mode == "REPLAY" and (self.SLIDER_X1 - 6) <= x <= (self.SLIDER_X2 + 6) and 42 <= y <= 66
-
-    def _is_track_btn_hit(self, x: float, y: float) -> bool:
-        return self.mode == "REPLAY" and (self.TRACK_BTN_X1 <= x <= self.TRACK_BTN_X2) and (self.TRACK_BTN_Y1 <= y <= self.TRACK_BTN_Y2)
+        return self.mode == "REPLAY" and self._SLIDER_HIT_X1 <= x <= self._SLIDER_HIT_X2 and self._SLIDER_HIT_Y1 <= y <= self._SLIDER_HIT_Y2
 
     def _forward_click(self, button: str = "right") -> None:
         """Forwards mouse clicks through the locked overlay into the game window beneath."""
@@ -1112,19 +1038,12 @@ class LeagueHUDWidget:
             self._update_volume_from_mouse(event.x)
             return
 
-        # 3. Click on Voice Track mode button in Replay mode
-        # ALLOWED EVEN WHEN LOCKED! (User requirement: switch between mp3s in replay)
-        if self._is_track_btn_hit(event.x, event.y):
-            if self.on_voice_mode_toggle:
-                self.on_voice_mode_toggle()
-            return
-
-        # 4. If locked, window cannot be dragged! Instead, forward the left-click into the game!
+        # 3. If locked, window cannot be dragged! Instead, forward the left-click into the game!
         if self.locked:
             self._forward_click(button="left")
             return
 
-        # 5. Unlocked: Drag the overlay window
+        # 4. Unlocked: Drag the overlay window
         self._is_dragging = True
         self._drag_start_x = event.x
         self._drag_start_y = event.y
@@ -1167,11 +1086,7 @@ class LeagueHUDWidget:
         """Dynamically updates mouse cursor to reflect actionable elements."""
         try:
             if self._is_lock_hit(event.x, event.y) or (
-                self.mode == "REPLAY"
-                and (
-                    self._is_volume_slider_hit(event.x, event.y)
-                    or self._is_track_btn_hit(event.x, event.y)
-                )
+                self.mode == "REPLAY" and self._is_volume_slider_hit(event.x, event.y)
             ):
                 self.canvas.config(cursor="hand2")
             elif not self.locked:
@@ -1219,7 +1134,7 @@ class LeagueHUDWidget:
             menu.grab_release()
 
     def destroy(self) -> None:
-        """Destroys the HUD toplevel window cleanly."""
+        """Destroys the overlay toplevel window cleanly."""
         try:
             if getattr(self, "lock_hit_win", None):
                 self.lock_hit_win.destroy()
@@ -1233,3 +1148,34 @@ class LeagueHUDWidget:
             self.window.destroy()
         except Exception:
             pass
+
+
+# GradeX Precomputed Waveform Geometry & Harmonics Table for LeagueOverlay
+_step = LeagueOverlay.TRACK_WIDTH / (LeagueOverlay.NUM_BARS - 1)
+LeagueOverlay._ACTIVE_BAR_CONSTANTS = tuple(
+    (
+        LeagueOverlay.TRACK_START_X + _i * _step,
+        (_i / (LeagueOverlay.NUM_BARS - 1)) * 4.2 * math.pi,
+        (_i / (LeagueOverlay.NUM_BARS - 1)) * 8.4 * math.pi,
+        (_i / (LeagueOverlay.NUM_BARS - 1)) * 12.6 * math.pi,
+        (0.40 + 0.60 * (math.sin((_i / (LeagueOverlay.NUM_BARS - 1)) * math.pi) ** 0.6)) * 7.5,
+    )
+    for _i in range(LeagueOverlay.NUM_BARS)
+)
+LeagueOverlay._RESTING_MIC_BARS = tuple(
+    (_x, 22.0 - 1.8, 22.0 + 1.8) for _x, *_ in LeagueOverlay._ACTIVE_BAR_CONSTANTS
+)
+LeagueOverlay._RESTING_DISCORD_BARS = tuple(
+    (_x, 54.0 - 1.8, 54.0 + 1.8) for _x, *_ in LeagueOverlay._ACTIVE_BAR_CONSTANTS
+)
+LeagueOverlay._REPLAY_HARMONICS = tuple(
+    (
+        (0.40 + 0.60 * (math.sin((_i / (LeagueOverlay.NUM_BARS - 1)) * math.pi) ** 0.6)) * 4.5,
+        (_i / (LeagueOverlay.NUM_BARS - 1)) * 5.0 * math.pi,
+        (_i / (LeagueOverlay.NUM_BARS - 1)) * 10.0 * math.pi,
+    )
+    for _i in range(LeagueOverlay.NUM_BARS)
+)
+
+# Backward-compatibility alias
+LeagueHUDWidget = LeagueOverlay
