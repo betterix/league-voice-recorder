@@ -56,6 +56,7 @@
         <li><a href="#features" class="nav-link" data-i18n="nav_features">Features</a></li>
         <li><a href="#setup" class="nav-link" data-i18n="nav_setup">Setup Guide</a></li>
         <li><a href="#architecture" class="nav-link" data-i18n="nav_architecture">Architecture</a></li>
+        <li><a href="docs.html" class="nav-link" target="_blank" data-i18n="nav_docs" style="color: var(--teal); font-weight: 600;">📖 Docs</a></li>
         <li><a href="#faq" class="nav-link" data-i18n="nav_faq">FAQ</a></li>
       </ul>
 
@@ -106,7 +107,7 @@
         <!-- Release Badge -->
         <div class="version-badge">
           <span class="version-dot"></span>
-          <span data-i18n="hero_badge">v0.4.2 Released • Windows 10/11 64-bit • Open Source</span>
+          <span data-i18n="hero_badge">v0.4.3 Released • Windows 10/11 64-bit • Open Source</span>
         </div>
 
         <!-- Hero Headline -->
@@ -797,14 +798,14 @@
 
           <!-- Panel 1: Standalone Release -->
           <div class="setup-tab-panel active" id="setup-panel-release">
-            <h3 style="font-size: 1.4rem; color: #fff; margin-bottom: 12px;">Quick Start with Standalone ZIP (Recommended)</h3>
-            <p style="margin-bottom: 20px;">No Python environment required. Packaged with Nuitka standalone compiler into a high-performance Windows executable.</p>
+            <h3 style="font-size: 1.4rem; color: #fff; margin-bottom: 12px;" data-i18n="setup_panel1_title">Windows Setup Wizard (Recommended)</h3>
+            <p style="margin-bottom: 20px;" data-i18n="setup_panel1_desc">No Python environment or manual dependencies required. Includes an official Windows setup installer wizard with Desktop shortcuts and start menu registration.</p>
 
             <ol style="padding-left: 20px; line-height: 1.8; color: var(--text-secondary); margin-bottom: 24px;">
-              <li>Go to the <a href="https://github.com/betterix/league-voice-recorder/releases" target="_blank" rel="noopener noreferrer">GitHub Releases</a> page.</li>
-              <li>Download <strong><code>LeagueVoiceRecorder-Windows-x64.zip</code></strong>.</li>
-              <li>Extract the archive anywhere on your drive (e.g. <code>C:\Games\LeagueVoiceRecorder</code>).</li>
-              <li>Double-click <strong><code>LeagueVoiceRecorder.exe</code></strong> to launch!</li>
+              <li data-i18n="setup_panel1_s1">Go to our <a href="https://github.com/betterix/league-voice-recorder/releases" target="_blank" rel="noopener noreferrer">GitHub Releases</a> page.</li>
+              <li data-i18n="setup_panel1_s2">Download <strong><code>LeagueVoiceRecorder-Setup-v0.4.3.exe</code></strong> (or portable <code>LeagueVoiceRecorder-Windows-x64.zip</code>).</li>
+              <li data-i18n="setup_panel1_s3">Run the setup installer (supports English and Hungarian languages).</li>
+              <li data-i18n="setup_panel1_s4">Launch <strong>League Voice Recorder</strong> directly from your Desktop or Start Menu!</li>
             </ol>
 
             <a href="https://github.com/betterix/league-voice-recorder/releases/latest" target="_blank" rel="noopener noreferrer" class="btn btn-gold">
@@ -813,7 +814,7 @@
                 <polyline points="7 10 12 15 17 10"></polyline>
                 <line x1="12" y1="15" x2="12" y2="3"></line>
               </svg>
-              <span>Download Latest Windows Release</span>
+              <span>Download Windows Installer (v0.4.3)</span>
             </a>
           </div>
 
@@ -843,9 +844,15 @@ winget install -e --id VideoLAN.VLC</code></pre>
 
           <!-- Panel 3: Enable Replay API -->
           <div class="setup-tab-panel" id="setup-panel-gamecfg">
-            <h3 style="font-size: 1.4rem; color: #fff; margin-bottom: 12px;">Enable League of Legends Replay API</h3>
-            <p style="margin-bottom: 14px;">By default, League's local Replay API is turned off. You only need to add one line to your config file once:</p>
+            <h3 style="font-size: 1.4rem; color: #fff; margin-bottom: 12px;" data-i18n="setup_panel3_title">Enable Replay API (1-Click Auto Configuration)</h3>
+            <p style="margin-bottom: 14px;" data-i18n="setup_panel3_desc">By default, League's local Replay API is turned off. You can enable it in 1 second directly within the application!</p>
 
+            <div class="cfg-path-note" style="border-left: 3px solid var(--teal); background: rgba(10, 200, 185, 0.08); padding: 14px 18px; border-radius: 6px; margin-bottom: 18px;">
+              <strong style="color: var(--teal); display: block; margin-bottom: 6px;" data-i18n="setup_panel3_1click_title">⚡ 1-Click Method (Inside App):</strong>
+              <span style="color: #e2e8f0; line-height: 1.6;" data-i18n="setup_panel3_1click_desc">Open the <strong>Settings</strong> tab in League Voice Recorder and click <strong>"Enable Replay API"</strong>. The app automatically locates your <code>game.cfg</code>, creates a safe <code>game.cfg.bak</code> backup, and injects <code>EnableReplayApi=1</code> instantly!</span>
+            </div>
+
+            <h4 style="color: #fff; font-size: 1.05rem; margin-bottom: 8px;" data-i18n="setup_panel3_manual_title">Alternative: Manual Configuration</h4>
             <div class="cfg-path-note">
               Default Path: <strong>C:\Riot Games\League of Legends\Config\game.cfg</strong>
             </div>
@@ -958,6 +965,92 @@ uv run pytest</code></pre>
             </h4>
             <p>Uses Windows' built-in Audio Session API (WASAPI) directly. Avoids crashes caused by virtual cables and audio routing software.</p>
           </div>
+        </div>
+
+        <!-- Interactive Visual Architecture Pipelines -->
+        <div class="arch-visual-container">
+          <!-- Pipeline 1: Live Match Audio Capture -->
+          <div class="arch-pipeline-card">
+            <div class="arch-pipeline-header">
+              <div class="arch-pipeline-title">
+                <span style="font-size: 1.3rem;">🎙️</span>
+                <span>1. Live Scrim Voice Capture Pipeline</span>
+              </div>
+              <span class="arch-step-badge">RECORD ENGINE</span>
+            </div>
+            <div class="arch-steps-grid">
+              <div class="arch-step-box">
+                <span class="arch-step-badge gold">TRIGGER</span>
+                <span class="arch-step-name">Match Detection</span>
+                <span class="arch-step-desc">Persistent HTTP session polls <code>:2999/liveclientdata</code>. Launches WASAPI capture at <code>gameTime = 0.000s</code> with &lt;1ms latency.</span>
+              </div>
+              <div class="arch-step-box">
+                <span class="arch-step-badge">CAPTURE</span>
+                <span class="arch-step-name">WASAPI Loopback</span>
+                <span class="arch-step-desc">Hooks Discord.exe process directly via <code>proc-tap</code>. Captures mic via <code>pyaudiowpatch</code> at 48kHz PCM16.</span>
+              </div>
+              <div class="arch-step-box">
+                <span class="arch-step-badge">ALIGNMENT</span>
+                <span class="arch-step-name">Mute Silence Injector</span>
+                <span class="arch-step-desc">Discord IPC (<code>discord-ipc-*</code>) feeds synchronized silence bytes when muted to keep the timeline permanently locked.</span>
+              </div>
+              <div class="arch-step-box">
+                <span class="arch-step-badge">ZERO-DRIFT</span>
+                <span class="arch-step-name">Pause Truncation</span>
+                <span class="arch-step-desc">In-game pauses truncate WAV frames in-place (<code>seek(44 + frame*size)</code>), slicing out the 450ms API polling lag.</span>
+              </div>
+              <div class="arch-step-box">
+                <span class="arch-step-badge gold">EXPORT</span>
+                <span class="arch-step-name">FFmpeg Normalization</span>
+                <span class="arch-step-desc">Sample-accurate <code>adelay</code> and trim filters mix mic + Discord into a pristine 192k <code>&lt;GameID&gt;.mp3</code>.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pipeline 2: Replay Playback & Auto-Sync -->
+          <div class="arch-pipeline-card">
+            <div class="arch-pipeline-header">
+              <div class="arch-pipeline-title">
+                <span style="font-size: 1.3rem;">⚡</span>
+                <span>2. Automated Replay Audio Synchronization</span>
+              </div>
+              <span class="arch-step-badge">REPLAY ENGINE</span>
+            </div>
+            <div class="arch-steps-grid">
+              <div class="arch-step-box">
+                <span class="arch-step-badge gold">PROCESS</span>
+                <span class="arch-step-name">ROFL Inspector</span>
+                <span class="arch-step-desc">Scans <code>psutil.process_iter</code> for <code>League of Legends.exe</code> running any <code>*.rofl</code> replay.</span>
+              </div>
+              <div class="arch-step-box">
+                <span class="arch-step-badge">GAME ID</span>
+                <span class="arch-step-name">Audio Auto-Match</span>
+                <span class="arch-step-desc">Extracts Game ID from replay arguments (e.g. <code>8018190134</code>) and loads matching <code>recordings/8018190134.mp3</code>.</span>
+              </div>
+              <div class="arch-step-box">
+                <span class="arch-step-badge">VLC ENGINE</span>
+                <span class="arch-step-name">Zero-Latency Sync</span>
+                <span class="arch-step-desc">Polls <code>:2999/replay/playback</code> every 50ms. Locks audio speed to 0.5x, 1x, 2x, 4x without seek audio hitches.</span>
+              </div>
+              <div class="arch-step-box">
+                <span class="arch-step-badge">OBSERVER</span>
+                <span class="arch-step-name">Mute Hotkey ('M')</span>
+                <span class="arch-step-desc">Global debounced 'M' hotkey toggles replay comms mute directly inside League of Legends or the app.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Documentation Guide CTA Button -->
+        <div style="margin-top: 40px; text-align: center;">
+          <a href="docs.html" target="_blank" class="btn btn-gold btn-lg" style="display: inline-flex; align-items: center; gap: 10px; padding: 14px 28px; font-size: 1.1rem; text-decoration: none;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+            </svg>
+            <span data-i18n="arch_docs_cta">📖 Read Architecture &amp; Codebase Internals</span>
+          </a>
+          <p style="margin-top: 10px; font-size: 0.9rem; color: var(--text-muted);" data-i18n="arch_docs_sub">Deep dive into main.py, app/native_audio.py, WASAPI loopback, pause truncation, and zero-latency audio pipelines.</p>
         </div>
       </div>
     </section>
@@ -1120,6 +1213,7 @@ uv run pytest</code></pre>
         <div class="footer-col">
           <h4>Community &amp; Source</h4>
           <ul class="footer-links">
+            <li><a href="docs.html" target="_blank" style="color: var(--teal); font-weight: 600;">📖 Technical Documentation</a></li>
             <li><a href="https://github.com/betterix/league-voice-recorder" target="_blank" rel="noopener noreferrer">GitHub Repository</a></li>
             <li><a href="https://github.com/betterix/league-voice-recorder/releases" target="_blank" rel="noopener noreferrer">Releases &amp; Changelogs</a></li>
             <li><a href="https://github.com/betterix/league-voice-recorder/issues" target="_blank" rel="noopener noreferrer">Report an Issue</a></li>

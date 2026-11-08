@@ -1642,6 +1642,99 @@ a:hover {
   color: var(--text-muted);
 }
 
+/* Architecture Visual Pipelines Grid */
+.arch-visual-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin: 36px 0;
+}
+
+.arch-pipeline-card {
+  background: rgba(9, 16, 36, 0.85);
+  border: 1px solid var(--border-gold);
+  border-radius: var(--radius-lg);
+  padding: 24px 28px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+}
+
+.arch-pipeline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.arch-pipeline-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--gold-200);
+}
+
+.arch-steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  position: relative;
+}
+
+.arch-step-box {
+  background: rgba(15, 26, 54, 0.7);
+  border: 1px solid var(--border-cyan);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+  transition: var(--transition-normal);
+}
+
+.arch-step-box:hover {
+  transform: translateY(-2px);
+  border-color: var(--cyan-300);
+  box-shadow: 0 4px 20px rgba(10, 200, 185, 0.15);
+}
+
+.arch-step-badge {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--cyan-300);
+  background: rgba(10, 200, 185, 0.12);
+  border: 1px solid rgba(10, 200, 185, 0.3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-block;
+  width: fit-content;
+}
+
+.arch-step-badge.gold {
+  color: var(--gold-200);
+  background: rgba(200, 170, 110, 0.12);
+  border-color: rgba(200, 170, 110, 0.3);
+}
+
+.arch-step-name {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.arch-step-desc {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
 /* ==========================================================================
    FAQ SECTION
    ========================================================================== */

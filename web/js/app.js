@@ -13,10 +13,11 @@ const i18n = {
     nav_simulator: "Live Simulator",
     nav_setup: "Setup Guide",
     nav_architecture: "Architecture",
+    nav_docs: "📖 Docs",
     nav_faq: "FAQ",
     nav_download: "Download Latest Release",
 
-    hero_badge: "v0.4.2 Released • Windows 10/11 64-bit • Open Source",
+    hero_badge: "v0.4.3 Released • Windows 10/11 64-bit • Open Source",
     hero_title_1: "Frame-Accurate Scrim Comms &",
     hero_title_2: "Replay Synchronization",
     hero_title_3: "For League of Legends",
@@ -69,7 +70,7 @@ const i18n = {
     sim_tab_settings: "⚙️ Settings",
     sim_mic_select: "Microphone Device:",
     sim_settings_update: "Software Updates:",
-    sim_settings_update_status: "● You are running the latest version (v0.4.2)",
+    sim_settings_update_status: "● You are running the latest version (v0.4.3)",
     sim_settings_update_btn: "🔄 Check for Updates",
     sim_settings_hud: "In-Game Floating HUD Overlay:",
     sim_settings_hud_desc: "● Opacity 85% • WS_EX_TRANSPARENT Click-Through • LoL.exe Auto-Focus",
@@ -139,6 +140,9 @@ const i18n = {
     setup_tab_discord: "4. Discord Auth",
     setup_tab_source: "5. Run from Source",
 
+    arch_docs_cta: "📖 Read Architecture & Codebase Internals",
+    arch_docs_sub: "Deep dive into main.py, app/native_audio.py, WASAPI loopback, pause truncation, and zero-latency audio pipelines.",
+
     faq_tag: "FREQUENTLY ASKED QUESTIONS",
     faq_title: "Answers & Technical Details",
     faq_6_q: "Are the Windows binaries safe and verified against viruses / malware?",
@@ -159,10 +163,11 @@ const i18n = {
     nav_simulator: "Élő Szimulátor",
     nav_setup: "Telepítés",
     nav_architecture: "Architektúra",
+    nav_docs: "📖 Doksi",
     nav_faq: "GYIK",
     nav_download: "Legfrissebb Kiadás Letöltése",
 
-    hero_badge: "v0.4.2 Megjelent • Windows 10/11 64-bit • Nyílt forráskód",
+    hero_badge: "v0.4.3 Megjelent • Windows 10/11 64-bit • Nyílt forráskód",
     hero_title_1: "Képkocka-Pontos Scrim Hang &",
     hero_title_2: "Visszajátszás Szinkronizáció",
     hero_title_3: "League of Legends-hez",
@@ -215,7 +220,7 @@ const i18n = {
     sim_tab_settings: "⚙️ Beállítások",
     sim_mic_select: "Mikrofon Eszköz:",
     sim_settings_update: "Szoftverfrissítések:",
-    sim_settings_update_status: "● A legfrissebb verziót használod (v0.4.2)",
+    sim_settings_update_status: "● A legfrissebb verziót használod (v0.4.3)",
     sim_settings_update_btn: "🔄 Frissítések keresése",
     sim_settings_hud: "Játékon Belüli Lebegő HUD:",
     sim_settings_hud_desc: "● Átlátszóság 85% • WS_EX_TRANSPARENT Átkattintás • LoL.exe Auto-Fókusz",
@@ -284,6 +289,9 @@ const i18n = {
     setup_tab_gamecfg: "3. Replay API Engedélyezés",
     setup_tab_discord: "4. Discord Engedély",
     setup_tab_source: "5. Futtatás Forrásból",
+
+    arch_docs_cta: "📖 Teljes Architektúra és Kód Belsőségek",
+    arch_docs_sub: "Részletes elemzés: main.py, app/native_audio.py, WASAPI loopback, szünet levágás és késleltetésmentes hangfeldolgozás.",
 
     faq_tag: "GYAKRAN ISMÉTELT KÉRDÉSEK",
     faq_title: "Válaszok és Technikai Részletek",

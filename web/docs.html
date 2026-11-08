@@ -1,0 +1,1552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Architecture & Technical Documentation | League Voice Recorder</title>
+
+  <!-- SEO & Social Meta Tags -->
+  <meta name="description" content="Comprehensive architectural and engineering breakdown of League Voice Recorder & Replay Synchronizer: main.py, native_audio.py, WASAPI loopback, pause truncation, and zero-latency audio pipeline.">
+  <meta name="author" content="betterix">
+  <meta name="theme-color" content="#060b18">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="assets/icon.svg">
+  <link rel="alternate icon" type="image/x-icon" href="assets/icon.ico">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&family=Rajdhani:wght@500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Main Stylesheet -->
+  <link rel="stylesheet" href="css/style.css">
+
+  <!-- Highlight.js & Mermaid from CDN for interactive rendering -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+
+  <style>
+    /* Documentation Portal Dedicated Styles */
+    .docs-nav-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(6, 11, 24, 0.92);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-gold);
+      padding: 14px 0;
+    }
+
+    .docs-container {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 0 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .docs-brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      text-decoration: none;
+      color: var(--text-primary);
+    }
+
+    .docs-brand img {
+      width: 36px;
+      height: 36px;
+      filter: drop-shadow(0 0 10px var(--cyan-glow));
+    }
+
+    .docs-brand-text {
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: var(--gold-200);
+    }
+
+    .docs-brand-badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(10, 200, 185, 0.15);
+      color: var(--cyan-300);
+      border: 1px solid var(--cyan-400);
+      margin-left: 8px;
+      vertical-align: middle;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .docs-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* 2-Column Documentation Grid */
+    .docs-wrapper {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 40px 32px 100px;
+      display: grid;
+      grid-template-columns: 290px 1fr;
+      gap: 48px;
+      align-items: start;
+    }
+
+    /* Left Sticky Sidebar */
+    .docs-sidebar {
+      position: sticky;
+      top: 85px;
+      max-height: calc(100vh - 105px);
+      overflow-y: auto;
+      padding-right: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .docs-sidebar::-webkit-scrollbar {
+      width: 4px;
+    }
+    .docs-sidebar::-webkit-scrollbar-thumb {
+      background: var(--border-gold);
+      border-radius: 4px;
+    }
+
+    .docs-search-box {
+      position: relative;
+    }
+
+    .docs-search-input {
+      width: 100%;
+      background: rgba(15, 26, 54, 0.75);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 0.9rem;
+      padding: 10px 14px 10px 36px;
+      outline: none;
+      transition: var(--transition-normal);
+    }
+
+    .docs-search-input:focus {
+      border-color: var(--cyan-400);
+      box-shadow: 0 0 15px rgba(10, 200, 185, 0.25);
+    }
+
+    .docs-search-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 16px;
+      height: 16px;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .toc-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .toc-title {
+      font-family: var(--font-display);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--gold-400);
+      font-weight: 700;
+      padding: 0 8px;
+    }
+
+    .toc-links {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .toc-link {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.92rem;
+      font-weight: 500;
+      transition: var(--transition-fast);
+      border-left: 2px solid transparent;
+    }
+
+    .toc-link:hover {
+      color: var(--cyan-300);
+      background: rgba(10, 200, 185, 0.08);
+      border-left-color: var(--cyan-400);
+    }
+
+    .toc-link.active {
+      color: var(--gold-100);
+      background: rgba(200, 170, 110, 0.12);
+      border-left-color: var(--gold-400);
+      font-weight: 600;
+    }
+
+    .toc-link.sub {
+      padding-left: 24px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .toc-link.sub:hover {
+      color: var(--cyan-300);
+    }
+
+    .toc-link.sub.active {
+      color: var(--gold-200);
+    }
+
+    /* Right Main Documentation Content */
+    .docs-content {
+      background: rgba(11, 19, 41, 0.65);
+      border: 1px solid var(--border-gold);
+      border-radius: var(--radius-xl);
+      padding: 48px;
+      box-shadow: var(--shadow-lg);
+      backdrop-filter: blur(12px);
+      min-width: 0; /* Prevents code block overflow from expanding grid */
+    }
+
+    .docs-header-hero {
+      border-bottom: 1px solid var(--border-subtle);
+      padding-bottom: 32px;
+      margin-bottom: 40px;
+    }
+
+    .docs-meta-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .docs-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.78rem;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: var(--radius-full);
+      background: rgba(15, 26, 54, 0.9);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+    }
+
+    .docs-pill.highlight {
+      border-color: var(--cyan-400);
+      color: var(--cyan-300);
+      background: rgba(10, 200, 185, 0.12);
+    }
+
+    .docs-pill.gold {
+      border-color: var(--gold-400);
+      color: var(--gold-200);
+      background: rgba(200, 170, 110, 0.12);
+    }
+
+    .docs-h1 {
+      font-family: var(--font-display);
+      font-size: 2.6rem;
+      font-weight: 800;
+      color: var(--gold-100);
+      letter-spacing: 0.5px;
+      line-height: 1.2;
+      margin-bottom: 14px;
+    }
+
+    .docs-lead {
+      font-size: 1.15rem;
+      color: var(--text-secondary);
+      line-height: 1.7;
+    }
+
+    /* Section Styling */
+    .docs-section {
+      margin-bottom: 60px;
+      scroll-margin-top: 100px;
+    }
+
+    .docs-h2 {
+      font-family: var(--font-display);
+      font-size: 1.9rem;
+      font-weight: 700;
+      color: var(--gold-200);
+      margin-bottom: 18px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border-gold);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .docs-h2 .section-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-sm);
+      background: rgba(200, 170, 110, 0.15);
+      border: 1px solid var(--gold-400);
+      color: var(--gold-300);
+      font-size: 1rem;
+      font-weight: 800;
+    }
+
+    .docs-h3 {
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--cyan-300);
+      margin: 28px 0 12px;
+    }
+
+    .docs-p {
+      color: var(--text-secondary);
+      font-size: 1rem;
+      line-height: 1.75;
+      margin-bottom: 16px;
+    }
+
+    /* Callout Alert Boxes */
+    .docs-callout {
+      border-radius: var(--radius-md);
+      padding: 18px 22px;
+      margin: 24px 0;
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      border-left: 4px solid;
+      background: rgba(15, 26, 54, 0.7);
+    }
+
+    .docs-callout.note {
+      border-left-color: var(--cyan-400);
+      background: rgba(10, 200, 185, 0.08);
+      border-top: 1px solid rgba(10, 200, 185, 0.2);
+      border-right: 1px solid rgba(10, 200, 185, 0.2);
+      border-bottom: 1px solid rgba(10, 200, 185, 0.2);
+    }
+
+    .docs-callout.important {
+      border-left-color: var(--gold-400);
+      background: rgba(200, 170, 110, 0.08);
+      border-top: 1px solid rgba(200, 170, 110, 0.2);
+      border-right: 1px solid rgba(200, 170, 110, 0.2);
+      border-bottom: 1px solid rgba(200, 170, 110, 0.2);
+    }
+
+    .docs-callout.warning {
+      border-left-color: var(--red-400);
+      background: rgba(239, 68, 68, 0.08);
+      border-top: 1px solid rgba(239, 68, 68, 0.2);
+      border-right: 1px solid rgba(239, 68, 68, 0.2);
+      border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .callout-icon {
+      font-size: 1.4rem;
+      line-height: 1;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .callout-body {
+      flex: 1;
+      font-size: 0.95rem;
+      line-height: 1.65;
+    }
+
+    .callout-title {
+      font-family: var(--font-display);
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .callout.note .callout-title { color: var(--cyan-300); }
+    .callout.important .callout-title { color: var(--gold-200); }
+    .callout.warning .callout-title { color: var(--red-400); }
+
+    /* Code Block Styling */
+    .code-block-wrapper {
+      position: relative;
+      margin: 20px 0 28px;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      border: 1px solid var(--border-cyan);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      background: #091024;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .code-lang-tag {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--cyan-300);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .code-copy-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-subtle);
+      border-radius: 4px;
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      padding: 4px 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: var(--transition-fast);
+    }
+
+    .code-copy-btn:hover {
+      background: var(--cyan-400);
+      color: var(--bg-darkest);
+      border-color: var(--cyan-400);
+    }
+
+    pre code.hljs {
+      display: block;
+      padding: 16px 20px;
+      background: #050a17;
+      font-family: var(--font-mono);
+      font-size: 0.92rem;
+      line-height: 1.65;
+      overflow-x: auto;
+    }
+
+    /* Architecture Interactive Visual Grid */
+    .arch-visual-container {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      margin: 28px 0 36px;
+    }
+
+    .arch-pipeline-card {
+      background: rgba(9, 16, 36, 0.85);
+      border: 1px solid var(--border-gold);
+      border-radius: var(--radius-lg);
+      padding: 24px 28px;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    }
+
+    .arch-pipeline-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .arch-pipeline-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--gold-200);
+    }
+
+    .arch-steps-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+      position: relative;
+    }
+
+    .arch-step-box {
+      background: rgba(15, 26, 54, 0.7);
+      border: 1px solid var(--border-cyan);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      position: relative;
+      transition: var(--transition-normal);
+    }
+
+    .arch-step-box:hover {
+      transform: translateY(-2px);
+      border-color: var(--cyan-300);
+      box-shadow: 0 4px 20px rgba(10, 200, 185, 0.15);
+    }
+
+    .arch-step-badge {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--cyan-300);
+      background: rgba(10, 200, 185, 0.12);
+      border: 1px solid rgba(10, 200, 185, 0.3);
+      padding: 2px 6px;
+      border-radius: 4px;
+      display: inline-block;
+      width: fit-content;
+    }
+
+    .arch-step-badge.gold {
+      color: var(--gold-200);
+      background: rgba(200, 170, 110, 0.12);
+      border-color: rgba(200, 170, 110, 0.3);
+    }
+
+    .arch-step-name {
+      font-family: var(--font-display);
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .arch-step-desc {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* Mermaid Architecture Diagrams - High Contrast, Large & Scalable */
+    .mermaid-card {
+      background: #080f24;
+      border: 1px solid var(--border-gold);
+      border-radius: var(--radius-lg);
+      padding: 36px 20px;
+      margin: 28px 0 36px;
+      overflow-x: auto;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 40px rgba(0, 0, 0, 0.7);
+    }
+
+    .mermaid {
+      display: inline-block;
+      min-width: 960px;
+      margin: 0 auto;
+    }
+
+    .mermaid svg {
+      width: 100% !important;
+      max-width: none !important;
+      height: auto !important;
+    }
+
+    .mermaid .node rect,
+    .mermaid .node circle,
+    .mermaid .node polygon,
+    .mermaid .node path {
+      fill: #0c1838 !important;
+      stroke: #0ac8b9 !important;
+      stroke-width: 2px !important;
+    }
+
+    .mermaid .nodeLabel {
+      color: #f8fafc !important;
+      fill: #f8fafc !important;
+      font-family: 'Outfit', sans-serif !important;
+      font-size: 15px !important;
+      font-weight: 600 !important;
+    }
+
+    .mermaid .cluster rect {
+      fill: rgba(11, 22, 50, 0.75) !important;
+      stroke: #c8aa6e !important;
+      stroke-width: 1.5px !important;
+    }
+
+    .mermaid .cluster text,
+    .mermaid .cluster-label span {
+      fill: #dfcfad !important;
+      color: #dfcfad !important;
+      font-family: 'Rajdhani', sans-serif !important;
+      font-size: 17px !important;
+      font-weight: 700 !important;
+      letter-spacing: 1px !important;
+      text-transform: uppercase !important;
+    }
+
+    .mermaid .edgeLabel {
+      background-color: #050a17 !important;
+      color: #3ddcc4 !important;
+      fill: #3ddcc4 !important;
+      font-family: 'JetBrains Mono', monospace !important;
+      font-size: 13px !important;
+      padding: 2px 6px !important;
+    }
+
+    .mermaid .edgePath path {
+      stroke: #c8aa6e !important;
+      stroke-width: 2px !important;
+    }
+
+    /* Tables */
+    .docs-table-wrapper {
+      margin: 24px 0 32px;
+      overflow-x: auto;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      background: rgba(8, 14, 32, 0.8);
+    }
+
+    .docs-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.95rem;
+    }
+
+    .docs-table th {
+      background: #0a1329;
+      color: var(--gold-200);
+      font-family: var(--font-display);
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      padding: 12px 18px;
+      border-bottom: 2px solid var(--border-gold);
+      text-transform: uppercase;
+    }
+
+    .docs-table td {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      vertical-align: top;
+    }
+
+    .docs-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .docs-table tr:hover td {
+      background: rgba(10, 200, 185, 0.04);
+    }
+
+    .module-code-badge {
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      color: var(--cyan-300);
+      font-weight: 600;
+      background: rgba(10, 200, 185, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(10, 200, 185, 0.25);
+    }
+
+    /* Modal for Raw Markdown */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(3, 7, 18, 0.85);
+      backdrop-filter: blur(8px);
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-card {
+      background: #091228;
+      border: 1px solid var(--gold-400);
+      border-radius: var(--radius-lg);
+      width: 100%;
+      max-width: 900px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+      overflow: hidden;
+    }
+
+    .modal-header {
+      padding: 16px 24px;
+      background: #060c1d;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-body {
+      padding: 24px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .modal-body textarea {
+      width: 100%;
+      height: 480px;
+      background: #040814;
+      color: var(--text-primary);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      padding: 16px;
+      line-height: 1.6;
+      resize: none;
+    }
+
+    @media (max-width: 1024px) {
+      .docs-wrapper {
+        grid-template-columns: 1fr;
+        gap: 32px;
+      }
+      .docs-sidebar {
+        position: relative;
+        top: 0;
+        max-height: none;
+        border-bottom: 1px solid var(--border-subtle);
+        padding-bottom: 24px;
+      }
+      .docs-content {
+        padding: 28px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Ambient Animated Particle Canvas -->
+  <canvas id="hextech-canvas"></canvas>
+  <div class="ambient-glow-1"></div>
+  <div class="ambient-glow-2"></div>
+
+  <!-- Top Sticky Navigation Bar -->
+  <nav class="docs-nav-bar">
+    <div class="docs-container">
+      <a href="index.html" class="docs-brand">
+        <img src="assets/icon.svg" alt="League Voice Recorder Logo">
+        <div>
+          <span class="docs-brand-text">League Voice Recorder</span>
+          <span class="docs-brand-badge">Docs v0.4.3</span>
+        </div>
+      </a>
+
+      <div class="docs-actions">
+        <!-- Return to Home Link -->
+        <a href="index.html" class="btn btn-primary btn-sm" style="display: inline-flex; align-items: center; gap: 8px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+          <span>Back to Showcase</span>
+        </a>
+
+        <!-- GitHub Link -->
+        <a href="https://github.com/betterix/league-voice-recorder" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="View Source on GitHub">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- 2-Column Documentation Wrapper -->
+  <div class="docs-wrapper">
+
+    <!-- Left Sticky Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <!-- Search Filter Box -->
+      <div class="docs-search-box">
+        <svg class="docs-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="docs-search" class="docs-search-input" placeholder="Filter documentation...">
+      </div>
+
+      <!-- Table of Contents Groups -->
+      <div class="toc-group">
+        <span class="toc-title">1. System Architecture</span>
+        <ul class="toc-links">
+          <li><a href="#overview" class="toc-link active"><span>1.1 Overview &amp; Concept</span></a></li>
+          <li><a href="#architecture" class="toc-link"><span>1.2 System Pipeline Diagram</span></a></li>
+        </ul>
+      </div>
+
+      <div class="toc-group">
+        <span class="toc-title">2. Deep Dive: main.py</span>
+        <ul class="toc-links">
+          <li><a href="#main-overview" class="toc-link"><span>2.1 Runtime &amp; Architecture</span></a></li>
+          <li><a href="#main-headless" class="toc-link sub"><span>• Headless Stdout Protection</span></a></li>
+          <li><a href="#main-centering" class="toc-link sub"><span>• Window Centering Geometry</span></a></li>
+          <li><a href="#main-queue" class="toc-link sub"><span>• Thread-Safe GUI Queue</span></a></li>
+          <li><a href="#main-loops" class="toc-link sub"><span>• Dual Watcher Loops</span></a></li>
+          <li><a href="#main-hud" class="toc-link sub"><span>• In-Game HUD Coordination</span></a></li>
+        </ul>
+      </div>
+
+      <div class="toc-group">
+        <span class="toc-title">3. Deep Dive: native_audio.py</span>
+        <ul class="toc-links">
+          <li><a href="#audio-overview" class="toc-link"><span>3.1 WASAPI Audio Engine</span></a></li>
+          <li><a href="#audio-portaudio" class="toc-link sub"><span>• PortAudio Singleton Guard</span></a></li>
+          <li><a href="#audio-vu" class="toc-link sub"><span>• Calibrated VU Scaling</span></a></li>
+          <li><a href="#audio-wasapi" class="toc-link sub"><span>• WASAPI Process Loopback</span></a></li>
+          <li><a href="#audio-mute" class="toc-link sub"><span>• Discord Silence Injection</span></a></li>
+          <li><a href="#audio-pause" class="toc-link sub"><span>• Zero-Drift Pause Truncation</span></a></li>
+          <li><a href="#audio-ffmpeg" class="toc-link sub"><span>• FFmpeg Alignment Pipeline</span></a></li>
+        </ul>
+      </div>
+
+      <div class="toc-group">
+        <span class="toc-title">4. Codebase Reference</span>
+        <ul class="toc-links">
+          <li><a href="#codebase-map" class="toc-link"><span>4.1 All Modules Directory</span></a></li>
+          <li><a href="#apis" class="toc-link"><span>4.2 Riot Games &amp; Discord APIs</span></a></li>
+          <li><a href="#security" class="toc-link"><span>4.3 Vanguard Security Policy</span></a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Right Main Documentation Content -->
+    <main class="docs-content">
+
+      <!-- Header Hero -->
+      <header class="docs-header-hero">
+        <div class="docs-meta-pills">
+          <span class="docs-pill highlight">📖 TECHNICAL SPECIFICATION</span>
+          <span class="docs-pill gold">VERSION 0.4.3</span>
+          <span class="docs-pill">WINDOWS 10 / 11 64-BIT</span>
+          <span class="docs-pill">GPL-3.0</span>
+        </div>
+        <h1 class="docs-h1">League Voice Recorder — Architecture &amp; Technical Internals Guide</h1>
+        <p class="docs-lead">
+          Welcome to the definitive architectural and engineering reference for <strong>League Voice Recorder &amp; Replay Synchronizer</strong>.
+          This document explains the entire codebase end-to-end, featuring deep-dive technical analyses of <strong><code>main.py</code></strong> (Desktop GUI &amp; orchestration) and <strong><code>app/native_audio.py</code></strong> (native Windows WASAPI capture engine).
+        </p>
+      </header>
+
+      <!-- ====================================================================
+           SECTION 1: OVERVIEW & PIPELINE
+           ==================================================================== -->
+      <section id="overview" class="docs-section">
+        <h2 class="docs-h2"><span class="section-num">1</span> High-Level Architecture Overview</h2>
+        <p class="docs-p">
+          League Voice Recorder solves two mission-critical challenges in professional League of Legends scrimmages and esports reviews:
+        </p>
+        <ul style="color: var(--text-secondary); margin-left: 24px; margin-bottom: 20px; line-height: 1.8;">
+          <li><strong>Automated Scrim Audio Recording</strong>: Hooks the active match via Riot's Live Client Data API, captures team Discord voice chat directly through native WASAPI process loopback alongside player microphone input, handles mid-game pauses with zero audio drift, and renders a normalized, sample-accurate <code>&lt;GameID&gt;.mp3</code>.</li>
+          <li><strong>Automated Replay Audio Synchronization</strong>: Automatically detects launched <code>.rofl</code> replays, matches the official Game ID to the recording, loads the audio into VLC, and continuously locks playback rate (0.5x, 1x, 2x, 4x) and timestamps to the League Replay API.</li>
+        </ul>
+
+        <div class="docs-callout note">
+          <div class="callout-icon">💡</div>
+          <div class="callout-body">
+            <div class="callout-title">Zero Memory Injections &amp; Vanguard Compliance</div>
+            League Voice Recorder interacts strictly with Riot's published localhost HTTP endpoints (port 2999) and Windows Audio Session API (WASAPI). It never touches game memory, hooks game DLLs, or injects foreign code into the League client.
+          </div>
+        </div>
+
+        <div id="architecture" style="margin-top: 36px;">
+          <h3 class="docs-h3">System Architecture &amp; Data Pipeline</h3>
+          <p class="docs-p">
+            The application operates through two independent, decoupled operational loops: the <strong>Live Scrim Audio Recording Pipeline</strong> and the <strong>Automated Replay Synchronization Engine</strong>.
+          </p>
+
+          <!-- Interactive Hextech Pipeline Visualizer -->
+          <div class="arch-visual-container">
+            <!-- Pipeline 1: Live Match Audio Capture -->
+            <div class="arch-pipeline-card">
+              <div class="arch-pipeline-header">
+                <div class="arch-pipeline-title">
+                  <span style="font-size: 1.3rem;">🎙️</span>
+                  <span>1. Live Scrim Voice Capture Pipeline</span>
+                </div>
+                <span class="arch-step-badge">RECORD ENGINE</span>
+              </div>
+              <div class="arch-steps-grid">
+                <div class="arch-step-box">
+                  <span class="arch-step-badge gold">TRIGGER</span>
+                  <span class="arch-step-name">Match Detection</span>
+                  <span class="arch-step-desc">Persistent HTTP session polls <code>:2999/liveclientdata</code>. Launches WASAPI capture at <code>gameTime = 0.000s</code> with &lt;1ms latency.</span>
+                </div>
+                <div class="arch-step-box">
+                  <span class="arch-step-badge">CAPTURE</span>
+                  <span class="arch-step-name">WASAPI Loopback</span>
+                  <span class="arch-step-desc">Hooks Discord.exe process directly via <code>proc-tap</code>. Captures mic via <code>pyaudiowpatch</code> at 48kHz PCM16.</span>
+                </div>
+                <div class="arch-step-box">
+                  <span class="arch-step-badge">ALIGNMENT</span>
+                  <span class="arch-step-name">Mute Silence Injector</span>
+                  <span class="arch-step-desc">Discord IPC (<code>discord-ipc-*</code>) feeds synchronized silence bytes when muted to keep the timeline permanently locked.</span>
+                </div>
+                <div class="arch-step-box">
+                  <span class="arch-step-badge">ZERO-DRIFT</span>
+                  <span class="arch-step-name">Pause Truncation</span>
+                  <span class="arch-step-desc">In-game pauses truncate WAV frames in-place (<code>seek(44 + frame*size)</code>), slicing out the 450ms API polling lag.</span>
+                </div>
+                <div class="arch-step-box">
+                  <span class="arch-step-badge gold">EXPORT</span>
+                  <span class="arch-step-name">FFmpeg Normalization</span>
+                  <span class="arch-step-desc">Sample-accurate <code>adelay</code> and trim filters mix mic + Discord into a pristine 192k <code>&lt;GameID&gt;.mp3</code>.</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Pipeline 2: Replay Playback & Auto-Sync -->
+            <div class="arch-pipeline-card">
+              <div class="arch-pipeline-header">
+                <div class="arch-pipeline-title">
+                  <span style="font-size: 1.3rem;">⚡</span>
+                  <span>2. Automated Replay Audio Synchronization</span>
+                </div>
+                <span class="arch-step-badge">REPLAY ENGINE</span>
+              </div>
+              <div class="arch-steps-grid">
+                <div class="arch-step-box">
+                  <span class="arch-step-badge gold">PROCESS</span>
+                  <span class="arch-step-name">ROFL Inspector</span>
+                  <span class="arch-step-desc">Scans <code>psutil.process_iter</code> for <code>League of Legends.exe</code> running any <code>*.rofl</code> replay.</span>
+                </div>
+                <div class="arch-step-box">
+                  <span class="arch-step-badge">GAME ID</span>
+                  <span class="arch-step-name">Audio Auto-Match</span>
+                  <span class="arch-step-desc">Extracts Game ID from replay arguments (e.g. <code>8018190134</code>) and loads matching <code>recordings/8018190134.mp3</code>.</span>
+                </div>
+                <div class="arch-step-box">
+                  <span class="arch-step-badge">VLC ENGINE</span>
+                  <span class="arch-step-name">Zero-Latency Sync</span>
+                  <span class="arch-step-desc">Polls <code>:2999/replay/playback</code> every 50ms. Locks audio speed to 0.5x, 1x, 2x, 4x without seek audio hitches.</span>
+                </div>
+                <div class="arch-step-box">
+                  <span class="arch-step-badge">OBSERVER</span>
+                  <span class="arch-step-name">Mute Hotkey ('M')</span>
+                  <span class="arch-step-desc">Global debounced 'M' hotkey toggles replay comms mute directly inside League of Legends or the app.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mermaid Architecture Flowchart -->
+          <div class="mermaid-card">
+            <div class="mermaid">
+flowchart LR
+    subgraph GUI_Layer ["1. UI & Controls (main.py)"]
+        AppWindow["🖥️ Desktop GUI Runtime"]
+        RecToggle["🔴 Recording Watcher Button"]
+        ReplayToggle["▶ Replay Auto-Sync Button"]
+        HUDOverlay["📊 Floating HUD Overlay"]
+        MsgDispatcher["⚡ Queue Dispatcher"]
+    end
+
+    subgraph Rec_Pipeline ["2. Scrim Recording Pipeline (record.py & native_audio.py)"]
+        MatchDetect["Match Poller (:2999)"]
+        LCUAuth["LCU Lockfile Session Auth"]
+        AudioRec["NativeAudioRecorder Engine"]
+        DiscordLoop["WASAPI Discord Loopback (proc-tap)"]
+        MicStream["WASAPI Mic Stream (pyaudiowpatch)"]
+        SilenceInj["Discord IPC Silence Byte Sync"]
+        WavEngine["TimelineWavWriter (Zero-Drift WAV)"]
+        FFmpegConv["FFmpeg MP3 Mix & adelay"]
+        MP3Storage[("📁 recordings/GameID.mp3")]
+    end
+
+    subgraph Replay_Pipeline ["3. Replay Auto-Sync Pipeline (play_replay.py)"]
+        RoflScan["psutil Process Watcher (.rofl)"]
+        GameIDParse["Match Game ID Parser"]
+        ReplayAPI["League Replay API (:2999)"]
+        VLCEngine["VLC Player Engine (64-bit)"]
+        RateControl["Speed Multiplier Lock (0.5x - 4x)"]
+    end
+
+    RecToggle --> MatchDetect
+    MatchDetect --> LCUAuth
+    LCUAuth --> AudioRec
+    AudioRec --> DiscordLoop
+    AudioRec --> MicStream
+    SilenceInj --> WavEngine
+    DiscordLoop --> WavEngine
+    MicStream --> WavEngine
+    WavEngine --> FFmpegConv
+    FFmpegConv --> MP3Storage
+
+    ReplayToggle --> RoflScan
+    RoflScan --> GameIDParse
+    GameIDParse --> VLCEngine
+    ReplayAPI --> RateControl
+    RateControl --> VLCEngine
+    MP3Storage -.->|Loads Audio| VLCEngine
+
+    AppWindow --> HUDOverlay
+    AppWindow --> MsgDispatcher
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           SECTION 2: MAIN.PY DEEP DIVE
+           ==================================================================== -->
+      <section id="main-overview" class="docs-section">
+        <h2 class="docs-h2"><span class="section-num">2</span> Deep Dive: <code>main.py</code> (Desktop GUI &amp; Orchestration Engine)</h2>
+        <p class="docs-p">
+          <code>main.py</code> is the central application entrypoint. Powered by <strong>CustomTkinter</strong>, it manages the complete desktop application lifecycle, hosts multi-threaded background workers, calculates dynamic multi-monitor geometry, synchronizes the floating HUD overlay, and manages user configuration.
+        </p>
+
+        <!-- 2.1 Headless Stdout -->
+        <div id="main-headless" style="margin-top: 32px;">
+          <h3 class="docs-h3">2.1 Headless Stdout &amp; Windows Subsystem Safety</h3>
+          <p class="docs-p">
+            When compiled for production Windows deployment with <code>--windows-console-mode=disable</code>, Windows does not allocate a standard console device (<code>CONOUT$</code>). In pure GUI mode, Python sets <code>sys.stdout</code> and <code>sys.stderr</code> to <code>None</code>.
+          </p>
+          <div class="code-block-wrapper">
+            <div class="code-header">
+              <span class="code-lang-tag">python</span>
+              <button class="code-copy-btn">Copy Code</button>
+            </div>
+            <pre><code class="language-python">if sys.platform.startswith("win"):
+    if sys.stdout is None:
+        sys.stdout = io.StringIO()
+    if sys.stderr is None:
+        sys.stderr = io.StringIO()</code></pre>
+          </div>
+          <div class="docs-callout warning">
+            <div class="callout-icon">⚠️</div>
+            <div class="callout-body">
+              <div class="callout-title">Why in-memory StringIO is critical</div>
+              If any background thread or third-party dependency calls <code>print()</code> or writes to <code>sys.stderr</code> while <code>sys.stdout</code> is <code>None</code>, Python raises <code>AttributeError: 'NoneType' object has no attribute 'write'</code> and terminates silently before displaying the window. Diverting both descriptors to memory buffers eliminates silent startup crashes.
+            </div>
+          </div>
+        </div>
+
+        <!-- 2.2 Window Centering -->
+        <div id="main-centering" style="margin-top: 32px;">
+          <h3 class="docs-h3">2.2 Startup Centering &amp; Window Geometry Math</h3>
+          <p class="docs-p">
+            To deliver an optimal esports desktop experience across varied resolutions (1080p, 1440p, 4K, 21:9 ultrawide), <code>main.py</code> calculates primary screen bounds and dynamically centers the window:
+          </p>
+          <div class="code-block-wrapper">
+            <div class="code-header">
+              <span class="code-lang-tag">python</span>
+              <button class="code-copy-btn">Copy Code</button>
+            </div>
+            <pre><code class="language-python">screen_width = self.winfo_screenwidth()
+screen_height = self.winfo_screenheight()
+app_width = min(1100, max(920, screen_width - 80))
+app_height = min(960, max(750, screen_height - 100))
+x = max(0, int((screen_width - app_width) / 2))
+y = max(0, int((screen_height - app_height) / 2))
+self.geometry(f"{app_width}x{app_height}+{x}+{y}")</code></pre>
+          </div>
+        </div>
+
+        <!-- 2.3 Thread-Safe Queue -->
+        <div id="main-queue" style="margin-top: 32px;">
+          <h3 class="docs-h3">2.3 Thread-Safe GUI Communication (<code>self.msg_queue</code>)</h3>
+          <p class="docs-p">
+            Tkinter and CustomTkinter are <strong>strictly single-threaded</strong>. Any UI modification from a background worker thread causes heap corruption or <code>Tcl_AsyncDelete</code> crashes.
+            <code>main.py</code> implements a robust asynchronous producer-consumer queue pattern:
+          </p>
+          <div class="code-block-wrapper">
+            <div class="code-header">
+              <span class="code-lang-tag">python</span>
+              <button class="code-copy-btn">Copy Code</button>
+            </div>
+            <pre><code class="language-python">def _process_queue(self):
+    count = 0
+    while not self.msg_queue.empty() and count < 40:
+        msg = self.msg_queue.get_nowait()
+        # Thread-safely dispatches to activity logs, status pills, or health badges
+        self._dispatch_message(msg)
+        count += 1
+    self._queue_timer = self.after(50, self._process_queue)</code></pre>
+          </div>
+          <p class="docs-p">
+            Background workers (recording watcher, replay synchronizer, auto-updater) emit events via <code>self.msg_queue.put(item)</code> without touching UI widgets directly.
+          </p>
+        </div>
+
+        <!-- 2.4 Dual Loops -->
+        <div id="main-loops" style="margin-top: 32px;">
+          <h3 class="docs-h3">2.4 Dual Engine Watcher Loops</h3>
+          <p class="docs-p">
+            The application provides two self-healing background watcher routines:
+          </p>
+          <ul style="color: var(--text-secondary); margin-left: 24px; margin-bottom: 20px; line-height: 1.8;">
+            <li><strong><code>🔴 Start Recording Watcher</code></strong>: Runs <code>LeagueRecorder.run_loop()</code> in a dedicated thread. It polls <code>127.0.0.1:2999/liveclientdata/allgamedata</code>. When a live match begins, it starts WASAPI capture instantly. When the game ends, it automatically saves <code>&lt;GameID&gt;.mp3</code> and resets the UI button cleanly.</li>
+            <li><strong><code>▶ Start Replay Auto-Sync</code></strong>: Runs <code>ReplaySynchronizer.run_loop()</code> in a background thread. It scans for running <code>League of Legends.exe</code> processes executing <code>.rofl</code> replays, parses the Game ID, loads the audio into VLC, and locks audio playback speed to the game replay clock.</li>
+          </ul>
+        </div>
+
+        <!-- 2.5 In-Game HUD -->
+        <div id="main-hud" style="margin-top: 32px;">
+          <h3 class="docs-h3">2.5 In-Game Floating HUD Overlay Coordination</h3>
+          <p class="docs-p">
+            <code>main.py</code> manages the <code>LeagueHUDWidget</code> overlay and enforces an <strong>Anti-Bleed Game-Exclusive Focus Guard</strong>:
+          </p>
+          <ul style="color: var(--text-secondary); margin-left: 24px; margin-bottom: 20px; line-height: 1.8;">
+            <li><strong>Foreground Window Check</strong>: Queries <code>user32.GetForegroundWindow()</code> to verify that the active window is <code>League of Legends.exe</code>.</li>
+            <li><strong>Auto-Hide on Alt-Tab</strong>: When the player Alt-Tabs into Discord, browser, or desktop, the HUD instantly conceals itself. As soon as League regains focus, the HUD reappears.</li>
+            <li><strong>Interactive Click-Through Hit Targets</strong>: Even with Windows <code>WS_EX_TRANSPARENT</code> click-through enabled, dedicated transparent hit windows preserve interactivity on the <strong>Lock toggle</strong> and <strong>Replay Volume slider</strong>.</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           SECTION 3: NATIVE AUDIO DEEP DIVE
+           ==================================================================== -->
+      <section id="audio-overview" class="docs-section">
+        <h2 class="docs-h2"><span class="section-num">3</span> Deep Dive: <code>app/native_audio.py</code> (Native WASAPI Audio Engine)</h2>
+        <p class="docs-p">
+          <code>app/native_audio.py</code> is the audio engine responsible for recording Discord voice chat and player microphone via <strong>Windows Audio Session API (WASAPI)</strong> loopback, writing sample-accurate WAV streams, handling match pauses, and rendering normalized MP3 exports.
+        </p>
+
+        <div class="mermaid-card">
+          <div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant LCD as Riot LiveClientData (:2999)
+    participant NR as NativeAudioRecorder
+    participant WASAPI as Windows WASAPI (Discord Loopback)
+    participant MIC as WASAPI Microphone (pyaudiowpatch)
+    participant TWW as TimelineWavWriter
+    participant IPC as Discord Local IPC
+    participant FF as FFmpeg Pipeline
+
+    Note over LCD,NR: Live match detected at gameTime = 0.000s
+    NR->>WASAPI: Hook Discord Process (ProcTap)
+    NR->>MIC: Open WASAPI Mic Stream
+    NR->>TWW: Initialize disc.wav (48kHz stereo) & mic.wav (48kHz mono)
+    
+    loop Live Scrim Gameplay
+        WASAPI->>TWW: Stream Discord Audio PCM16 frames
+        MIC->>TWW: Stream Microphone Audio PCM16 frames
+        opt Player Mutes on Discord
+            IPC->>NR: Mute Event Detected
+            NR->>TWW: Inject Synchronized Silence Bytes (Keep Timeline Locked)
+        end
+        opt Match Pause Triggered
+            LCD->>NR: gameTime frozen (approx 450ms detection lag)
+            NR->>TWW: truncate_to_game_time(pause_game_time)
+            Note over TWW: WAV file truncated in-place (detection lag sliced out)
+        end
+    end
+
+    Note over LCD,NR: Match Finished (Nexus Explodes)
+    NR->>TWW: Flush & Close WAV files
+    NR->>FF: Mix Discord + Mic + Normalize to 192k MP3
+    FF-->>NR: Output GameID.mp3 (Sample-accurate to 00:00:00)
+          </div>
+        </div>
+
+        <!-- 3.1 PortAudio Singleton -->
+        <div id="audio-portaudio" style="margin-top: 32px;">
+          <h3 class="docs-h3">3.1 PortAudio Process-Wide Singleton Guard</h3>
+          <p class="docs-p">
+            PortAudio enforces strict single-instance lifecycle semantics. Creating concurrent <code>pyaudio.PyAudio()</code> instances across multiple threads causes memory access violations. <code>native_audio.py</code> enforces a thread-safe singleton:
+          </p>
+          <div class="code-block-wrapper">
+            <div class="code-header">
+              <span class="code-lang-tag">python</span>
+              <button class="code-copy-btn">Copy Code</button>
+            </div>
+            <pre><code class="language-python">_SHARED_PYAUDIO = None
+_SHARED_PYAUDIO_LOCK = threading.Lock()
+
+def get_shared_pyaudio():
+    global _SHARED_PYAUDIO
+    with _SHARED_PYAUDIO_LOCK:
+        if _SHARED_PYAUDIO is None:
+            _SHARED_PYAUDIO = pyaudio.PyAudio()
+        return _SHARED_PYAUDIO</code></pre>
+          </div>
+        </div>
+
+        <!-- 3.2 VU Scaling -->
+        <div id="audio-vu" style="margin-top: 32px;">
+          <h3 class="docs-h3">3.2 Calibrated VU Visualizer Scaling Formula</h3>
+          <p class="docs-p">
+            Human loudness perception is logarithmic rather than linear. <code>native_audio.py</code> implements a calibrated power curve transformation:
+          </p>
+          <div class="code-block-wrapper">
+            <div class="code-header">
+              <span class="code-lang-tag">python</span>
+              <button class="code-copy-btn">Copy Code</button>
+            </div>
+            <pre><code class="language-python">_VU_NOISE_THRESHOLD = 0.0002
+_INV_VU_RANGE = 1.0 / (1.0 - _VU_NOISE_THRESHOLD)
+
+def scale_vu(peak: float) -> float:
+    if peak <= _VU_NOISE_THRESHOLD:
+        return 0.0
+    val = ((peak - _VU_NOISE_THRESHOLD) * _INV_VU_RANGE) ** 0.42
+    return max(0.0, min(1.0, float(val)))</code></pre>
+          </div>
+          <p class="docs-p">
+            The <code>0.0002</code> noise gate suppresses baseline microphone hiss, while the <code>0.42</code> power curve expands normal conversational range so audio meters animate fluidly without clipping into the red.
+          </p>
+        </div>
+
+        <!-- 3.3 WASAPI Loopback -->
+        <div id="audio-wasapi" style="margin-top: 32px;">
+          <h3 class="docs-h3">3.3 Discord Audio Capture via WASAPI Process Loopback</h3>
+          <p class="docs-p">
+            Unlike legacy software that requires virtual audio cables (Voicemeeter, VB-Cable), <code>native_audio.py</code> uses native <strong>WASAPI Process Loopback</strong> via <code>proc-tap</code>:
+          </p>
+          <ul style="color: var(--text-secondary); margin-left: 24px; margin-bottom: 20px; line-height: 1.8;">
+            <li>Queries Windows Core Audio Sessions (<code>pycaw</code>) to isolate the active <code>Discord.exe</code> audio output PID.</li>
+            <li>Captures audio directly from the Windows kernel audio session.</li>
+            <li>Receives uncompressed <strong>48,000 Hz, 16-bit stereo PCM</strong> audio with zero interference from in-game sounds or browser music.</li>
+          </ul>
+        </div>
+
+        <!-- 3.4 Silence Injection -->
+        <div id="audio-mute" style="margin-top: 32px;">
+          <h3 class="docs-h3">3.4 Discord Mute/Deafen Silence Injection</h3>
+          <p class="docs-p">
+            When a player mutes their microphone on Discord, Discord stops transmitting audio packets. If a recorder stops writing to disk, the audio stream becomes shorter than the game clock, permanently desynchronizing voice comms from gameplay!
+          </p>
+          <div class="code-block-wrapper">
+            <div class="code-header">
+              <span class="code-lang-tag">python</span>
+              <button class="code-copy-btn">Copy Code</button>
+            </div>
+            <pre><code class="language-python"># When Discord mute state is active:
+silence_bytes = b"\x00" * int(elapsed * 48000 * frame_size)
+self.discord_writer.write_frames(silence_bytes)</code></pre>
+          </div>
+          <p class="docs-p">
+            By injecting synchronized zero bytes during mute periods, the timeline stays locked to the League match clock frame-by-frame.
+          </p>
+        </div>
+
+        <!-- 3.5 Pause Truncation -->
+        <div id="audio-pause" style="margin-top: 32px;">
+          <h3 class="docs-h3">3.5 Zero-Drift WAV Truncation Math (<code>truncate_to_game_time</code>)</h3>
+          <p class="docs-p">
+            When an in-game pause occurs in a scrim, Riot's Live Client Data API takes <strong>400ms–450ms</strong> of polling intervals to verify that <code>gameTime</code> is frozen. During those 450ms, audio was already written into the WAV file.
+            <code>TimelineWavWriter.truncate_to_game_time(pause_game_time)</code> permanently eliminates pause lag with sample-accurate in-place file truncation:
+          </p>
+          <div class="code-block-wrapper">
+            <div class="code-header">
+              <span class="code-lang-tag">python</span>
+              <button class="code-copy-btn">Copy Code</button>
+            </div>
+            <pre><code class="language-python">target_frame = int(round(target_game_time * self.sample_rate))
+target_byte_pos = 44 + (target_frame * self.frame_size)
+self._file.seek(target_byte_pos)
+self._file.truncate()
+self.current_frame = target_frame
+self._update_wav_header()</code></pre>
+          </div>
+          <div class="docs-callout important">
+            <div class="callout-icon">⭐</div>
+            <div class="callout-body">
+              <div class="callout-title">Zero Cumulative Pause Drift</div>
+              Seeking back to <code>44 + (target_frame * frame_size)</code> and truncating slices out the 450ms detection delay. When the game unpauses, recording continues sequentially with zero cumulative drift.
+            </div>
+          </div>
+        </div>
+
+        <!-- 3.6 FFmpeg Alignment -->
+        <div id="audio-ffmpeg" style="margin-top: 32px;">
+          <h3 class="docs-h3">3.6 Sample-Accurate FFmpeg Alignment Pipeline</h3>
+          <p class="docs-p">
+            When match recording ends, <code>native_audio.py</code> exports the final audio stream using FFmpeg:
+          </p>
+          <div class="code-block-wrapper">
+            <div class="code-header">
+              <span class="code-lang-tag">bash</span>
+              <button class="code-copy-btn">Copy Code</button>
+            </div>
+            <pre><code class="language-bash">ffmpeg -y -i disc.wav -i mic.wav \
+  -filter_complex "[0:a]volume=1.0[disc];[1:a]volume=1.3[mic];[disc][mic]amix=inputs=2:duration=longest" \
+  -c:a libmp3lame -b:a 192k "&lt;GameID&gt;.mp3"</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           SECTION 4: CODEBASE DIRECTORY
+           ==================================================================== -->
+      <section id="codebase-map" class="docs-section">
+        <h2 class="docs-h2"><span class="section-num">4</span> Complete Codebase Directory &amp; File Reference</h2>
+        <p class="docs-p">Functional responsibility map across all repository files:</p>
+
+        <div class="docs-table-wrapper">
+          <table class="docs-table">
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>Subsystem</th>
+                <th>Responsibility</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="module-code-badge">main.py</span></td>
+                <td>Desktop GUI</td>
+                <td>Centered CustomTkinter desktop window, thread-safe queue dispatcher, activity log, recordings explorer, settings, and HUD manager.</td>
+              </tr>
+              <tr>
+                <td><span class="module-code-badge">app/native_audio.py</span></td>
+                <td>Audio Engine</td>
+                <td>WASAPI process loopback capture, mic streaming, mute silence injection, zero-drift pause truncation, and FFmpeg MP3 alignment.</td>
+              </tr>
+              <tr>
+                <td><span class="module-code-badge">app/record.py</span></td>
+                <td>Match Watcher</td>
+                <td>Live Client Data API polling (port 2999), LCU lockfile parsing, match Game ID extraction, and lifecycle coordination.</td>
+              </tr>
+              <tr>
+                <td><span class="module-code-badge">app/play_replay.py</span></td>
+                <td>Replay Engine</td>
+                <td>Running ROFL process detection, Replay Playback API synchronization, VLC playback engine, and 'M' observer mute hotkey.</td>
+              </tr>
+              <tr>
+                <td><span class="module-code-badge">app/hud_widget.py</span></td>
+                <td>HUD Overlay</td>
+                <td>Borderless in-game floating overlay, dual animated oscilloscopes, click-through (WS_EX_TRANSPARENT), and dedicated hit targets.</td>
+              </tr>
+              <tr>
+                <td><span class="module-code-badge">app/replay_config.py</span></td>
+                <td>Auto-Config</td>
+                <td>1-Click <code>game.cfg</code> parser and automatic <code>EnableReplayApi=1</code> injection with safe <code>.bak</code> backups.</td>
+              </tr>
+              <tr>
+                <td><span class="module-code-badge">app/discord_ipc.py</span></td>
+                <td>Discord IPC</td>
+                <td>Connects to Discord local named pipes (<code>\\.\pipe\discord-ipc-*</code>) to track live mute and deafen status.</td>
+              </tr>
+              <tr>
+                <td><span class="module-code-badge">app/config.py</span></td>
+                <td>Configuration</td>
+                <td>Configuration loader and saver (<code>config.json</code> in Documents), and dynamic FFmpeg binary path resolver.</td>
+              </tr>
+              <tr>
+                <td><span class="module-code-badge">app/i18n.py</span></td>
+                <td>Translations</td>
+                <td>Internationalization engine supporting runtime locale switching with seamless fallback to English.</td>
+              </tr>
+              <tr>
+                <td><span class="module-code-badge">app/updater.py</span></td>
+                <td>Auto-Updater</td>
+                <td>GitHub releases checker, stream downloader with progress, and detached in-place file replacement.</td>
+              </tr>
+              <tr>
+                <td><span class="module-code-badge">installer.iss</span></td>
+                <td>Installer</td>
+                <td>Inno Setup 6 dual-language script generating the Windows setup wizard with Start Menu shortcuts.</td>
+              </tr>
+              <tr>
+                <td><span class="module-code-badge">scripts/build_exe.bat</span></td>
+                <td>Build Script</td>
+                <td>Accelerated Nuitka compiler batch runner with incremental C caching, asset bundling, and clean packaging.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div id="apis" style="margin-top: 36px;">
+          <h3 class="docs-h3">Riot Games &amp; Discord APIs Reference</h3>
+          <div class="docs-table-wrapper">
+            <table class="docs-table">
+              <thead>
+                <tr>
+                  <th>API</th>
+                  <th>Port / Protocol</th>
+                  <th>Authentication</th>
+                  <th>Purpose</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Live Client Data API</strong></td>
+                  <td><code>https://127.0.0.1:2999/liveclientdata/allgamedata</code></td>
+                  <td>None (SSL verify=False)</td>
+                  <td>Read match status and game clock (<code>gameTime</code>) during scrims.</td>
+                </tr>
+                <tr>
+                  <td><strong>Replay Playback API</strong></td>
+                  <td><code>https://127.0.0.1:2999/replay/playback</code></td>
+                  <td>None (SSL verify=False)</td>
+                  <td>Query replay time, pause state, and playback speed multiplier.</td>
+                </tr>
+                <tr>
+                  <td><strong>LCU Gameflow Session</strong></td>
+                  <td><code>https://127.0.0.1:{port}/lol-gameflow/v1/session</code></td>
+                  <td>Basic Auth (<code>riot:{password}</code>)</td>
+                  <td>Extract official match <code>gameId</code> from League client lockfile.</td>
+                </tr>
+                <tr>
+                  <td><strong>Discord Local IPC</strong></td>
+                  <td><code>\\.\pipe\discord-ipc-*</code></td>
+                  <td>Local Named Pipe Handshake</td>
+                  <td>StreamKit voice state tracking for mute/deafen silence injection.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="security" style="margin-top: 36px;">
+          <h3 class="docs-h3">Security &amp; Vanguard Compliance</h3>
+          <p class="docs-p">
+            League Voice Recorder is built to adhere strictly to Riot Games third-party application policies:
+          </p>
+          <ul style="color: var(--text-secondary); margin-left: 24px; margin-bottom: 20px; line-height: 1.8;">
+            <li>Zero memory reading or writing; zero DLL injection; zero game process modification.</li>
+            <li>Queries only official, unauthenticated localhost endpoints published by Riot.</li>
+            <li>Audio captured entirely through standard Windows WASAPI process loopback.</li>
+            <li>All build binaries and setup packages are continuously scanned against 70+ antivirus engines via <strong>VirusTotal API v3</strong>.</li>
+          </ul>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Scripts: Syntax Highlighting, Mermaid, Copy Buttons, and Scroll Spy -->
+  <script>
+    // Initialize Syntax Highlighting
+    document.addEventListener('DOMContentLoaded', () => {
+      hljs.highlightAll();
+
+      // Initialize Mermaid with Hextech Dark Esports Theme (Full-Scale & Crisp)
+      if (typeof mermaid !== 'undefined') {
+        mermaid.initialize({
+          startOnLoad: true,
+          theme: 'dark',
+          flowchart: {
+            useMaxWidth: false,
+            htmlLabels: true
+          },
+          sequence: {
+            useMaxWidth: false,
+            actorFontSize: 16,
+            noteFontSize: 14,
+            messageFontSize: 14
+          },
+          themeVariables: {
+            darkMode: true,
+            background: '#070e22',
+            primaryColor: '#0f1a36',
+            primaryTextColor: '#f8fafc',
+            primaryBorderColor: '#0ac8b9',
+            lineColor: '#c8aa6e',
+            secondaryColor: '#111c38',
+            tertiaryColor: '#060b18',
+            fontFamily: 'Outfit, sans-serif',
+            fontSize: '15px'
+          }
+        });
+      }
+
+      // Code Block Copy Buttons
+      document.querySelectorAll('.code-copy-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const codeEl = btn.closest('.code-block-wrapper').querySelector('code');
+          if (codeEl) {
+            navigator.clipboard.writeText(codeEl.innerText).then(() => {
+              const originalText = btn.innerText;
+              btn.innerText = 'Copied! ✓';
+              btn.style.background = 'var(--green-500)';
+              btn.style.color = '#fff';
+              setTimeout(() => {
+                btn.innerText = originalText;
+                btn.style.background = '';
+                btn.style.color = '';
+              }, 2000);
+            });
+          }
+        });
+      });
+
+      // Scroll Spy for Sidebar Table of Contents
+      const sections = document.querySelectorAll('.docs-section, div[id^="main-"], div[id^="audio-"]');
+      const navLinks = document.querySelectorAll('.toc-link');
+
+      window.addEventListener('scroll', () => {
+        let current = '';
+        const scrollPos = window.scrollY + 140;
+
+        sections.forEach(section => {
+          const top = section.offsetTop;
+          const height = section.offsetHeight;
+          if (scrollPos >= top && scrollPos < top + height) {
+            current = section.getAttribute('id');
+          }
+        });
+
+        if (current) {
+          navLinks.forEach(link => {
+            link.classList.remove('active');
+            if (link.getAttribute('href') === '#' + current) {
+              link.classList.add('active');
+            }
+          });
+        }
+      });
+
+      // Sidebar Search Filter
+      const searchInput = document.getElementById('docs-search');
+      if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+          const query = e.target.value.toLowerCase().trim();
+          document.querySelectorAll('.toc-links li').forEach(item => {
+            const text = item.innerText.toLowerCase();
+            if (text.includes(query) || !query) {
+              item.style.display = '';
+            } else {
+              item.style.display = 'none';
+            }
+          });
+        });
+      }
+    });
+  </script>
+</body>
+</html>
