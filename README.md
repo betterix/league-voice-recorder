@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://betterix.github.io/league-voice-recorder/"><img src="https://img.shields.io/badge/website-live-success?logo=googlechrome&logoColor=white" alt="Live Website" /></a>
-  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.4.2-blue?logo=github" alt="Release Version" /></a>
+  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.4.3-blue?logo=github" alt="Release Version" /></a>
   <img src="https://img.shields.io/badge/python-3.14.10-blue?logo=python&logoColor=white" alt="Python Version" />
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%2064--bit-0078D6?logo=windows&logoColor=white" alt="Platform" />
   <img src="https://img.shields.io/badge/build-passing-brightgreen?logo=githubactions&logoColor=white" alt="Build Status" />
@@ -338,7 +338,7 @@ To ensure complete transparency and player safety:
 - **Public Verification Badges**: Every [GitHub Release](https://github.com/betterix/league-voice-recorder/releases) includes direct links to the public VirusTotal scan reports and cryptographic SHA256 checksums.
 - **Independent Local Verification**: You can verify the integrity of any downloaded binary at any time in Windows PowerShell:
   ```powershell
-  Get-FileHash .\LeagueVoiceRecorder-Setup-v0.4.2.exe -Algorithm SHA256
+  Get-FileHash .\LeagueVoiceRecorder-Setup-v0.4.3.exe -Algorithm SHA256
   ```
 - **100% Riot Vanguard & Anti-Cheat Safe**: League Voice Recorder strictly utilizes official developer APIs (`127.0.0.1:2999`) and Windows WASAPI audio loopback. It contains **no memory injectors, no DLL hooks, and no game modifications**.
 

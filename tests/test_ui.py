@@ -14,6 +14,7 @@ class TestUIApp(unittest.TestCase):
         with (
             patch("main.LeagueVoiceRecorderApp._check_system_health"),
             patch("main.LeagueVoiceRecorderApp._refresh_audio_targets"),
+            patch("main.LeagueVoiceRecorderApp._refresh_microphones"),
             patch("main.LeagueVoiceRecorderApp._start_audio_meter_loop"),
             patch("main.LeagueVoiceRecorderApp._start_auto_detect_monitor"),
         ):
@@ -181,28 +182,31 @@ class TestUIApp(unittest.TestCase):
 
     def test_ui_theme_toggle_and_selection(self):
         """Theme toggle and selection switch appearance mode and persist config."""
-        # Baseline is dark
-        self.app._set_theme("dark")
-        self.assertEqual(self.app.current_theme, "dark")
-        self.assertEqual(self.app.theme_toggle_btn.cget("text"), "🌙")
+        with patch("customtkinter.set_appearance_mode") as mock_set_mode:
+            # Baseline is dark
+            self.app._set_theme("dark")
+            self.assertEqual(self.app.current_theme, "dark")
+            self.assertEqual(self.app.theme_toggle_btn.cget("text"), "🌙")
+            mock_set_mode.assert_called_with("dark")
 
-        # Toggle to light
-        self.app._toggle_theme()
-        self.assertEqual(self.app.current_theme, "light")
-        self.assertEqual(self.app.theme_toggle_btn.cget("text"), "☀️")
-        self.assertEqual(self.app.config.get("theme"), "light")
+            # Toggle to light
+            self.app._toggle_theme()
+            self.assertEqual(self.app.current_theme, "light")
+            self.assertEqual(self.app.theme_toggle_btn.cget("text"), "☀️")
+            self.assertEqual(self.app.config.get("theme"), "light")
+            mock_set_mode.assert_called_with("light")
 
-        # Toggle back to dark
-        self.app._toggle_theme()
-        self.assertEqual(self.app.current_theme, "dark")
-        self.assertEqual(self.app.theme_toggle_btn.cget("text"), "🌙")
-        self.assertEqual(self.app.config.get("theme"), "dark")
+            # Toggle back to dark
+            self.app._toggle_theme()
+            self.assertEqual(self.app.current_theme, "dark")
+            self.assertEqual(self.app.theme_toggle_btn.cget("text"), "🌙")
+            self.assertEqual(self.app.config.get("theme"), "dark")
 
-        # Select via options menu
-        self.app._on_theme_selected(t("settings.theme_light"))
-        self.assertEqual(self.app.current_theme, "light")
-        self.app._on_theme_selected(t("settings.theme_dark"))
-        self.assertEqual(self.app.current_theme, "dark")
+            # Select via options menu
+            self.app._on_theme_selected(t("settings.theme_light"))
+            self.assertEqual(self.app.current_theme, "light")
+            self.app._on_theme_selected(t("settings.theme_dark"))
+            self.assertEqual(self.app.current_theme, "dark")
 
     def test_ui_hud_settings_and_preview(self):
         """HUD overlay toggle, opacity, preview modes, and volume synchronization."""

@@ -2,7 +2,9 @@
 ; League Voice Recorder & Replay Synchronizer Installer
 
 #define MyAppName "League Voice Recorder"
-#define MyAppVersion "0.4.2"
+#ifndef MyAppVersion
+#define MyAppVersion "0.4.3"
+#endif
 #define MyAppPublisher "betterix"
 #define MyAppURL "https://github.com/betterix/league-voice-recorder"
 #define MyAppExeName "LeagueVoiceRecorder.exe"
@@ -24,7 +26,7 @@ OutputDir=dist
 OutputBaseFilename=LeagueVoiceRecorder-Setup-v{#MyAppVersion}
 SetupIconFile=assets\icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
-Compression=lzma2/ultra64
+Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 CloseApplications=yes

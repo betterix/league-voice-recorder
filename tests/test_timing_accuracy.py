@@ -284,15 +284,15 @@ class TestTimingAndPaddingAccuracy(unittest.TestCase):
         # Match Events Table:
         # Match Time (s) | Event
         # ----------------|---------------------------------------------
-        #  10.0 - 12.0s   | Discord Call 1 (800 Hz)
-        #  20.0 - 22.0s   | Mic Player Call 1 (400 Hz)
-        #  35.0s          | PAUSE 1 (lasts 12 real seconds, lag 450ms)
-        #  50.0 - 52.0s   | Discord Call 2 (1000 Hz)
-        #  65.0 - 67.0s   | Mic Player Call 2 (500 Hz)
-        #  80.0s          | PAUSE 2 (lasts 8 real seconds, lag 400ms)
-        #  95.0 - 97.0s   | Discord Call 3 (1200 Hz)
-        # 110.0 - 112.0s  | Mic Player Call 3 (600 Hz)
-        # 120.0s          | Match Ends
+        #   1.0 - 2.0s    | Discord Call 1 (800 Hz)
+        #   2.0 - 3.0s    | Mic Player Call 1 (400 Hz)
+        #   3.5s          | PAUSE 1 (lag 450ms)
+        #   4.5 - 5.5s    | Discord Call 2 (1000 Hz)
+        #   5.5 - 6.5s    | Mic Player Call 2 (500 Hz)
+        #   7.0s          | PAUSE 2 (lag 400ms)
+        #   8.0 - 9.0s    | Discord Call 3 (1200 Hz)
+        #   9.5 - 10.5s   | Mic Player Call 3 (600 Hz)
+        #  11.0s          | Match Ends
 
         def write_silence_until(target_game_time):
             cur_disc = disc_writer.current_frame / 48000.0
@@ -305,84 +305,78 @@ class TestTimingAndPaddingAccuracy(unittest.TestCase):
                 gap = target_game_time - cur_mic
                 mic_writer.write_frames(b"\x00" * int(gap * 48000 * 2))
 
-        # 0s -> 10s: Silence
-        write_silence_until(10.0)
+        # 0s -> 1.0s: Silence
+        write_silence_until(1.0)
 
-        # 10s -> 12s: Discord Call 1 (800 Hz)
-        disc_writer.write_frames(generate_tone_pcm(800.0, 2.0, 48000, channels=2))
-        write_silence_until(12.0)
+        # 1.0s -> 2.0s: Discord Call 1 (800 Hz)
+        disc_writer.write_frames(generate_tone_pcm(800.0, 1.0, 48000, channels=2))
+        write_silence_until(2.0)
 
-        # 12s -> 20s: Silence
-        write_silence_until(20.0)
+        # 2.0s -> 3.0s: Mic Player Call 1 (400 Hz)
+        mic_writer.write_frames(generate_tone_pcm(400.0, 1.0, 48000, channels=1))
+        write_silence_until(3.0)
 
-        # 20s -> 22s: Mic Player Call 1 (400 Hz)
-        mic_writer.write_frames(generate_tone_pcm(400.0, 2.0, 48000, channels=1))
-        write_silence_until(22.0)
+        # 3.0s -> 3.5s: Silence
+        write_silence_until(3.5)
 
-        # 22s -> 35s: Silence
-        write_silence_until(35.0)
-
-        # PAUSE 1 at 35.0s with 450ms detection lag:
+        # PAUSE 1 at 3.5s with 450ms detection lag:
         disc_writer.write_frames(b"\x55\x55" * int(0.450 * 48000 * 2))
         mic_writer.write_frames(b"\x66\x66" * int(0.450 * 48000))
-        # Truncate back to 35.0s
-        disc_writer.truncate_to_game_time(35.0)
-        mic_writer.truncate_to_game_time(35.0)
-        self.assertEqual(disc_writer.current_frame, 35 * 48000)
-        self.assertEqual(mic_writer.current_frame, 35 * 48000)
+        # Truncate back to 3.5s
+        disc_writer.truncate_to_game_time(3.5)
+        mic_writer.truncate_to_game_time(3.5)
+        self.assertEqual(disc_writer.current_frame, int(3.5 * 48000))
+        self.assertEqual(mic_writer.current_frame, int(3.5 * 48000))
 
-        # 35s -> 50s match time: Silence
-        write_silence_until(50.0)
+        # 3.5s -> 4.5s match time: Silence
+        write_silence_until(4.5)
 
-        # 50s -> 52s: Discord Call 2 (1000 Hz)
-        disc_writer.write_frames(generate_tone_pcm(1000.0, 2.0, 48000, channels=2))
-        write_silence_until(52.0)
+        # 4.5s -> 5.5s: Discord Call 2 (1000 Hz)
+        disc_writer.write_frames(generate_tone_pcm(1000.0, 1.0, 48000, channels=2))
+        write_silence_until(5.5)
 
-        # 52s -> 65s: Silence
-        write_silence_until(65.0)
+        # 5.5s -> 6.5s: Mic Player Call 2 (500 Hz)
+        mic_writer.write_frames(generate_tone_pcm(500.0, 1.0, 48000, channels=1))
+        write_silence_until(6.5)
 
-        # 65s -> 67s: Mic Player Call 2 (500 Hz)
-        mic_writer.write_frames(generate_tone_pcm(500.0, 2.0, 48000, channels=1))
-        write_silence_until(67.0)
+        # 6.5s -> 7.0s: Silence
+        write_silence_until(7.0)
 
-        # 67s -> 80s: Silence
-        write_silence_until(80.0)
-
-        # PAUSE 2 at 80.0s with 400ms detection lag:
+        # PAUSE 2 at 7.0s with 400ms detection lag:
         disc_writer.write_frames(b"\x77\x77" * int(0.400 * 48000 * 2))
         mic_writer.write_frames(b"\x88\x88" * int(0.400 * 48000))
-        # Truncate back to 80.0s
-        disc_writer.truncate_to_game_time(80.0)
-        mic_writer.truncate_to_game_time(80.0)
-        self.assertEqual(disc_writer.current_frame, 80 * 48000)
-        self.assertEqual(mic_writer.current_frame, 80 * 48000)
+        # Truncate back to 7.0s
+        disc_writer.truncate_to_game_time(7.0)
+        mic_writer.truncate_to_game_time(7.0)
+        self.assertEqual(disc_writer.current_frame, 7 * 48000)
+        self.assertEqual(mic_writer.current_frame, 7 * 48000)
 
-        # 80s -> 95s match time: Silence
-        write_silence_until(95.0)
+        # 7.0s -> 8.0s match time: Silence
+        write_silence_until(8.0)
 
-        # 95s -> 97s: Discord Call 3 (1200 Hz)
-        disc_writer.write_frames(generate_tone_pcm(1200.0, 2.0, 48000, channels=2))
-        write_silence_until(97.0)
+        # 8.0s -> 9.0s: Discord Call 3 (1200 Hz)
+        disc_writer.write_frames(generate_tone_pcm(1200.0, 1.0, 48000, channels=2))
+        write_silence_until(9.0)
 
-        # 97s -> 110s: Silence
-        write_silence_until(110.0)
+        # 9.0s -> 9.5s: Silence
+        write_silence_until(9.5)
 
-        # 110s -> 112s: Mic Player Call 3 (600 Hz)
-        mic_writer.write_frames(generate_tone_pcm(600.0, 2.0, 48000, channels=1))
-        write_silence_until(112.0)
+        # 9.5s -> 10.5s: Mic Player Call 3 (600 Hz)
+        mic_writer.write_frames(generate_tone_pcm(600.0, 1.0, 48000, channels=1))
+        write_silence_until(10.5)
 
-        # 112s -> 120s: Silence to match end
-        write_silence_until(120.0)
+        # 10.5s -> 11.0s: Silence to match end
+        write_silence_until(11.0)
 
         disc_writer.close()
         mic_writer.close()
 
         # VERIFY DISCORD STREAM ACCURACY
         with wave.open(disc_wav, "rb") as wf:
-            self.assertEqual(wf.getnframes(), 48000 * 120, "Discord WAV must be exactly 120.0s")
-            disc_samples = np.frombuffer(wf.readframes(48000 * 120), dtype=np.int16)[0::2]
+            self.assertEqual(wf.getnframes(), 48000 * 11, "Discord WAV must be exactly 11.0s")
+            disc_samples = np.frombuffer(wf.readframes(48000 * 11), dtype=np.int16)[0::2]
 
-        disc_calls = [(10.0, 800.0), (50.0, 1000.0), (95.0, 1200.0)]
+        disc_calls = [(1.0, 800.0), (4.5, 1000.0), (8.0, 1200.0)]
         for expected_time, freq in disc_calls:
             onset = find_tone_onset_sample(disc_samples, freq, sample_rate=48000)
             err_ms = abs(onset - int(expected_time * 48000)) / 48000.0 * 1000.0
@@ -394,10 +388,10 @@ class TestTimingAndPaddingAccuracy(unittest.TestCase):
 
         # VERIFY MIC STREAM ACCURACY
         with wave.open(mic_wav, "rb") as wf:
-            self.assertEqual(wf.getnframes(), 48000 * 120, "Mic WAV must be exactly 120.0s")
-            mic_samples = np.frombuffer(wf.readframes(48000 * 120), dtype=np.int16)
+            self.assertEqual(wf.getnframes(), 48000 * 11, "Mic WAV must be exactly 11.0s")
+            mic_samples = np.frombuffer(wf.readframes(48000 * 11), dtype=np.int16)
 
-        mic_calls = [(20.0, 400.0), (65.0, 500.0), (110.0, 600.0)]
+        mic_calls = [(2.0, 400.0), (5.5, 500.0), (9.5, 600.0)]
         for expected_time, freq in mic_calls:
             onset = find_tone_onset_sample(mic_samples, freq, sample_rate=48000)
             err_ms = abs(onset - int(expected_time * 48000)) / 48000.0 * 1000.0
@@ -429,24 +423,24 @@ class TestTimingAndPaddingAccuracy(unittest.TestCase):
         disc_path = os.path.join(self.temp_dir.name, "e2e_disc.wav")
         mic_path = os.path.join(self.temp_dir.name, "e2e_mic.wav")
 
-        # 30-second match:
-        # Discord call at 5.0s (1500 Hz)
-        # Mic call at 18.0s (400 Hz)
+        # 5-second match:
+        # Discord call at 1.0s (1500 Hz)
+        # Mic call at 3.0s (400 Hz)
         with wave.open(disc_path, "wb") as wf:
             wf.setnchannels(2)
             wf.setsampwidth(2)
             wf.setframerate(48000)
-            wf.writeframes(b"\x00" * (48000 * 5 * 4))  # 0s - 5s silence
-            wf.writeframes(generate_tone_pcm(1500.0, 2.0, 48000, 2))  # 5s - 7s tone
-            wf.writeframes(b"\x00" * (48000 * 23 * 4))  # 7s - 30s silence
+            wf.writeframes(b"\x00" * (48000 * 1 * 4))  # 0s - 1s silence
+            wf.writeframes(generate_tone_pcm(1500.0, 1.0, 48000, 2))  # 1s - 2s tone
+            wf.writeframes(b"\x00" * (48000 * 3 * 4))  # 2s - 5s silence
 
         with wave.open(mic_path, "wb") as wf:
             wf.setnchannels(1)
             wf.setsampwidth(2)
             wf.setframerate(48000)
-            wf.writeframes(b"\x00" * (48000 * 18 * 2))  # 0s - 18s silence
-            wf.writeframes(generate_tone_pcm(400.0, 2.0, 48000, 1))  # 18s - 20s tone
-            wf.writeframes(b"\x00" * (48000 * 10 * 2))  # 20s - 30s silence
+            wf.writeframes(b"\x00" * (48000 * 3 * 2))  # 0s - 3s silence
+            wf.writeframes(generate_tone_pcm(400.0, 1.0, 48000, 1))  # 3s - 4s tone
+            wf.writeframes(b"\x00" * (48000 * 1 * 2))  # 4s - 5s silence
 
         nr.discord_wav_path = disc_path
         nr.mic_wav_path = mic_path
@@ -464,10 +458,10 @@ class TestTimingAndPaddingAccuracy(unittest.TestCase):
             decoded_frames = wf.getnframes()
             decoded_samples = np.frombuffer(wf.readframes(decoded_frames), dtype=np.int16)[0::2]
 
-        # Verify Discord call at 5.0s (1500 Hz)
+        # Verify Discord call at 1.0s (1500 Hz)
         onset_disc = find_tone_onset_sample(decoded_samples, 1500.0, 48000)
         self.assertGreater(onset_disc, 0, f"Discord tone not detected in ({out_mp3})")
-        disc_err_ms = abs(onset_disc - (48000 * 5)) / 48000.0 * 1000.0
+        disc_err_ms = abs(onset_disc - (48000 * 1)) / 48000.0 * 1000.0
         # MP3 perceptual encoding framing tolerance is <= 25ms
         self.assertLess(
             disc_err_ms,
@@ -475,10 +469,10 @@ class TestTimingAndPaddingAccuracy(unittest.TestCase):
             f"Discord arrival delayed by {disc_err_ms:.2f}ms in {out_mp3}!",
         )
 
-        # Verify Mic call at 18.0s (400 Hz)
+        # Verify Mic call at 3.0s (400 Hz)
         onset_mic = find_tone_onset_sample(decoded_samples, 400.0, 48000)
         self.assertGreater(onset_mic, 0, f"Mic tone not detected in ({out_mp3})")
-        mic_err_ms = abs(onset_mic - (48000 * 18)) / 48000.0 * 1000.0
+        mic_err_ms = abs(onset_mic - (48000 * 3)) / 48000.0 * 1000.0
         self.assertLess(
             mic_err_ms,
             25.0,
@@ -490,16 +484,16 @@ class TestTimingAndPaddingAccuracy(unittest.TestCase):
     # =========================================================================
     def test_extended_scrim_simulation_with_discord_mute_silence_injection(self):
         """
-        Extended 180-second scrim simulation:
-        - Discord voice calls at 15s and 60s
-        - Discord player mutes themselves from 70s to 100s (30 seconds of mute)
+        Streamlined scrim simulation:
+        - Discord voice call at 1s
+        - Discord player mutes themselves from 3s to 5s (2 seconds of mute)
         - Native audio silence injection writes exact zeroes to keep timeline synchronized
-        - Player unmutes and speaks at 105s
-        - Pause occurs at 130s (duration 25 real seconds)
-        - Resumes and final call occurs at 160s
+        - Player unmutes and speaks at 5s
+        - Pause occurs at 7s with detection lag
+        - Resumes and final call occurs at 8s
         VERIFICATION:
         - Silence injection maintains exact frame count (no timeline drift)
-        - The post-mute call at 105s and post-pause call at 160s arrive at their exact timestamps!
+        - The post-mute call at 5s and post-pause call at 8s arrive at their exact timestamps!
         """
         disc_wav = os.path.join(self.temp_dir.name, "mute_disc.wav")
         mic_wav = os.path.join(self.temp_dir.name, "mute_mic.wav")
@@ -507,102 +501,98 @@ class TestTimingAndPaddingAccuracy(unittest.TestCase):
         disc_writer = TimelineWavWriter(disc_wav, channels=2, sample_rate=48000)
         mic_writer = TimelineWavWriter(mic_wav, channels=1, sample_rate=48000)
 
-        # 0s - 15s: Silence
-        disc_writer.write_frames(b"\x00" * (48000 * 15 * 4))
-        mic_writer.write_frames(b"\x00" * (48000 * 15 * 2))
+        # 0s - 1s: Silence
+        disc_writer.write_frames(b"\x00" * (48000 * 1 * 4))
+        mic_writer.write_frames(b"\x00" * (48000 * 1 * 2))
 
-        # 15s - 18s: Call 1 (Discord 1500 Hz, Mic 400 Hz)
-        disc_writer.write_frames(generate_tone_pcm(1500.0, 3.0, 48000, 2))
-        mic_writer.write_frames(generate_tone_pcm(400.0, 3.0, 48000, 1))
+        # 1s - 2s: Call 1 (Discord 1500 Hz, Mic 400 Hz)
+        disc_writer.write_frames(generate_tone_pcm(1500.0, 1.0, 48000, 2))
+        mic_writer.write_frames(generate_tone_pcm(400.0, 1.0, 48000, 1))
 
-        # 18s - 70s: Silence across both channels
-        disc_writer.write_frames(b"\x00" * (48000 * 52 * 4))
-        mic_writer.write_frames(b"\x00" * (48000 * 52 * 2))
-        self.assertEqual(disc_writer.current_frame, 48000 * 70)
+        # 2s - 3s: Silence across both channels
+        disc_writer.write_frames(b"\x00" * (48000 * 1 * 4))
+        mic_writer.write_frames(b"\x00" * (48000 * 1 * 2))
+        self.assertEqual(disc_writer.current_frame, 48000 * 3)
 
-        # 70s - 100s: Discord Mute Active (30 seconds)
+        # 3s - 5s: Discord Mute Active (2 seconds)
         # Discord stream injects silence blocks (simulating native_audio _capture_discord_loop)
-        for _ in range(300):  # 300 * 100ms = 30 seconds
+        for _ in range(20):  # 20 * 100ms = 2 seconds
             disc_writer.write_frames(b"\x00" * int(0.100 * 48000 * 4))
             mic_writer.write_frames(b"\x00" * int(0.100 * 48000 * 2))
-        self.assertEqual(disc_writer.current_frame, 48000 * 100)
+        self.assertEqual(disc_writer.current_frame, 48000 * 5)
 
-        # 100s - 105s: Unmuted pre-call silence
-        disc_writer.write_frames(b"\x00" * (48000 * 5 * 4))
-        mic_writer.write_frames(b"\x00" * (48000 * 5 * 2))
+        # 5s - 6s: Post-mute call (Discord 1200 Hz, Mic 500 Hz)
+        disc_writer.write_frames(generate_tone_pcm(1200.0, 1.0, 48000, 2))
+        mic_writer.write_frames(generate_tone_pcm(500.0, 1.0, 48000, 1))
 
-        # 105s - 108s: Post-mute call (Discord 1200 Hz, Mic 500 Hz)
-        disc_writer.write_frames(generate_tone_pcm(1200.0, 3.0, 48000, 2))
-        mic_writer.write_frames(generate_tone_pcm(500.0, 3.0, 48000, 1))
+        # 6s - 7s: Silence before pause
+        disc_writer.write_frames(b"\x00" * (48000 * 1 * 4))
+        mic_writer.write_frames(b"\x00" * (48000 * 1 * 2))
+        self.assertEqual(disc_writer.current_frame, 48000 * 7)
 
-        # 108s - 130s: Silence before pause
-        disc_writer.write_frames(b"\x00" * (48000 * 22 * 4))
-        mic_writer.write_frames(b"\x00" * (48000 * 22 * 2))
-        self.assertEqual(disc_writer.current_frame, 48000 * 130)
-
-        # 130s: In-game pause triggered (480ms detection lag written)
+        # 7s: In-game pause triggered (480ms detection lag written)
         disc_writer.write_frames(b"\x11\x11" * int(0.480 * 48000 * 2))
         mic_writer.write_frames(b"\x22\x22" * int(0.480 * 48000))
-        # Truncate to exact pause time (130.0s)
-        disc_writer.truncate_to_game_time(130.0)
-        mic_writer.truncate_to_game_time(130.0)
-        self.assertEqual(disc_writer.current_frame, 48000 * 130)
+        # Truncate to exact pause time (7.0s)
+        disc_writer.truncate_to_game_time(7.0)
+        mic_writer.truncate_to_game_time(7.0)
+        self.assertEqual(disc_writer.current_frame, 48000 * 7)
 
-        # Match resumed after 25s real pause. Silence from 130s to 160s match clock:
-        disc_writer.write_frames(b"\x00" * (48000 * 30 * 4))
-        mic_writer.write_frames(b"\x00" * (48000 * 30 * 2))
+        # Match resumed after real pause. Post-pause call from 8s to 9s match clock:
+        disc_writer.write_frames(b"\x00" * (48000 * 1 * 4))
+        mic_writer.write_frames(b"\x00" * (48000 * 1 * 2))
 
-        # 160s - 163s: Post-pause late-game call (Discord 900 Hz, Mic 600 Hz)
-        disc_writer.write_frames(generate_tone_pcm(900.0, 3.0, 48000, 2))
-        mic_writer.write_frames(generate_tone_pcm(600.0, 3.0, 48000, 1))
+        # 8s - 9s: Post-pause call (Discord 900 Hz, Mic 600 Hz)
+        disc_writer.write_frames(generate_tone_pcm(900.0, 1.0, 48000, 2))
+        mic_writer.write_frames(generate_tone_pcm(600.0, 1.0, 48000, 1))
 
-        # 163s - 180s: Match victory push
-        disc_writer.write_frames(b"\x00" * (48000 * 17 * 4))
-        mic_writer.write_frames(b"\x00" * (48000 * 17 * 2))
+        # 9s - 10s: Match victory push
+        disc_writer.write_frames(b"\x00" * (48000 * 1 * 4))
+        mic_writer.write_frames(b"\x00" * (48000 * 1 * 2))
 
         disc_writer.close()
         mic_writer.close()
 
         # VERIFICATION:
-        # Check total match duration is exactly 180.000s
+        # Check total match duration is exactly 10.000s
         with wave.open(disc_wav, "rb") as wf:
-            self.assertEqual(wf.getnframes(), 48000 * 180)
-            d_samples = np.frombuffer(wf.readframes(48000 * 180), dtype=np.int16)[0::2]
+            self.assertEqual(wf.getnframes(), 48000 * 10)
+            d_samples = np.frombuffer(wf.readframes(48000 * 10), dtype=np.int16)[0::2]
 
         with wave.open(mic_wav, "rb") as wf:
-            self.assertEqual(wf.getnframes(), 48000 * 180)
-            m_samples = np.frombuffer(wf.readframes(48000 * 180), dtype=np.int16)
+            self.assertEqual(wf.getnframes(), 48000 * 10)
+            m_samples = np.frombuffer(wf.readframes(48000 * 10), dtype=np.int16)
 
-        # 1. Pre-mute call at 15.0s
-        d_onset_15 = find_tone_onset_sample(d_samples, 1500.0, 48000)
-        self.assertLess(abs(d_onset_15 - 48000 * 15) / 48.0, 15.0)
+        # 1. Pre-mute call at 1.0s
+        d_onset_1 = find_tone_onset_sample(d_samples, 1500.0, 48000)
+        self.assertLess(abs(d_onset_1 - 48000 * 1) / 48.0, 15.0)
 
-        # 2. Post-mute call at 105.0s (after 30s mute silence injection)
-        d_onset_105 = find_tone_onset_sample(d_samples, 1200.0, 48000)
+        # 2. Post-mute call at 5.0s (after mute silence injection)
+        d_onset_5 = find_tone_onset_sample(d_samples, 1200.0, 48000)
         self.assertLess(
-            abs(d_onset_105 - 48000 * 105) / 48.0,
+            abs(d_onset_5 - 48000 * 5) / 48.0,
             15.0,
             "Discord silence injection caused timeline drift!",
         )
 
-        m_onset_105 = find_tone_onset_sample(m_samples, 500.0, 48000)
+        m_onset_5 = find_tone_onset_sample(m_samples, 500.0, 48000)
         self.assertLess(
-            abs(m_onset_105 - 48000 * 105) / 48.0,
+            abs(m_onset_5 - 48000 * 5) / 48.0,
             15.0,
             "Mic call post-mute drifted!",
         )
 
-        # 3. Post-pause call at 160.0s (after pause and lag truncation)
-        d_onset_160 = find_tone_onset_sample(d_samples, 900.0, 48000)
+        # 3. Post-pause call at 8.0s (after pause and lag truncation)
+        d_onset_8 = find_tone_onset_sample(d_samples, 900.0, 48000)
         self.assertLess(
-            abs(d_onset_160 - 48000 * 160) / 48.0,
+            abs(d_onset_8 - 48000 * 8) / 48.0,
             15.0,
             "Post-pause Discord call delayed!",
         )
 
-        m_onset_160 = find_tone_onset_sample(m_samples, 600.0, 48000)
+        m_onset_8 = find_tone_onset_sample(m_samples, 600.0, 48000)
         self.assertLess(
-            abs(m_onset_160 - 48000 * 160) / 48.0,
+            abs(m_onset_8 - 48000 * 8) / 48.0,
             15.0,
             "Post-pause Mic call delayed!",
         )

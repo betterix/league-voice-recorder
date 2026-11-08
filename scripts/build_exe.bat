@@ -40,12 +40,16 @@ for /f "tokens=*" %%i in ('uv run --python 3.14.10 python -c "import sys, os; pr
 for /f "tokens=*" %%i in ('uv run --python 3.14.10 python -c "import sys, os; print(os.path.join(sys.base_prefix, 'tcl', 'tk9.0'))"') do set "TK_DIR=%%i"
 if not exist "%TK_DIR%" set "TK_DIR=%TCL_DIR%"
 
+rem Read version from app package constant (Single Source of Truth)
+for /f "tokens=*" %%v in ('uv run --python 3.14.10 python -c "import app; print(app.__version__)"') do set "APP_VERSION=%%v"
+
 echo [OK] Tcl directory: %TCL_DIR%
 echo [OK] Tk directory:  %TK_DIR%
+echo [OK] App Version:   %APP_VERSION%
 
 echo.
 echo [2/5] Compiling standalone executable via Nuitka C Compiler...
-echo       Threads: %NUMBER_OF_PROCESSORS% cores ^| Mode: Standalone ^| Cache: Enabled
+echo       Version: %APP_VERSION% ^| Threads: %NUMBER_OF_PROCESSORS% cores ^| Mode: Standalone ^| Cache: Enabled
 uv run --python 3.14.10 python -m nuitka ^
     --standalone ^
     --jobs=%NUMBER_OF_PROCESSORS% ^
@@ -56,8 +60,8 @@ uv run --python 3.14.10 python -m nuitka ^
     --windows-icon-from-ico=assets\icon.ico ^
     --company-name="betterix" ^
     --product-name="League Voice Recorder" ^
-    --file-version=0.4.2.0 ^
-    --product-version=0.4.2.0 ^
+    --file-version=%APP_VERSION%.0 ^
+    --product-version=%APP_VERSION%.0 ^
     --file-description="League Voice Recorder & Replay Synchronizer" ^
     --copyright="Copyright (c) 2026 betterix. GPL-3.0 License." ^
     --enable-plugin=tk-inter ^
@@ -74,6 +78,10 @@ uv run --python 3.14.10 python -m nuitka ^
     --nofollow-import-to=pydoc ^
     --nofollow-import-to=pdb ^
     --nofollow-import-to=difflib ^
+    --nofollow-import-to=curses ^
+    --nofollow-import-to=wsgiref ^
+    --nofollow-import-to=ensurepip ^
+    --nofollow-import-to=idlelib ^
     --nofollow-import-to=distutils ^
     --nofollow-import-to=setuptools ^
     --nofollow-import-to=pip ^
@@ -127,7 +135,7 @@ if not defined ISCC_EXE (
 
 if defined ISCC_EXE (
     echo Compiling Windows Setup Installer with Inno Setup...
-    "%ISCC_EXE%" installer.iss
+    "%ISCC_EXE%" /DMyAppVersion="%APP_VERSION%" installer.iss
     if !ERRORLEVEL! EQU 0 (
         echo [OK] Installer created successfully!
     ) else (
@@ -144,7 +152,7 @@ echo ========================================================
 echo   BUILD COMPLETED SUCCESSFULLY!
 echo ========================================================
 echo   Binary:    dist\LeagueVoiceRecorder\LeagueVoiceRecorder.exe
-if defined ISCC_EXE echo   Installer: dist\LeagueVoiceRecorder-Setup-v0.4.2.exe
+if defined ISCC_EXE echo   Installer: dist\LeagueVoiceRecorder-Setup-v%APP_VERSION%.exe
 echo   Started:   %START_TIME%
 echo   Finished:  %TIME%
 echo ========================================================

@@ -61,11 +61,13 @@ jobs:
           $tcl_dir = Join-Path $base "tcl"
           $tk_dir = Join-Path $base "tcl\tk9.0"
           if (-not (Test-Path $tk_dir)) { $tk_dir = $tcl_dir }
+          $app_version = uv run --python 3.14.10 python -c "import app; print(app.__version__)"
           if (Test-Path "dist\LeagueVoiceRecorder") { Remove-Item -Path "dist\LeagueVoiceRecorder" -Recurse -Force }
           if (Test-Path "dist\LeagueVoiceRecorder.dist") { Remove-Item -Path "dist\LeagueVoiceRecorder.dist" -Recurse -Force }
           if (Test-Path "dist\main.dist") { Remove-Item -Path "dist\main.dist" -Recurse -Force }
           Write-Host "Tcl Directory: $tcl_dir"
           Write-Host "Tk Directory:  $tk_dir"
+          Write-Host "App Version:   $app_version"
           Write-Host "::endgroup::"
 
           Write-Host "::group::Running Nuitka Standalone Compilation..."
@@ -80,8 +82,8 @@ jobs:
             --windows-icon-from-ico=assets/icon.ico `
             --company-name="betterix" `
             --product-name="League Voice Recorder" `
-            --file-version=0.4.2.0 `
-            --product-version=0.4.2.0 `
+            --file-version="$app_version.0" `
+            --product-version="$app_version.0" `
             --file-description="League Voice Recorder & Replay Synchronizer" `
             --copyright="Copyright (c) 2026 betterix. GPL-3.0 License." `
             --enable-plugin=tk-inter `
@@ -98,6 +100,10 @@ jobs:
             --nofollow-import-to=pydoc `
             --nofollow-import-to=pdb `
             --nofollow-import-to=difflib `
+            --nofollow-import-to=curses `
+            --nofollow-import-to=wsgiref `
+            --nofollow-import-to=ensurepip `
+            --nofollow-import-to=idlelib `
             --nofollow-import-to=distutils `
             --nofollow-import-to=setuptools `
             --nofollow-import-to=pip `
@@ -153,9 +159,10 @@ jobs:
           if (-not (Test-Path $iscc)) {
             $iscc = (Get-Command iscc.exe -ErrorAction SilentlyContinue).Source
           }
-          Write-Host "Compiling setup wizard using $iscc..."
+          $app_version = uv run --python 3.14.10 python -c "import app; print(app.__version__)"
+          Write-Host "Compiling setup wizard using $iscc for version $app_version..."
           Write-Host "::group::Inno Setup Compiler Output..."
-          & $iscc installer.iss
+          & $iscc /DMyAppVersion="$app_version" installer.iss
           Write-Host "::endgroup::"
           Get-ChildItem -Path "dist\*Setup*.exe"
 
