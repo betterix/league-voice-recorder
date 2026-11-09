@@ -12,7 +12,7 @@ if PROJECT_ROOT not in sys.path:
 import psutil
 import requests
 
-from app.config import load_config
+from app.config import get_current_user_documents_recordings_dir, load_config
 from app.i18n import t
 
 # Setup VLC DLL path from config or default
@@ -34,7 +34,7 @@ except Exception:
 
 requests.packages.urllib3.disable_warnings()
 
-DEFAULT_AUDIO_DIRECTORY = os.path.join(PROJECT_ROOT, "recordings")
+DEFAULT_AUDIO_DIRECTORY = get_current_user_documents_recordings_dir()
 
 
 @functools.lru_cache(maxsize=256)
@@ -108,7 +108,8 @@ def find_matching_audio_file(audio_directory, game_id, prefer_suppressed=False):
     try:
         with os.scandir(audio_directory) as it:
             for entry in it:
-                if entry.name.startswith(prefix) and entry.name.lower().endswith(".mp3"):
+                lower = entry.name.lower()
+                if entry.name.startswith(prefix) and lower.endswith((".opus", ".mp3")):
                     try:
                         stat = entry.stat()
                         candidates.append((entry.path, stat.st_size, stat.st_mtime))
@@ -120,17 +121,21 @@ def find_matching_audio_file(audio_directory, game_id, prefer_suppressed=False):
     if not candidates:
         return None
 
-    # Filter out empty or tiny stubs (< 10 KB, typically failed recordings < 1 sec)
-    valid_candidates = [c for c in candidates if c[1] > 10 * 1024]
+    # Filter out empty or tiny stubs (< 4 KB, typically failed recordings < 1 sec)
+    valid_candidates = [c for c in candidates if c[1] > 4 * 1024]
     pool = valid_candidates if valid_candidates else candidates
 
     # Separate into suppressed and raw pools
     suppressed_pool = [c for c in pool if "_suppressed" in os.path.basename(c[0]).lower()]
     raw_pool = [c for c in pool if "_suppressed" not in os.path.basename(c[0]).lower()]
 
-    # Sort each pool by file size descending, then modification time descending
-    suppressed_pool.sort(key=lambda c: (c[1], c[2]), reverse=True)
-    raw_pool.sort(key=lambda c: (c[1], c[2]), reverse=True)
+    # Sort each pool prioritizing Opus (.opus) first, then modification time, then file size
+    def _rank_candidate(c):
+        is_opus = 1 if c[0].lower().endswith(".opus") else 0
+        return (is_opus, c[2], c[1])
+
+    suppressed_pool.sort(key=_rank_candidate, reverse=True)
+    raw_pool.sort(key=_rank_candidate, reverse=True)
 
     if prefer_suppressed:
         if suppressed_pool:
@@ -618,7 +623,7 @@ class ReplaySynchronizer:
                                 dir=self.audio_directory,
                             )
                         )
-                        self.update_status("ERROR", f"{game_id}.mp3")
+                        self.update_status("ERROR", f"{game_id}")
                         last_handled_path = rofl_path
 
             # Polling delay

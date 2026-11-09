@@ -43,6 +43,9 @@ if not exist "%TK_DIR%" set "TK_DIR=%TCL_DIR%"
 rem Read version from app package constant (Single Source of Truth)
 for /f "tokens=*" %%v in ('uv run --python 3.14.10 python -c "import app; print(app.__version__)"') do set "APP_VERSION=%%v"
 
+rem Pre-stage Visual C++ Redistributable DLLs (msvcp140*.dll, etc.) into Python base_prefix for Nuitka scanner discovery
+uv run --python 3.14.10 python -c "import sys, os, shutil; sys_dir = os.path.join(os.environ.get('SYSTEMROOT', r'C:\Windows'), 'System32'); dlls = ('msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'msvcp140_atomic_wait.dll', 'msvcp140_codecvt_ids.dll', 'vcruntime140.dll', 'vcruntime140_1.dll', 'vcruntime140_threads.dll', 'concrt140.dll', 'vcomp140.dll'); [shutil.copy2(os.path.join(sys_dir, d), os.path.join(sys.base_prefix, d)) for d in dlls if os.path.exists(os.path.join(sys_dir, d)) and not os.path.exists(os.path.join(sys.base_prefix, d))]"
+
 echo [OK] Tcl directory: %TCL_DIR%
 echo [OK] Tk directory:  %TK_DIR%
 echo [OK] App Version:   %APP_VERSION%
@@ -119,6 +122,13 @@ if exist "locales" xcopy /y /s /i "locales" "dist\LeagueVoiceRecorder\locales" >
 if exist "assets" xcopy /y /s /i "assets" "dist\LeagueVoiceRecorder\assets" >nul
 if exist "LICENSE" copy /y "LICENSE" "dist\LeagueVoiceRecorder\LICENSE" >nul
 if exist "README.md" copy /y "README.md" "dist\LeagueVoiceRecorder\README.md" >nul
+
+rem Ensure Visual C++ runtime DLLs are present in standalone distribution
+for %%d in (msvcp140.dll msvcp140_1.dll msvcp140_2.dll msvcp140_atomic_wait.dll msvcp140_codecvt_ids.dll vcruntime140.dll vcruntime140_1.dll vcruntime140_threads.dll concrt140.dll vcomp140.dll) do (
+    if not exist "dist\LeagueVoiceRecorder\%%d" (
+        if exist "%SYSTEMROOT%\System32\%%d" copy /y "%SYSTEMROOT%\System32\%%d" "dist\LeagueVoiceRecorder\%%d" >nul
+    )
+)
 
 echo [OK] Standalone distribution assembled in dist\LeagueVoiceRecorder\
 

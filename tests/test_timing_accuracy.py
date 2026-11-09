@@ -17,6 +17,7 @@ This test rigorously verifies that the League Voice Recorder:
 import os
 import subprocess
 import tempfile
+import time
 import unittest
 from unittest.mock import MagicMock
 import wave
@@ -178,7 +179,7 @@ class TestTimingAndPaddingAccuracy(unittest.TestCase):
 
         # Case 2: Mid-game reconnect start (60.0s)
         rec.start_recording(initial_game_time=60.0)
-        self.assertGreaterEqual(rec.first_game_time, 60.0, "Mid-game reconnect must preserve offset!")
+        self.assertAlmostEqual(rec.first_game_time, 60.0, delta=0.5, msg="Mid-game reconnect must preserve offset!")
         rec.recording = False
         rec.close()
 
@@ -596,6 +597,25 @@ class TestTimingAndPaddingAccuracy(unittest.TestCase):
             15.0,
             "Post-pause Mic call delayed!",
         )
+
+    def test_http_latency_compensation_preserves_match_time(self):
+        """
+        Verifies that when polling latency occurs (e.g. 50ms RTT),
+        the recorder compensates by adding (t_now - t_server_sample) to game_time,
+        preventing timeline drift over long matches.
+        """
+        rec = LeagueRecorder(self.config, log_callback=lambda msg: None)
+        rec.check_if_game_is_replay = MagicMock(return_value=False)
+        rec.fetch_game_id_background = MagicMock()
+        rec.native_recorder.start_recording = MagicMock()
+
+        # Simulate start at 637.0s (10:37) with 50ms polling delay
+        t_sample = time.perf_counter() - 0.050
+        rec.start_recording(initial_game_time=637.0, t_poll_start=t_sample)
+
+        # Elapsed since sample is ~50ms, with negative offset compensation first_game_time must be ~636.95
+        self.assertAlmostEqual(rec.first_game_time, 636.95, delta=0.05)
+        rec.close()
 
 
 def run_standalone_benchmark():

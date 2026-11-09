@@ -81,7 +81,6 @@ League Voice Recorder/
 │   └── pull_request_template.md # GitHub Pull Request checklist template
 │
 ├── .gitattributes          # Cross-platform LF/CRLF normalization
-├── .env.example            # Environment variables template
 ├── CODE_OF_CONDUCT.md     # Community guidelines (Contributor Covenant v2.1)
 ├── CONTRIBUTING.md        # Contribution guide (workflow, setup, invariants)
 ├── SECURITY.md             # Security policy & private vulnerability reporting
@@ -204,7 +203,7 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
 - **Volume Control & Mute Hotkey (`set_volume`, `set_mute`, `toggle_mute`)**:
   - Exposes dynamic volume control (0% to 100%) controllable via the UI slider.
   - Automatically updates VLC player volume in real-time (`player.audio_set_volume(self.volume)`).
-  - Preserves user preference in `REPLAY_VOLUME` (`.env` & `config.json`).
+  - Preserves user preference in `REPLAY_VOLUME` (`config.json`).
   - **Press `M` Hotkey**: Allows toggling replay voice mute directly by pressing `M` (both within the League replay client and in the desktop app), debounced and foreground-window guarded to prevent interfering with typing in external apps.
 - **Replay Playback API Polling (`run_sync_loop`)**:
   - Polls `https://127.0.0.1:2999/replay/playback` every 50ms.
@@ -220,23 +219,18 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
     - Pause: If `paused == True` or `game_time <= 0.5`, calls `player.pause()`.
   - Auto-exit: If the Replay API fails 8 consecutive times (replay closed), it stops VLC and returns to the watcher loop.
 
-### 3.4 Configuration & Storage (`config.py`, `.env`, `config.json`)
+### 3.4 Configuration & Storage (`config.py`, `config.json`)
 - **Configuration Storage**:
   - `config.json` is stored cleanly in standard Windows `Documents/League Voice Recorder/config.json` alongside `recordings/`.
   - Automatically migrates existing configuration files to the Documents directory on first run.
   - Zero third-party cloud/OneDrive redirection dependencies.
-- **Environment & Secrets (`.env` and `.env.example`)**:
-  - Configuration values are safely stored in `.env` and `config.json`.
-  - `.env.example` provides a tracked template for new setups with placeholder values.
-  - `.env` and `config.json` are both excluded in `.gitignore` to prevent credential exposure.
 - **Config Manager (`config.py`)**:
-  - Dynamically loads `.env` variables via `python-dotenv`.
-  - Falls back to `config.json` or built-in defaults.
-  - Exposes `load_config()`, `save_config(dict)` (which keeps `.env` and `config.json` synchronized), and `get_ffmpeg_path()`.
+  - Pure JSON-backed settings persisted to `Documents/League Voice Recorder/config.json`.
+  - Exposes `load_config()`, `save_config(dict)`, and `get_ffmpeg_path()`.
 - **Git Ignore Policy (`.gitignore`)**:
-  - Ignores secrets (`.env`, `config.json`).
+  - Ignores secrets (`config.json`).
   - Ignores large local binaries (`ffmpeg.exe`, `redist/` installer).
-  - Ignores recordings (`recordings/*`, preserving `.gitkeep`).
+  - Ignores local recordings (`recordings/`).
 
 ### 3.5 Internationalization & Community Translations (`i18n.py` & `locales/`)
 - **Default Language**: English (`en.json`) is the default language.
@@ -249,7 +243,7 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
   - The application automatically scans the `locales/` directory on startup and populates the **Interface Language** dropdown menu in Settings with all detected languages—**no Python code modifications required**.
 - **Dynamic Language Switching**:
   - Changing the language dropdown immediately translates all widgets, status pills, health badges, button labels, and tabs in real-time via `on_language_change` listeners.
-  - Automatically persists the language preference to `config.json` and `.env` (`LANGUAGE=<code_name>`).
+  - Automatically persists the language preference to `config.json` (`"language": "<code_name>"`).
 - **Safe Fallback**:
   - `t(key, **kwargs)` resolves nested dot-notated keys (e.g. `record.start_btn`).
   - If a key is missing in a community translation, it automatically falls back to English (`en.json`). If missing in both, it returns the raw key.

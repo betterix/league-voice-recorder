@@ -12,7 +12,12 @@ import customtkinter as ctk
 import psutil
 
 from app import __version__
-from app.config import get_ffmpeg_path, load_config, save_config
+from app.config import (
+    get_current_user_documents_recordings_dir,
+    get_ffmpeg_path,
+    load_config,
+    save_config,
+)
 from app.native_audio import get_available_audio_targets, get_available_microphones
 from app.i18n import (
     get_available_languages,
@@ -1106,7 +1111,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             corner_radius=6,
         )
         self.rec_folder_entry.insert(
-            0, str(self.config.get("record_folder", os.path.abspath("recordings")))
+            0, str(self.config.get("record_folder") or get_current_user_documents_recordings_dir())
         )
         self.rec_folder_entry.grid(row=1, column=1, padx=6, pady=6, sticky="ew")
         self.rec_folder_entry.bind("<FocusOut>", self._on_settings_entry_changed)
@@ -1176,7 +1181,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color=("#0F172A", "#CBD5E1"),
         )
-        self.replay_vol_lbl.grid(row=3, column=0, padx=(14, 8), pady=(6, 12), sticky="w")
+        self.replay_vol_lbl.grid(row=3, column=0, padx=(14, 8), pady=6, sticky="w")
 
         self.replay_vol_entry = ctk.CTkEntry(
             card_storage,
@@ -1189,10 +1194,44 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             corner_radius=6,
         )
         self.replay_vol_entry.insert(0, str(self.config.get("replay_volume", 80)))
-        self.replay_vol_entry.grid(row=3, column=1, padx=6, pady=(6, 12), sticky="w")
+        self.replay_vol_entry.grid(row=3, column=1, padx=6, pady=6, sticky="w")
         self.replay_vol_entry.bind("<FocusOut>", self._on_settings_entry_changed)
         self.replay_vol_entry.bind("<Return>", self._on_settings_entry_changed)
         self.replay_vol_entry.bind("<KeyRelease>", self._on_settings_entry_debounced)
+
+        # Audio Format (Opus vs MP3)
+        self.audio_format_lbl = ctk.CTkLabel(
+            card_storage,
+            text=t("settings.audio_format"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0F172A", "#CBD5E1"),
+        )
+        self.audio_format_lbl.grid(row=4, column=0, padx=(14, 8), pady=(6, 12), sticky="w")
+
+        curr_fmt = str(self.config.get("audio_format", "opus")).lower()
+        self.audio_format_options = {
+            t("settings.audio_format_opus"): "opus",
+            t("settings.audio_format_mp3"): "mp3",
+        }
+        self.audio_format_code_to_display = {v: k for k, v in self.audio_format_options.items()}
+        curr_fmt_disp = self.audio_format_code_to_display.get(curr_fmt, t("settings.audio_format_opus"))
+
+        self.audio_format_menu = ctk.CTkOptionMenu(
+            card_storage,
+            values=list(self.audio_format_options.keys()),
+            command=self._on_audio_format_selected,
+            height=32,
+            fg_color=("#F8FAFC", "#070D1E"),
+            button_color=("#E2E8F0", "#0F1A36"),
+            button_hover_color=("#CBD5E1", "#1E2A4A"),
+            dropdown_fg_color=("#FFFFFF", "#0A1224"),
+            dropdown_hover_color=("#F1F5F9", "#162244"),
+            dropdown_text_color=("#0F172A", "#E2E8F0"),
+            text_color=("#0F172A", "#F8FAFC"),
+            corner_radius=6,
+        )
+        self.audio_format_menu.set(curr_fmt_disp)
+        self.audio_format_menu.grid(row=4, column=1, padx=6, pady=(6, 12), sticky="w")
 
         # -------------------------------------------------------------
         # CARD 2: INTERFACE & AUDIO INPUT
@@ -2047,6 +2086,15 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             if disp and self.theme_menu.get() != disp:
                 self.theme_menu.set(disp)
 
+    def _on_audio_format_selected(self, chosen_display):
+        if hasattr(self, "audio_format_options"):
+            fmt_code = self.audio_format_options.get(chosen_display, "opus")
+            self.config["audio_format"] = fmt_code
+            save_config(self.config)
+            if hasattr(self, "recorder_worker") and self.recorder_worker and hasattr(self.recorder_worker, "native_recorder"):
+                self.recorder_worker.native_recorder.audio_format = fmt_code
+            self.log_message(f"🎵 {t('settings.audio_format')}: {fmt_code.upper()}")
+
     def _on_language_selected(self, selected_name):
         code = self.lang_name_to_code.get(selected_name, "en")
         if code != get_language():
@@ -2123,6 +2171,18 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.vlc_dir_lbl.configure(text=t("settings.vlc_dir"))
                 self.browse_vlc_btn.configure(text=t("settings.browse"))
                 self.replay_vol_lbl.configure(text=t("settings.replay_volume"))
+                if hasattr(self, "audio_format_lbl"):
+                    self.audio_format_lbl.configure(text=t("settings.audio_format"))
+                    self.audio_format_options = {
+                        t("settings.audio_format_opus"): "opus",
+                        t("settings.audio_format_mp3"): "mp3",
+                    }
+                    self.audio_format_code_to_display = {v: k for k, v in self.audio_format_options.items()}
+                    self.audio_format_menu.configure(values=list(self.audio_format_options.keys()))
+                    curr_fmt = str(self.config.get("audio_format", "opus")).lower()
+                    curr_fmt_disp = self.audio_format_code_to_display.get(curr_fmt, t("settings.audio_format_opus"))
+                    if self.audio_format_menu.get() != curr_fmt_disp:
+                        self.audio_format_menu.set(curr_fmt_disp)
                 if hasattr(self, "interface_title_lbl"):
                     self.interface_title_lbl.configure(text=f"🌐 {t('settings.interface_title')}")
                 self.lang_lbl.configure(text=t("settings.language"))
@@ -2967,7 +3027,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
     # RECORDINGS TAB FUNCTIONS
     # ==========================================
     def _open_recordings_folder(self):
-        folder = self.config.get("record_folder", os.path.abspath("recordings"))
+        folder = self.config.get("record_folder") or get_current_user_documents_recordings_dir()
         os.makedirs(folder, exist_ok=True)
         if os.name == "nt":
             os.startfile(folder)
@@ -2978,11 +3038,11 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         for widget in self.rec_scroll_frame.winfo_children():
             widget.destroy()
 
-        folder = self.config.get("record_folder", os.path.abspath("recordings"))
+        folder = self.config.get("record_folder") or get_current_user_documents_recordings_dir()
         if not os.path.exists(folder):
             os.makedirs(folder, exist_ok=True)
 
-        files = [f for f in os.listdir(folder) if f.lower().endswith(".mp3")]
+        files = [f for f in os.listdir(folder) if f.lower().endswith((".opus", ".mp3"))]
         files.sort(key=lambda x: os.path.getmtime(os.path.join(folder, x)), reverse=True)
 
         total_size_bytes = sum(os.path.getsize(os.path.join(folder, f)) for f in files)
@@ -3061,7 +3121,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
     # SETTINGS TAB FUNCTIONS
     # ==========================================
     def _browse_rec_folder(self):
-        curr = self.rec_folder_entry.get().strip() or os.path.abspath("recordings")
+        curr = self.rec_folder_entry.get().strip() or get_current_user_documents_recordings_dir()
         selected = filedialog.askdirectory(initialdir=curr, title=t("settings.rec_folder"))
         if selected:
             self.rec_folder_entry.delete(0, "end")
@@ -3151,12 +3211,20 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 else self.current_theme
             )
 
+            selected_audio_fmt_display = self.audio_format_menu.get() if hasattr(self, "audio_format_menu") else None
+            selected_audio_fmt = (
+                self.audio_format_options.get(selected_audio_fmt_display, self.config.get("audio_format", "opus"))
+                if hasattr(self, "audio_format_options") and selected_audio_fmt_display
+                else self.config.get("audio_format", "opus")
+            )
+
             new_config = {
                 **self.config,
                 "recording_mode": "native",
                 "record_folder": self.rec_folder_entry.get().strip(),
                 "vlc_dir": self.vlc_dir_entry.get().strip(),
                 "replay_volume": vol_val,
+                "audio_format": selected_audio_fmt,
                 "language": selected_lang_code,
                 "theme": selected_theme_code,
                 "auto_start_champ_select": bool(self.auto_champ_select_var.get()),
@@ -3170,6 +3238,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.config = new_config
                 set_language(selected_lang_code)
                 self._set_theme(selected_theme_code)
+                if hasattr(self, "recorder_worker") and self.recorder_worker and hasattr(self.recorder_worker, "native_recorder"):
+                    self.recorder_worker.native_recorder.audio_format = selected_audio_fmt
                 if self.hud:
                     self.hud.set_locked(new_config["hud_locked"])
                     self.hud.set_opacity(new_config["hud_opacity"])

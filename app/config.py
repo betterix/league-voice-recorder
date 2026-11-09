@@ -5,24 +5,6 @@ from pathlib import Path
 import shutil
 import sys
 
-from dotenv import load_dotenv, set_key
-
-_KEY_MAPPINGS = (
-    ("record_folder", "RECORD_FOLDER"),
-    ("vlc_dir", "VLC_DIR"),
-    ("replay_volume", "REPLAY_VOLUME"),
-    ("language", "LANGUAGE"),
-    ("theme", "THEME"),
-    ("auto_start_champ_select", "AUTO_START_CHAMP_SELECT"),
-    ("auto_start_replay", "AUTO_START_REPLAY"),
-    ("hud_overlay_enabled", "HUD_OVERLAY_ENABLED"),
-    ("hud_click_through", "HUD_CLICK_THROUGH"),
-    ("hud_locked", "HUD_LOCKED"),
-    ("hud_opacity", "HUD_OPACITY"),
-    ("hud_x", "HUD_X"),
-    ("hud_y", "HUD_Y"),
-)
-
 
 def _detect_project_root():
     """Detects the real application directory whether running from source or compiled binary."""
@@ -115,12 +97,7 @@ def get_config_file_path():
 
 PROJECT_ROOT = _detect_project_root()
 APP_DIR = os.path.join(PROJECT_ROOT, "app")
-
-DOTENV_PATH = os.path.join(PROJECT_ROOT, ".env")
 CONFIG_FILE = get_config_file_path()
-
-# Load .env if present
-load_dotenv(DOTENV_PATH)
 
 
 @functools.lru_cache(maxsize=128)
@@ -198,6 +175,7 @@ def get_default_config():
         "hud_opacity": _parse_float(os.getenv("HUD_OPACITY", "0.85"), 0.85),
         "hud_x": _parse_int(os.getenv("HUD_X", "-1"), -1),
         "hud_y": _parse_int(os.getenv("HUD_Y", "-1"), -1),
+        "audio_format": os.getenv("AUDIO_FORMAT", "opus").lower(),
     }
 
 
@@ -257,7 +235,7 @@ def load_config():
 
 
 def save_config(config_data):
-    """Save configuration dictionary to Documents/League Voice Recorder/config.json and synchronize .env."""
+    """Save configuration dictionary to Documents/League Voice Recorder/config.json."""
     global _CONFIG_CACHE, _CONFIG_MTIME
 
     # Always merge into current config so partial updates never erase other settings
@@ -300,15 +278,6 @@ def save_config(config_data):
                 f.write(json.dumps(merged_data, indent=4, ensure_ascii=False))
         except Exception:
             pass
-
-    # Also update .env file if it exists
-    if os.path.exists(DOTENV_PATH):
-        try:
-            for cfg_key, env_key in _KEY_MAPPINGS:
-                if cfg_key in merged_data:
-                    set_key(DOTENV_PATH, env_key, str(merged_data[cfg_key]))
-        except Exception as e:
-            print(f"⚠️ Warning: Failed to sync .env: {e}")
 
     return success
 

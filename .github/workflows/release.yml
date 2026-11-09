@@ -68,6 +68,10 @@ jobs:
           Write-Host "Tcl Directory: $tcl_dir"
           Write-Host "Tk Directory:  $tk_dir"
           Write-Host "App Version:   $app_version"
+
+          # Pre-stage Visual C++ Runtime DLLs into python base_prefix for Nuitka scanner discovery
+          uv run --python 3.14.10 python -c "import sys, os, shutil; sys_dir = os.path.join(os.environ.get('SYSTEMROOT', r'C:\Windows'), 'System32'); dlls = ('msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'msvcp140_atomic_wait.dll', 'msvcp140_codecvt_ids.dll', 'vcruntime140.dll', 'vcruntime140_1.dll', 'vcruntime140_threads.dll', 'concrt140.dll', 'vcomp140.dll'); [shutil.copy2(os.path.join(sys_dir, d), os.path.join(sys.base_prefix, d)) for d in dlls if os.path.exists(os.path.join(sys_dir, d)) and not os.path.exists(os.path.join(sys.base_prefix, d))]"
+
           Write-Host "::endgroup::"
 
           Write-Host "::group::Running Nuitka Standalone Compilation..."

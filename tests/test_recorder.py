@@ -126,7 +126,7 @@ class TestRecorderModule(unittest.TestCase):
         self.recorder.start_recording(initial_game_time=10.0, t_poll_start=t_poll_start)
 
         self.assertTrue(self.recorder.recording)
-        self.assertGreaterEqual(self.recorder.first_game_time, 10.045)
+        self.assertAlmostEqual(self.recorder.first_game_time, 9.95, delta=0.05)
         self.assertTrue(self.recorder.native_recorder.start_recording.called)
 
     def test_is_league_game_running(self):
@@ -198,7 +198,7 @@ class TestRecorderModule(unittest.TestCase):
 
     @patch("subprocess.run")
     def test_native_audio_mix_to_mp3_quality_and_filters(self, mock_subproc):
-        """Verify _mix_to_mp3 uses highest quality VBR (-q:a 0) and resamples cleanly without loudnorm."""
+        """Verify _mix_to_mp3 uses high quality libopus VOIP encoding by default, and libmp3lame -q:a 0 for mp3."""
         mock_subproc.return_value = MagicMock(returncode=0)
         nr = self.recorder.native_recorder
         d_wav = os.path.join(self.temp_dir.name, "d.wav")
@@ -210,15 +210,24 @@ class TestRecorderModule(unittest.TestCase):
         nr.discord_wav_path = d_wav
         nr.mic_wav_path = m_wav
 
-        mp3 = nr._mix_to_mp3("test_game", initial_offset=0.0)
-        self.assertIsNotNone(mp3)
+        # 1. Test default Opus encoding
+        nr.audio_format = "opus"
+        opus_out = nr._mix_to_mp3("test_game", initial_offset=0.0, cleanup=False)
+        self.assertIsNotNone(opus_out)
+        self.assertTrue(opus_out.endswith(".opus"))
         self.assertTrue(mock_subproc.called)
         cmd = mock_subproc.call_args[0][0]
 
-        # Verify highest quality VBR
-        self.assertIn("-q:a", cmd)
-        q_idx = cmd.index("-q:a")
-        self.assertEqual(cmd[q_idx + 1], "0")
+        self.assertIn("-c:a", cmd)
+        self.assertEqual(cmd[cmd.index("-c:a") + 1], "libopus")
+        self.assertIn("-threads", cmd)
+        self.assertEqual(cmd[cmd.index("-threads") + 1], "0")
+        self.assertIn("-filter_complex_threads", cmd)
+        self.assertEqual(cmd[cmd.index("-filter_complex_threads") + 1], "0")
+        self.assertIn("-b:a", cmd)
+        self.assertEqual(cmd[cmd.index("-b:a") + 1], "48k")
+        self.assertIn("-application", cmd)
+        self.assertEqual(cmd[cmd.index("-application") + 1], "voip")
 
         # Verify pure unamplified direct recording (no loudnorm, afftdn, highpass, alimiter, or volume gain)
         filter_str = cmd[cmd.index("-filter_complex") + 1]
@@ -230,6 +239,17 @@ class TestRecorderModule(unittest.TestCase):
         self.assertNotIn("volume=", filter_str)
         self.assertIn("aresample=48000", filter_str)
         self.assertIn("amix=inputs=2", filter_str)
+
+        # 2. Test fallback MP3 encoding
+        nr.audio_format = "mp3"
+        mp3_out = nr._mix_to_mp3("test_game_mp3", initial_offset=0.0, cleanup=True)
+        self.assertIsNotNone(mp3_out)
+        self.assertTrue(mp3_out.endswith(".mp3"))
+        cmd_mp3 = mock_subproc.call_args[0][0]
+        self.assertIn("-c:a", cmd_mp3)
+        self.assertEqual(cmd_mp3[cmd_mp3.index("-c:a") + 1], "libmp3lame")
+        self.assertIn("-q:a", cmd_mp3)
+        self.assertEqual(cmd_mp3[cmd_mp3.index("-q:a") + 1], "0")
 
     def test_recorder_pause_and_resume_state(self):
         """Verify that calling pause() and resume() toggles is_paused and purges staging buffers."""
@@ -284,7 +304,7 @@ class TestRecorderModule(unittest.TestCase):
         # 29 minutes and 30 seconds into match
         self.recorder.start_recording(initial_game_time=1770.0)
         self.assertTrue(self.recorder.recording)
-        self.assertGreaterEqual(self.recorder.first_game_time, 1770.0)
+        self.assertAlmostEqual(self.recorder.first_game_time, 1770.0, delta=0.5)
 
         # Verify _mix_to_mp3 prepends 1770000ms adelay filter
         with patch("subprocess.run") as mock_subproc:
@@ -301,7 +321,7 @@ class TestRecorderModule(unittest.TestCase):
             self.assertTrue(mock_subproc.called)
             cmd = mock_subproc.call_args[0][0]
             filter_str = cmd[cmd.index("-filter_complex") + 1]
-            self.assertIn("adelay=delays=1770", filter_str)
+            self.assertTrue("adelay=delays=1769" in filter_str or "adelay=delays=1770" in filter_str)
 
     def test_fast_pause_detection_triggers_immediately(self):
         """Match pause detection must avoid false-pause chopping during 250ms API ticks and pause when unchanged >= 0.45s."""

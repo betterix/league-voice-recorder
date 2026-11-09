@@ -110,7 +110,7 @@ flowchart TD
     end
 
     subgraph Config_Layer ["Configuration (app/config.py & config.json)"]
-        Cfg["Config Loader / Saver (.env & config.json)"]
+        Cfg["Config Loader / Saver (config.json)"]
         FFmpegHelper["FFmpeg Path Resolver"]
     end
 
@@ -399,7 +399,6 @@ League Voice Recorder/
 │       └── release.yml     # Automated GitHub Actions release compilation
 │
 ├── .gitattributes          # Cross-platform LF/CRLF normalization
-├── .env.example            # Environment variables template
 ├── CODE_OF_CONDUCT.md     # Community guidelines (Contributor Covenant v2.1)
 ├── SECURITY.md             # Security policy & private vulnerability reporting
 ├── pyproject.toml          # Project dependencies and tool configurations

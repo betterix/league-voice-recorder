@@ -52,6 +52,28 @@ class TestReplaySyncModule(unittest.TestCase):
             matched = find_matching_audio_file(tmpdir, "1234567890")
             self.assertEqual(matched, file_path)
 
+    def test_find_matching_audio_file_opus(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            opus_path = os.path.join(tmpdir, "1234567890.opus")
+            with open(opus_path, "wb") as f:
+                f.write(b"x" * 20000)
+
+            matched = find_matching_audio_file(tmpdir, "1234567890")
+            self.assertEqual(matched, opus_path)
+
+    def test_find_matching_audio_file_prefers_opus_over_mp3(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mp3_path = os.path.join(tmpdir, "1234567890.mp3")
+            with open(mp3_path, "wb") as f:
+                f.write(b"x" * 30000)
+
+            opus_path = os.path.join(tmpdir, "1234567890.opus")
+            with open(opus_path, "wb") as f:
+                f.write(b"x" * 20000)
+
+            matched = find_matching_audio_file(tmpdir, "1234567890")
+            self.assertEqual(matched, opus_path)
+
     def test_find_matching_audio_file_skips_stub(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             # 3 KB stub (corrupt or premature stop)

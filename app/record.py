@@ -16,7 +16,7 @@ import psutil
 import requests
 import urllib3
 
-from app.config import get_ffmpeg_path, load_config
+from app.config import get_current_user_documents_recordings_dir, get_ffmpeg_path, load_config
 from app.i18n import t
 from app.native_audio import NativeAudioRecorder
 
@@ -194,11 +194,12 @@ class LeagueRecorder:
         self.log_callback = log_callback
         self.status_callback = status_callback
 
-        self.record_folder = self.config.get("record_folder", os.path.abspath("recordings"))
+        self.record_folder = self.config.get("record_folder") or get_current_user_documents_recordings_dir()
         self.native_recorder = NativeAudioRecorder(
             record_folder=self.record_folder,
             mic_device=self.config.get("mic_device_index"),
             mic_device_name=self.config.get("mic_device_name"),
+            audio_format=self.config.get("audio_format", "opus"),
             log_callback=self.log,
         )
         self.native_recorder.set_target_process(
@@ -386,21 +387,30 @@ class LeagueRecorder:
             return
 
         t_start = time.perf_counter()
-
         t_now = time.perf_counter()
         base_time = float(initial_game_time) if initial_game_time is not None else 0.0
+        ref_time = t_poll_start if t_poll_start is not None else t_start
+
         # If match just started (<= 2.0s), 0:00 alignment is exactly 0.0 (NO silence prepended!)
         if base_time <= 2.0:
             self.first_game_time = 0.0
             self.last_game_time = max(0.0, base_time)
+            init_gt = 0.0
         else:
-            ref_time = t_poll_start if t_poll_start is not None else t_start
             delay = max(0.0, t_now - ref_time)
             self.first_game_time = base_time + delay
             self.last_game_time = base_time
+            init_gt = self.first_game_time
 
         session_id = str(int(time.time()))
-        self.native_recorder.start_recording(session_id, initial_game_time=self.first_game_time)
+        self.native_recorder.start_recording(session_id, initial_game_time=init_gt)
+
+        # After audio devices and threads initialize (~150-250ms), re-align live clock with total elapsed time
+        if base_time > 2.0:
+            post_setup_delay = max(0.0, time.perf_counter() - ref_time)
+            self.first_game_time = base_time - post_setup_delay
+            self.native_recorder.update_game_time(self.first_game_time)
+
         self.recording = True
         self.is_paused = False
         self.last_advance_time = time.monotonic()
@@ -534,6 +544,7 @@ class LeagueRecorder:
         while not self.stop_event.is_set():
             t_poll_start = time.perf_counter()
             game_time = None
+            t_server_sample = t_poll_start
             try:
                 # 1. Try lightweight gamestats endpoint (avoids 500 errors during loading screen)
                 try:
@@ -541,10 +552,13 @@ class LeagueRecorder:
                         "https://127.0.0.1:2999/liveclientdata/gamestats",
                         timeout=0.15,
                     )
+                    t_poll_end = time.perf_counter()
                     if r.status_code == 200:
                         data = r.json()
                         if isinstance(data, dict):
                             game_time = data.get("gameTime")
+                            rtt = max(0.0, t_poll_end - t_poll_start)
+                            t_server_sample = t_poll_start + (rtt / 2.0)
                 except Exception:
                     pass
 
@@ -555,10 +569,13 @@ class LeagueRecorder:
                             "https://127.0.0.1:2999/liveclientdata/allgamedata",
                             timeout=0.15,
                         )
+                        t_poll_end = time.perf_counter()
                         if r.status_code == 200:
                             data = r.json()
                             if isinstance(data, dict):
                                 game_time = data.get("gameData", {}).get("gameTime")
+                                rtt = max(0.0, t_poll_end - t_poll_start)
+                                t_server_sample = t_poll_start + (rtt / 2.0)
                     except Exception:
                         pass
 
@@ -581,7 +598,7 @@ class LeagueRecorder:
                     if not self.recording:
                         if game_time > 0.0:
                             self.start_recording(
-                                initial_game_time=game_time, t_poll_start=t_poll_start
+                                initial_game_time=game_time, t_poll_start=t_server_sample
                             )
                         elif game_time == 0.0:
                             self.update_status("WATCHING", t("record.waiting_for_match"))
@@ -591,8 +608,11 @@ class LeagueRecorder:
                             self.update_status("WATCHING", t("record.match_countdown", time=cd_str))
 
                     if self.recording:
-                        # Synchronize audio timeline directly to in-game clock
-                        self.native_recorder.update_game_time(game_time)
+                        # Synchronize audio timeline directly to in-game clock with HTTP latency compensation
+                        if not self.is_paused:
+                            poll_latency = max(0.0, time.perf_counter() - t_server_sample)
+                            latency_corrected_gt = game_time - poll_latency
+                            self.native_recorder.update_game_time(latency_corrected_gt)
 
                         # Match pause detection:
                         # Riot's Live Client Data API refreshes at ~4Hz (every 250ms).

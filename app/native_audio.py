@@ -20,7 +20,7 @@ import numpy as np
 import psutil
 import pyaudiowpatch as pyaudio
 
-from app.config import get_ffmpeg_path
+from app.config import get_current_user_documents_recordings_dir, get_ffmpeg_path, load_config
 from app.discord_ipc import get_shared_discord_mute_watcher
 
 
@@ -557,8 +557,9 @@ class NativeAudioRecorder:
         mic_device=None,
         mic_device_name=None,
         ai_noise_suppression=False,
+        audio_format=None,
     ):
-        self.record_folder = record_folder or os.path.abspath("recordings")
+        self.record_folder = record_folder or get_current_user_documents_recordings_dir()
         self.log_callback = log_callback
 
         self.target_pid = target_pid  # -1 means auto-detect active Discord session
@@ -566,6 +567,7 @@ class NativeAudioRecorder:
         self.mic_device = mic_device
         self.mic_device_name = mic_device_name
         self.ai_noise_suppression = False
+        self.audio_format = str(audio_format or load_config().get("audio_format", "opus")).lower()
 
         self.is_recording = False
         self.is_paused = False
@@ -1130,11 +1132,13 @@ class NativeAudioRecorder:
                     pass
 
     def _mix_to_mp3(self, base_name, initial_offset=0.0, custom_mic_path=None, cleanup=True):
-        """Combines temporary Discord and Mic WAV files into final MP3 using FFmpeg."""
-        mp3_path = os.path.join(self.record_folder, f"{base_name}.mp3")
+        """Combines temporary Discord and Mic WAV files into final Opus or MP3 using FFmpeg."""
+        fmt = getattr(self, "audio_format", "opus")
+        ext = "opus" if fmt == "opus" else "mp3"
+        audio_path = os.path.join(self.record_folder, f"{base_name}.{ext}")
         counter = 1
-        while os.path.exists(mp3_path):
-            mp3_path = os.path.join(self.record_folder, f"{base_name}_{counter}.mp3")
+        while os.path.exists(audio_path):
+            audio_path = os.path.join(self.record_folder, f"{base_name}_{counter}.{ext}")
             counter += 1
 
         mic_target = custom_mic_path or self.mic_wav_path
@@ -1146,10 +1150,9 @@ class NativeAudioRecorder:
             return None
 
         ffmpeg_cmd = get_ffmpeg_path()
-        cmd = [ffmpeg_cmd, "-y", "-threads", "0"]
+        cmd = [ffmpeg_cmd, "-y", "-threads", "0", "-filter_complex_threads", "0"]
 
-        # Pure unamplified direct audio pipeline (no volume boosts, no limiters, zero DSP filtering):
-        # Sample rate and channel layout alignment strictly for clean FFmpeg mixing directly into MP3
+        # Sample rate and channel layout alignment strictly for clean FFmpeg mixing
         format_filter = "aresample=48000,aformat=channel_layouts=stereo"
 
         if discord_ok and mic_ok:
@@ -1190,14 +1193,27 @@ class NativeAudioRecorder:
         else:
             filter_chain = f"{mix_filter}[aout]"
 
-        cmd.extend([
-            "-filter_complex", filter_chain,
-            "-map", "[aout]",
-            "-c:a", "libmp3lame",
-            "-threads", "0",
-            "-q:a", "0",
-            mp3_path,
-        ])
+        if ext == "opus":
+            # High-fidelity Opus voice encoding: 48 kbps VBR with VOIP tuning, multi-threaded for fast finalization
+            cmd.extend([
+                "-filter_complex", filter_chain,
+                "-map", "[aout]",
+                "-c:a", "libopus",
+                "-threads", "0",
+                "-b:a", "48k",
+                "-vbr", "on",
+                "-application", "voip",
+                audio_path,
+            ])
+        else:
+            cmd.extend([
+                "-filter_complex", filter_chain,
+                "-map", "[aout]",
+                "-c:a", "libmp3lame",
+                "-threads", "0",
+                "-q:a", "0",
+                audio_path,
+            ])
 
         try:
             res = subprocess.run(
@@ -1209,7 +1225,7 @@ class NativeAudioRecorder:
             if res.returncode != 0:
                 self.log(f"FFmpeg mixing error: {res.stderr.strip()[:300]}")
                 return None
-            self.log(f"Successfully mixed and saved: {os.path.basename(mp3_path)}")
+            self.log(f"Successfully mixed and saved: {os.path.basename(audio_path)}")
         except Exception as e:
             self.log(f"FFmpeg execution error: {e}")
             return None
@@ -1217,4 +1233,6 @@ class NativeAudioRecorder:
             if cleanup:
                 self._cleanup_temp_wavs()
 
-        return mp3_path
+        return audio_path
+
+    _mix_to_audio = _mix_to_mp3
