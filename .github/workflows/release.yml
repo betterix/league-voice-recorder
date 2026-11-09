@@ -149,6 +149,12 @@ jobs:
           if (Test-Path "README.md") {
               Copy-Item -Path "README.md" -Destination "dist\LeagueVoiceRecorder\README.md" -Force
           }
+          $rnnoise_dll = (Get-ChildItem -Path ".venv\Lib\site-packages" -Filter "rnnoise.dll" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+          if ($rnnoise_dll -and (Test-Path $rnnoise_dll)) {
+              Copy-Item -Path $rnnoise_dll -Destination "dist\LeagueVoiceRecorder\rnnoise.dll" -Force
+              New-Item -ItemType Directory -Force -Path "dist\LeagueVoiceRecorder\pyrnnoise" | Out-Null
+              Copy-Item -Path $rnnoise_dll -Destination "dist\LeagueVoiceRecorder\pyrnnoise\rnnoise.dll" -Force
+          }
 
       - name: 🗜️ Fast Compress Release ZIP (7-Zip)
         shell: pwsh

@@ -130,6 +130,13 @@ for %%d in (msvcp140.dll msvcp140_1.dll msvcp140_2.dll msvcp140_atomic_wait.dll 
     )
 )
 
+rem Ensure rnnoise.dll is bundled for AI noise suppression
+if exist ".venv\Lib\site-packages\pyrnnoise\rnnoise.dll" (
+    copy /y ".venv\Lib\site-packages\pyrnnoise\rnnoise.dll" "dist\LeagueVoiceRecorder\rnnoise.dll" >nul
+    if not exist "dist\LeagueVoiceRecorder\pyrnnoise" mkdir "dist\LeagueVoiceRecorder\pyrnnoise"
+    copy /y ".venv\Lib\site-packages\pyrnnoise\rnnoise.dll" "dist\LeagueVoiceRecorder\pyrnnoise\rnnoise.dll" >nul
+)
+
 echo [OK] Standalone distribution assembled in dist\LeagueVoiceRecorder\
 
 echo.

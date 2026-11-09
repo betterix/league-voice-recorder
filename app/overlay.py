@@ -180,6 +180,10 @@ class LeagueOverlay:
     _SLIDER_HIT_X2 = SLIDER_X2 + 6
     _SLIDER_HIT_Y1 = 42
     _SLIDER_HIT_Y2 = 66
+    _VOICE_HIT_X1 = 12
+    _VOICE_HIT_X2 = 56
+    _VOICE_HIT_Y1 = 11
+    _VOICE_HIT_Y2 = 33
 
     def __init__(
         self,
@@ -267,11 +271,13 @@ class LeagueOverlay:
         self.canvas.bind("<Button-3>", self._on_right_click)
         self.canvas.bind("<Motion>", self._on_mouse_hover)
 
-        # Dedicated transparent hit-test windows for Lock icon and Volume slider in click-through mode
+        # Dedicated transparent hit-test windows for Lock icon, Volume slider, and Voice Mode button
         self.lock_hit_win = None
         self.volume_hit_win = None
+        self.voice_mode_hit_win = None
         self._init_lock_hit_window()
         self._init_volume_hit_window()
+        self._init_voice_mode_hit_window()
 
         # Initial render
         self.render()
@@ -444,14 +450,81 @@ class LeagueOverlay:
         canvas_x = self.SLIDER_X1 - 6 + event.x
         self._update_volume_from_mouse(canvas_x)
 
+    def _init_voice_mode_hit_window(self) -> None:
+        """Creates a transparent hit-test window over the voice mode badge in Replay mode."""
+        try:
+            self.voice_mode_hit_win = tk.Toplevel(self.master)
+            self.voice_mode_hit_win.overrideredirect(True)
+            self.voice_mode_hit_win.withdraw()
+            try:
+                self.voice_mode_hit_win.attributes("-topmost", True)
+                self.voice_mode_hit_win.attributes("-alpha", 0.01)
+            except Exception:
+                pass
+            self.voice_mode_hit_win.config(cursor="hand2")
+            self.voice_mode_hit_win.bind("<ButtonPress-1>", lambda e: self.toggle_voice_mode())
+            self.voice_mode_hit_win.bind("<Button-3>", lambda e: None)
+        except Exception:
+            self.voice_mode_hit_win = None
+
+    def _sync_voice_mode_hit_window(self) -> None:
+        """Positions the voice mode hit window precisely over the [AI/RAW] button when locked, visible, and in REPLAY mode."""
+        if not getattr(self, "voice_mode_hit_win", None):
+            return
+        if getattr(self, "is_visible", False) and self.locked and getattr(self, "mode", "") == "REPLAY":
+            try:
+                wx = self.window.winfo_x()
+                wy = self.window.winfo_y()
+                vx = wx + int(self._VOICE_HIT_X1)
+                vy = wy + int(self._VOICE_HIT_Y1)
+                vw = int(self._VOICE_HIT_X2 - self._VOICE_HIT_X1)
+                vh = int(self._VOICE_HIT_Y2 - self._VOICE_HIT_Y1)
+                self.voice_mode_hit_win.geometry(f"{vw}x{vh}+{vx}+{vy}")
+                self.voice_mode_hit_win.deiconify()
+                self.voice_mode_hit_win.attributes("-topmost", True)
+                self.voice_mode_hit_win.attributes("-alpha", 0.01)
+                try:
+                    wid = self.voice_mode_hit_win.winfo_id()
+                    if sys.platform == "win32":
+                        import ctypes
+
+                        parent = ctypes.windll.user32.GetParent(wid)
+                        set_window_no_activate(int(parent if parent else wid))
+                except Exception:
+                    pass
+            except Exception:
+                pass
+        else:
+            try:
+                self.voice_mode_hit_win.withdraw()
+            except Exception:
+                pass
+
+    def _is_voice_mode_hit(self, x: float, y: float) -> bool:
+        return (
+            self.mode == "REPLAY"
+            and self._VOICE_HIT_X1 <= x <= self._VOICE_HIT_X2
+            and self._VOICE_HIT_Y1 <= y <= self._VOICE_HIT_Y2
+        )
+
     def set_voice_mode(self, prefer_suppressed: bool) -> None:
-        """Legacy helper for voice mode state compatibility."""
+        """Updates voice mode state and redraws overlay."""
         self.prefer_suppressed = bool(prefer_suppressed)
+        if getattr(self, "is_visible", False) and getattr(self, "mode", "") == "REPLAY":
+            self.render()
+
+    def toggle_voice_mode(self) -> None:
+        """Toggles between AI and raw opus audio tracks."""
+        if self.on_voice_mode_toggle:
+            self.on_voice_mode_toggle()
+        else:
+            self.set_voice_mode(not self.prefer_suppressed)
 
     def _sync_hit_windows(self) -> None:
-        """Synchronizes all hit-test windows (lock icon, volume slider) with the overlay position."""
+        """Synchronizes all hit-test windows (lock icon, volume slider, voice mode button) with the overlay position."""
         self._sync_lock_hit_window()
         self._sync_volume_hit_window()
+        self._sync_voice_mode_hit_window()
 
     def _apply_click_through(self, enable: bool) -> None:
         """Applies or removes the Windows WS_EX_TRANSPARENT style strictly on the top-level window."""
@@ -527,6 +600,11 @@ class LeagueOverlay:
         if getattr(self, "volume_hit_win", None):
             try:
                 self.volume_hit_win.withdraw()
+            except Exception:
+                pass
+        if getattr(self, "voice_mode_hit_win", None):
+            try:
+                self.voice_mode_hit_win.withdraw()
             except Exception:
                 pass
 
@@ -742,14 +820,30 @@ class LeagueOverlay:
 
     def _render_replay_content(self) -> None:
         """Renders the Replay Overlay (AUDIO wave with playhead, VOLUME slider, REPLAY, Timer, Lock)."""
-        # Row 1: AUDIO Label
+        # Row 1: Voice Mode Badge [✨ AI] or [RAW] (Interactive button)
+        badge_bg = "#1E293B" if self.prefer_suppressed else "#172033"
+        badge_border = "#38BDF8" if self.prefer_suppressed else "#334155"
+        badge_text_color = "#38BDF8" if self.prefer_suppressed else "#94A3B8"
+        badge_label = "✨ AI" if self.prefer_suppressed else "RAW"
+
+        draw_rounded_rect(
+            self.canvas,
+            self._VOICE_HIT_X1,
+            self._VOICE_HIT_Y1,
+            self._VOICE_HIT_X2,
+            self._VOICE_HIT_Y2,
+            radius=4,
+            fill=badge_bg,
+            outline=badge_border,
+            width=1,
+        )
         self.canvas.create_text(
-            16,
-            22,
-            text="AUDIO",
-            anchor="w",
-            fill=self.COLOR_LABEL,
-            font=("Segoe UI", 10, "bold"),
+            (self._VOICE_HIT_X1 + self._VOICE_HIT_X2) / 2,
+            (self._VOICE_HIT_Y1 + self._VOICE_HIT_Y2) / 2,
+            text=badge_label,
+            anchor="center",
+            fill=badge_text_color,
+            font=("Segoe UI", 8, "bold"),
         )
 
         # Row 1: Audio waveform vertical bars with moving playhead cursor
@@ -1031,7 +1125,12 @@ class LeagueOverlay:
             self.set_locked(not self.locked)
             return
 
-        # 2. Click on Volume slider in Replay mode
+        # 2. Click on Voice Mode toggle in Replay mode (ALLOWED EVEN WHEN LOCKED)
+        if self._is_voice_mode_hit(event.x, event.y):
+            self.toggle_voice_mode()
+            return
+
+        # 3. Click on Volume slider in Replay mode
         # ALLOWED EVEN WHEN LOCKED! (User requirement: able to change sound while locked)
         if self._is_volume_slider_hit(event.x, event.y):
             self._is_dragging_volume = True
@@ -1085,8 +1184,10 @@ class LeagueOverlay:
     def _on_mouse_hover(self, event: tk.Event) -> None:
         """Dynamically updates mouse cursor to reflect actionable elements."""
         try:
-            if self._is_lock_hit(event.x, event.y) or (
-                self.mode == "REPLAY" and self._is_volume_slider_hit(event.x, event.y)
+            if (
+                self._is_lock_hit(event.x, event.y)
+                or (self.mode == "REPLAY" and self._is_volume_slider_hit(event.x, event.y))
+                or (self.mode == "REPLAY" and self._is_voice_mode_hit(event.x, event.y))
             ):
                 self.canvas.config(cursor="hand2")
             elif not self.locked:
@@ -1142,6 +1243,9 @@ class LeagueOverlay:
             if getattr(self, "volume_hit_win", None):
                 self.volume_hit_win.destroy()
                 self.volume_hit_win = None
+            if getattr(self, "voice_mode_hit_win", None):
+                self.voice_mode_hit_win.destroy()
+                self.voice_mode_hit_win = None
         except Exception:
             pass
         try:

@@ -28,6 +28,7 @@ dependencies = [
     "python-vlc>=3.0.21203",
     "requests>=2.34.2",
     "urllib3>=2.8.0",
+    "pyrnnoise>=0.4.5",
 ]
 
 [tool.uv]

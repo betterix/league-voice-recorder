@@ -311,24 +311,30 @@ class TestLeagueOverlay(unittest.TestCase):
         self.assertEqual(self.hud.volume_hit_win.state(), "withdrawn")
 
     def test_replay_audio_label_and_streamlined_layout(self):
-        """Replay mode renders clean AUDIO label and no longer relies on track toggle hit windows."""
+        """Replay mode renders clean voice mode button [RAW / ✨ AI] and handles track toggling."""
         self.hud.set_mode("REPLAY")
         self.hud.show()
         self.hud.set_locked(True)
 
-        # Confirm track_hit_win no longer exists
-        self.assertFalse(hasattr(self.hud, "track_hit_win"))
+        # Confirm dedicated voice mode hit window is present when locked
+        self.assertTrue(hasattr(self.hud, "voice_mode_hit_win"))
 
-        # Verify all active hit window HWNDs only include main window, lock, and volume
+        # Verify all active hit window HWNDs include main window, lock, volume, and voice mode
         all_hwnds = self.hud.get_all_hwnds()
         self.assertTrue(len(all_hwnds) > 0)
 
         # Canvas item verification
         items = self.hud.canvas.find_all()
         texts = [self.hud.canvas.itemcget(item, "text") for item in items if self.hud.canvas.type(item) == "text"]
-        self.assertIn("AUDIO", texts)
+        self.assertIn("RAW", texts)
         self.assertIn("VOLUME", texts)
         self.assertNotIn("🎙️ COMMS", texts)
+
+        # Toggle to AI suppressed mode
+        self.hud.set_voice_mode(True)
+        items_ai = self.hud.canvas.find_all()
+        texts_ai = [self.hud.canvas.itemcget(item, "text") for item in items_ai if self.hud.canvas.type(item) == "text"]
+        self.assertIn("✨ AI", texts_ai)
 
 
 if __name__ == "__main__":

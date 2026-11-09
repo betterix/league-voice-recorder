@@ -132,6 +132,9 @@ def get_clean_default_config():
         "hud_opacity": 0.85,
         "hud_x": -1,
         "hud_y": -1,
+        "audio_format": "opus",
+        "ai_noise_suppression": True,
+        "prefer_suppressed_replay": False,
     }
 
 
@@ -176,6 +179,8 @@ def get_default_config():
         "hud_x": _parse_int(os.getenv("HUD_X", "-1"), -1),
         "hud_y": _parse_int(os.getenv("HUD_Y", "-1"), -1),
         "audio_format": os.getenv("AUDIO_FORMAT", "opus").lower(),
+        "ai_noise_suppression": os.getenv("AI_NOISE_SUPPRESSION", "true").lower() in ("true", "1", "yes"),
+        "prefer_suppressed_replay": os.getenv("PREFER_SUPPRESSED_REPLAY", "false").lower() in ("true", "1", "yes"),
     }
 
 

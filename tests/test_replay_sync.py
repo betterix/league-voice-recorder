@@ -247,6 +247,15 @@ class TestReplaySyncModule(unittest.TestCase):
                 suppressed_only,
             )
 
+    def test_replay_toggle_voice_mode(self):
+        sync = ReplaySynchronizer(config={"prefer_suppressed_replay": False})
+        self.assertFalse(sync.prefer_suppressed)
+        sync.toggle_voice_mode()
+        self.assertTrue(sync.prefer_suppressed)
+        # Immediate toggle within debounce window is ignored
+        sync.toggle_voice_mode()
+        self.assertTrue(sync.prefer_suppressed)
+
 
 if __name__ == "__main__":
     unittest.main()

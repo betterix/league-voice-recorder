@@ -200,6 +200,7 @@ class LeagueRecorder:
             mic_device=self.config.get("mic_device_index"),
             mic_device_name=self.config.get("mic_device_name"),
             audio_format=self.config.get("audio_format", "opus"),
+            ai_noise_suppression=self.config.get("ai_noise_suppression", True),
             log_callback=self.log,
         )
         self.native_recorder.set_target_process(
@@ -228,6 +229,10 @@ class LeagueRecorder:
     def set_mic_device(self, index, name=None):
         if hasattr(self, "native_recorder") and self.native_recorder:
             self.native_recorder.set_mic_device(index, name)
+
+    def set_ai_noise_suppression(self, enabled: bool):
+        if hasattr(self, "native_recorder") and self.native_recorder:
+            self.native_recorder.set_ai_noise_suppression(enabled)
 
     def log(self, message):
         print(message)

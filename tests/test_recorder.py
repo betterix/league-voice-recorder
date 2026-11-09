@@ -225,9 +225,9 @@ class TestRecorderModule(unittest.TestCase):
         self.assertIn("-filter_complex_threads", cmd)
         self.assertEqual(cmd[cmd.index("-filter_complex_threads") + 1], "0")
         self.assertIn("-b:a", cmd)
-        self.assertEqual(cmd[cmd.index("-b:a") + 1], "48k")
-        self.assertIn("-application", cmd)
-        self.assertEqual(cmd[cmd.index("-application") + 1], "voip")
+        self.assertEqual(cmd[cmd.index("-b:a") + 1], "160k")
+        self.assertNotIn("-application", cmd)
+        self.assertNotIn("-vbr", cmd)
 
         # Verify pure unamplified direct recording (no loudnorm, afftdn, highpass, alimiter, or volume gain)
         filter_str = cmd[cmd.index("-filter_complex") + 1]
@@ -240,16 +240,16 @@ class TestRecorderModule(unittest.TestCase):
         self.assertIn("aresample=48000", filter_str)
         self.assertIn("amix=inputs=2", filter_str)
 
-        # 2. Test fallback MP3 encoding
-        nr.audio_format = "mp3"
-        mp3_out = nr._mix_to_mp3("test_game_mp3", initial_offset=0.0, cleanup=True)
-        self.assertIsNotNone(mp3_out)
-        self.assertTrue(mp3_out.endswith(".mp3"))
-        cmd_mp3 = mock_subproc.call_args[0][0]
-        self.assertIn("-c:a", cmd_mp3)
-        self.assertEqual(cmd_mp3[cmd_mp3.index("-c:a") + 1], "libmp3lame")
-        self.assertIn("-q:a", cmd_mp3)
-        self.assertEqual(cmd_mp3[cmd_mp3.index("-q:a") + 1], "0")
+        # 2. Verify that recording strictly enforces Opus format
+        nr.audio_format = "opus"
+        opus_out2 = nr._mix_to_mp3("test_game_opus2", initial_offset=0.0, cleanup=True)
+        self.assertIsNotNone(opus_out2)
+        self.assertTrue(opus_out2.endswith(".opus"))
+        cmd_opus = mock_subproc.call_args[0][0]
+        self.assertIn("-c:a", cmd_opus)
+        self.assertEqual(cmd_opus[cmd_opus.index("-c:a") + 1], "libopus")
+        self.assertIn("-b:a", cmd_opus)
+        self.assertEqual(cmd_opus[cmd_opus.index("-b:a") + 1], "160k")
 
     def test_recorder_pause_and_resume_state(self):
         """Verify that calling pause() and resume() toggles is_paused and purges staging buffers."""
@@ -480,6 +480,44 @@ class TestRecorderModule(unittest.TestCase):
         out_mp3 = rec.stop_and_finalize("SCRIM_EXPORT_TEST")
         self.assertIsNotNone(out_mp3)
         self.assertTrue(os.path.exists(out_mp3))
+
+    def test_stop_and_finalize_with_ai_noise_suppression(self):
+        """stop_and_finalize with ai_noise_suppression creates 1:1 bit-exact matching suppressed file."""
+        import wave
+        from app.native_audio import NativeAudioRecorder
+
+        rec = NativeAudioRecorder(
+            record_folder=self.temp_dir.name,
+            ai_noise_suppression=True,
+            audio_format="opus",
+            log_callback=lambda msg: None,
+        )
+        rec.is_recording = True
+
+        disc_path = os.path.join(self.temp_dir.name, "ai_test_discord.wav")
+        mic_path = os.path.join(self.temp_dir.name, "ai_test_mic.wav")
+
+        with wave.open(disc_path, "wb") as wf:
+            wf.setnchannels(2)
+            wf.setsampwidth(2)
+            wf.setframerate(48000)
+            wf.writeframes(b"\x00\x00\x00\x00" * (48000 * 2))
+
+        with wave.open(mic_path, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(48000)
+            wf.writeframes(b"\x22\x33" * (48000 * 2))
+
+        rec.discord_wav_path = disc_path
+        rec.mic_wav_path = mic_path
+
+        raw_audio = rec.stop_and_finalize("AI_COMBINED_TEST")
+        self.assertIsNotNone(raw_audio)
+        self.assertTrue(os.path.exists(raw_audio))
+
+        supp_audio = os.path.join(self.temp_dir.name, "AI_COMBINED_TEST_suppressed.opus")
+        self.assertTrue(os.path.exists(supp_audio), "Suppressed opus file must exist")
 
 
 if __name__ == "__main__":

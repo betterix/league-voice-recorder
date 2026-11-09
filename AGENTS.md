@@ -186,11 +186,12 @@ Responsible for live match detection, native WASAPI voice capture, and audio exp
   - Uses `find_league_install_dir()` (prioritizing fast `psutil` lookup of `LeagueClientUx`, falling back to PowerShell and common drive paths).
   - Reads `lockfile` (`<name>:<pid>:<port>:<password>:<protocol>`).
   - Authenticates with Basic Auth `riot:<password>` to query `https://127.0.0.1:{port}/lol-gameflow/v1/session` to obtain `gameData.gameId`.
-- **Native WASAPI Capture (`native_audio.py`)**:
+- **Native WASAPI Capture & AI Denoising (`native_audio.py`)**:
   - Captures Discord voice chat directly via Windows WASAPI Process Loopback.
   - Captures player microphone via native WASAPI (pyaudiowpatch) with dynamic input device selection and live VU visualizers.
-  - Tracks Discord mute & deafen state in real time via local IPC (\\.\pipe\discord-ipc-*). When muted, feeds synchronized silence bytes to keep timeline aligned.
-  - Automatically mixes and normalizes both streams into sample-accurate <GameID>.mp3.
+  - Tracks Discord mute & deafen state in real time via local IPC (`\\.\pipe\discord-ipc-*`). When muted, feeds synchronized silence bytes to keep timeline aligned.
+  - Automatically mixes and normalizes both streams into sample-accurate `<GameID>.opus` (or `<GameID>.mp3`).
+  - **AI Noise Suppression (RNNoise)**: Operates directly on the **already combined** audio mix (Discord + Mic together), eliminating mechanical keyboard clicks, desk thuds, and fan hiss while maintaining 100% bit-exact 1:1 timeline duration matching with `<GameID>_suppressed.opus`. Seamlessly toggleable between raw and AI-suppressed comms in the replay player.
 
 ### 3.3 `play_replay.py` (`ReplaySynchronizer`)
 Responsible for detecting opened `.rofl` replays and synchronizing audio playback in VLC.

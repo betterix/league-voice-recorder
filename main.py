@@ -138,8 +138,10 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 on_volume_changed=self._on_hud_volume_changed,
                 on_position_changed=self._on_hud_position_changed,
                 on_lock_changed=self._on_hud_lock_changed_from_overlay,
+                on_voice_mode_toggle=self._toggle_replay_voice_mode,
             )
             self.hud = self.overlay
+            self.hud.set_voice_mode(bool(self.config.get("prefer_suppressed_replay", False)))
         except Exception:
             self.overlay = None
             self.hud = None
@@ -661,6 +663,42 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.vol_slider.set(self.current_vol)
         self.vol_slider.grid(row=0, column=1, padx=(4, 10), pady=6, sticky="ew")
 
+        # Voice Track Selector (Standard Comms vs AI Suppressed)
+        self.track_frame = ctk.CTkFrame(
+            rep_card,
+            fg_color=("#F8FAFC", "#070D1E"),
+            corner_radius=6,
+            border_width=1,
+            border_color=("#E2E8F0", "#162038"),
+        )
+        self.track_frame.pack(fill="x", padx=14, pady=(0, 6))
+        self.track_frame.grid_columnconfigure(0, weight=1)
+        self.track_frame.grid_columnconfigure(1, weight=0)
+
+        self.track_label = ctk.CTkLabel(
+            self.track_frame,
+            text="🎙️ " + t("replay.voice_track") + ":",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0891B2", "#0AC8B9"),
+        )
+        self.track_label.grid(row=0, column=0, padx=(10, 4), pady=5, sticky="w")
+
+        is_supp = bool(self.config.get("prefer_suppressed_replay", False))
+        self.track_toggle_btn = ctk.CTkButton(
+            self.track_frame,
+            text=self._get_voice_mode_btn_text(is_supp),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            height=26,
+            fg_color="#064E3B" if is_supp else ("#E2E8F0", "#1E293B"),
+            hover_color="#047857" if is_supp else ("#CBD5E1", "#334155"),
+            text_color="#6EE7B7" if is_supp else ("#0F172A", "#E2E8F0"),
+            border_width=1,
+            border_color="#10B981" if is_supp else ("#94A3B8", "#475569"),
+            corner_radius=6,
+            command=self._toggle_replay_voice_mode,
+        )
+        self.track_toggle_btn.grid(row=0, column=1, padx=(4, 8), pady=5, sticky="e")
+
         # 1-Click Replay API Auto-Configuration Row (Under Replay Controls)
         self.replay_api_row = ctk.CTkFrame(
             rep_card,
@@ -869,20 +907,39 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 native_rec = self._preview_native_recorder
 
             if native_rec:
-                app_l, mic_l = native_rec.poll_audio_levels()
+                raw_app_l, raw_mic_l = native_rec.poll_audio_levels()
                 is_discord_muted = getattr(native_rec, "is_discord_muted", lambda: False)()
 
-                # Throttled redraw: only redraw app meter if level changed significantly
+                # Smooth ballistic interpolation for App audio (Discord)
+                if not hasattr(self, "_smooth_app_l"):
+                    self._smooth_app_l = 0.0
+                if raw_app_l > self._smooth_app_l:
+                    # Snappy attack: jump towards peak quickly
+                    self._smooth_app_l = self._smooth_app_l * 0.35 + raw_app_l * 0.65
+                else:
+                    # Silky exponential decay
+                    self._smooth_app_l = max(0.0, self._smooth_app_l * 0.84)
+                if self._smooth_app_l < 0.002:
+                    self._smooth_app_l = 0.0
+
+                disp_app = round(self._smooth_app_l, 4)
                 last_app_l = getattr(self, "_last_rendered_app_l", -1.0)
-                if abs(app_l - last_app_l) > 0.015 or (app_l == 0.0 and last_app_l > 0.0):
-                    app_color = "#22C55E" if app_l < 0.65 else ("#EAB308" if app_l < 0.85 else "#EF4444")
+                if abs(disp_app - last_app_l) > 0.003 or (disp_app == 0.0 and last_app_l > 0.0):
+                    app_color = "#22C55E" if disp_app < 0.65 else ("#EAB308" if disp_app < 0.85 else "#EF4444")
                     if getattr(self, "_last_app_color", None) != app_color:
                         self.app_meter_bar.configure(progress_color=app_color)
                         self._last_app_color = app_color
-                    self.app_meter_bar.set(app_l)
-                    self._last_rendered_app_l = app_l
+                    self.app_meter_bar.set(disp_app)
+                    self._last_rendered_app_l = disp_app
+
+                # Smooth ballistic interpolation for Microphone
+                if not hasattr(self, "_smooth_mic_l"):
+                    self._smooth_mic_l = 0.0
 
                 if is_discord_muted:
+                    self._smooth_mic_l = max(0.0, self._smooth_mic_l * 0.70)
+                    if self._smooth_mic_l < 0.002:
+                        self._smooth_mic_l = 0.0
                     if getattr(self, "_last_mic_muted_state", None) is not True:
                         self._last_mic_muted_state = True
                         self.mic_meter_title.configure(
@@ -901,15 +958,27 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                             text=f"🎤 {t('record.microphone')}:",
                             text_color="#94A3B8",
                         )
-                    # Throttled redraw: only redraw mic meter if level changed significantly
+                    if raw_mic_l > self._smooth_mic_l:
+                        # Snappy attack: jump towards peak quickly
+                        self._smooth_mic_l = self._smooth_mic_l * 0.35 + raw_mic_l * 0.65
+                    else:
+                        # Silky exponential decay
+                        self._smooth_mic_l = max(0.0, self._smooth_mic_l * 0.84)
+                    if self._smooth_mic_l < 0.002:
+                        self._smooth_mic_l = 0.0
+
+                    disp_mic = round(self._smooth_mic_l, 4)
                     last_mic_l = getattr(self, "_last_rendered_mic_l", -1.0)
-                    if abs(mic_l - last_mic_l) > 0.015 or (mic_l == 0.0 and last_mic_l > 0.0):
-                        mic_color = "#0284C7" if mic_l < 0.65 else ("#EAB308" if mic_l < 0.85 else "#EF4444")
+                    if abs(disp_mic - last_mic_l) > 0.003 or (disp_mic == 0.0 and last_mic_l > 0.0):
+                        mic_color = "#0284C7" if disp_mic < 0.65 else ("#EAB308" if disp_mic < 0.85 else "#EF4444")
                         if getattr(self, "_last_mic_color", None) != mic_color:
                             self.mic_meter_bar.configure(progress_color=mic_color)
                             self._last_mic_color = mic_color
-                        self.mic_meter_bar.set(mic_l)
-                        self._last_rendered_mic_l = mic_l
+                        self.mic_meter_bar.set(disp_mic)
+                        self._last_rendered_mic_l = disp_mic
+
+                app_l = disp_app
+                mic_l = disp_mic
 
             # Live HUD overlay visibility & waveform synchronization (in-game only)
             cur_mic = mic_l if "mic_l" in locals() else 0.0
@@ -920,7 +989,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             )
         except Exception:
             pass
-        self._meter_timer = self.after(75, self._update_audio_meters)
+        self._meter_timer = self.after(30, self._update_audio_meters)
 
     def _setup_tab_log(self, parent):
         parent.grid_columnconfigure(0, weight=1)
@@ -1199,40 +1268,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.replay_vol_entry.bind("<Return>", self._on_settings_entry_changed)
         self.replay_vol_entry.bind("<KeyRelease>", self._on_settings_entry_debounced)
 
-        # Audio Format (Opus vs MP3)
-        self.audio_format_lbl = ctk.CTkLabel(
-            card_storage,
-            text=t("settings.audio_format"),
-            font=ctk.CTkFont(size=11, weight="bold"),
-            text_color=("#0F172A", "#CBD5E1"),
-        )
-        self.audio_format_lbl.grid(row=4, column=0, padx=(14, 8), pady=(6, 12), sticky="w")
-
-        curr_fmt = str(self.config.get("audio_format", "opus")).lower()
-        self.audio_format_options = {
-            t("settings.audio_format_opus"): "opus",
-            t("settings.audio_format_mp3"): "mp3",
-        }
-        self.audio_format_code_to_display = {v: k for k, v in self.audio_format_options.items()}
-        curr_fmt_disp = self.audio_format_code_to_display.get(curr_fmt, t("settings.audio_format_opus"))
-
-        self.audio_format_menu = ctk.CTkOptionMenu(
-            card_storage,
-            values=list(self.audio_format_options.keys()),
-            command=self._on_audio_format_selected,
-            height=32,
-            fg_color=("#F8FAFC", "#070D1E"),
-            button_color=("#E2E8F0", "#0F1A36"),
-            button_hover_color=("#CBD5E1", "#1E2A4A"),
-            dropdown_fg_color=("#FFFFFF", "#0A1224"),
-            dropdown_hover_color=("#F1F5F9", "#162244"),
-            dropdown_text_color=("#0F172A", "#E2E8F0"),
-            text_color=("#0F172A", "#F8FAFC"),
-            corner_radius=6,
-        )
-        self.audio_format_menu.set(curr_fmt_disp)
-        self.audio_format_menu.grid(row=4, column=1, padx=6, pady=(6, 12), sticky="w")
-
         # -------------------------------------------------------------
         # CARD 2: INTERFACE & AUDIO INPUT
         # -------------------------------------------------------------
@@ -1344,6 +1379,34 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             corner_radius=6,
         )
         self.settings_mic_menu.grid(row=3, column=1, padx=(6, 14), pady=6, sticky="ew")
+
+        # AI Noise Suppression (RNNoise)
+        self.ai_noise_suppression_lbl = ctk.CTkLabel(
+            card_interface,
+            text=t("settings.ai_noise_suppression"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0F172A", "#CBD5E1"),
+        )
+        self.ai_noise_suppression_lbl.grid(row=4, column=0, padx=(14, 8), pady=(6, 12), sticky="w")
+
+        self.ai_noise_suppression_var = ctk.BooleanVar(
+            value=bool(self.config.get("ai_noise_suppression", True))
+        )
+        self.ai_noise_suppression_switch = ctk.CTkSwitch(
+            card_interface,
+            text=t("settings.ai_noise_suppression_info"),
+            variable=self.ai_noise_suppression_var,
+            onvalue=True,
+            offvalue=False,
+            command=self._on_ai_noise_suppression_toggled,
+            fg_color=("#CBD5E1", "#1E2A4A"),
+            progress_color=("#0891B2", "#0AC8B9"),
+            button_color=("#FFFFFF", "#FFFFFF"),
+            button_hover_color=("#E2E8F0", "#CBD5E1"),
+            font=ctk.CTkFont(size=11),
+            text_color=("#64748B", "#94A3B8"),
+        )
+        self.ai_noise_suppression_switch.grid(row=4, column=1, padx=(6, 14), pady=(6, 12), sticky="w")
 
         # -------------------------------------------------------------
         # CARD 3: MATCH AUTOMATION & WORKFLOW
@@ -1690,6 +1753,15 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.config["hud_x"] = x
         self.config["hud_y"] = y
         save_config(self.config)
+
+    def _on_ai_noise_suppression_toggled(self):
+        val = bool(self.ai_noise_suppression_var.get())
+        self.config["ai_noise_suppression"] = val
+        save_config(self.config)
+        if hasattr(self, "recorder_worker") and self.recorder_worker and hasattr(self.recorder_worker, "native_recorder"):
+            self.recorder_worker.native_recorder.set_ai_noise_suppression(val)
+        status_txt = "ON" if val else "OFF"
+        self.log_message(f"🧠 {t('settings.ai_noise_suppression')}: {status_txt}")
 
     def _on_auto_champ_select_toggled(self):
         val = bool(self.auto_champ_select_var.get())
@@ -2086,15 +2158,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             if disp and self.theme_menu.get() != disp:
                 self.theme_menu.set(disp)
 
-    def _on_audio_format_selected(self, chosen_display):
-        if hasattr(self, "audio_format_options"):
-            fmt_code = self.audio_format_options.get(chosen_display, "opus")
-            self.config["audio_format"] = fmt_code
-            save_config(self.config)
-            if hasattr(self, "recorder_worker") and self.recorder_worker and hasattr(self.recorder_worker, "native_recorder"):
-                self.recorder_worker.native_recorder.audio_format = fmt_code
-            self.log_message(f"🎵 {t('settings.audio_format')}: {fmt_code.upper()}")
-
     def _on_language_selected(self, selected_name):
         code = self.lang_name_to_code.get(selected_name, "en")
         if code != get_language():
@@ -2135,6 +2198,10 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             else:
                 self.rep_btn.configure(text=t("replay.start_btn"))
             self.rep_info_lbl.configure(text=f"{t('replay.info')}\n• {t('replay.hotkey_hint')}")
+            if hasattr(self, "track_label"):
+                self.track_label.configure(text="🎙️ " + t("replay.voice_track") + ":")
+            if hasattr(self, "track_toggle_btn"):
+                self._update_voice_mode_button_visuals(bool(self.config.get("prefer_suppressed_replay", False)))
             self._update_volume_display()
             self._render_replay_status(*self.last_replay_status)
 
@@ -2171,18 +2238,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.vlc_dir_lbl.configure(text=t("settings.vlc_dir"))
                 self.browse_vlc_btn.configure(text=t("settings.browse"))
                 self.replay_vol_lbl.configure(text=t("settings.replay_volume"))
-                if hasattr(self, "audio_format_lbl"):
-                    self.audio_format_lbl.configure(text=t("settings.audio_format"))
-                    self.audio_format_options = {
-                        t("settings.audio_format_opus"): "opus",
-                        t("settings.audio_format_mp3"): "mp3",
-                    }
-                    self.audio_format_code_to_display = {v: k for k, v in self.audio_format_options.items()}
-                    self.audio_format_menu.configure(values=list(self.audio_format_options.keys()))
-                    curr_fmt = str(self.config.get("audio_format", "opus")).lower()
-                    curr_fmt_disp = self.audio_format_code_to_display.get(curr_fmt, t("settings.audio_format_opus"))
-                    if self.audio_format_menu.get() != curr_fmt_disp:
-                        self.audio_format_menu.set(curr_fmt_disp)
                 if hasattr(self, "interface_title_lbl"):
                     self.interface_title_lbl.configure(text=f"🌐 {t('settings.interface_title')}")
                 self.lang_lbl.configure(text=t("settings.language"))
@@ -2200,6 +2255,9 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                         self.theme_menu.set(curr_theme_disp)
                 if hasattr(self, "settings_mic_lbl"):
                     self.settings_mic_lbl.configure(text=t("settings.mic_device"))
+                if hasattr(self, "ai_noise_suppression_lbl"):
+                    self.ai_noise_suppression_lbl.configure(text=t("settings.ai_noise_suppression"))
+                    self.ai_noise_suppression_switch.configure(text=t("settings.ai_noise_suppression_info"))
                 if hasattr(self, "automation_title_lbl"):
                     self.automation_title_lbl.configure(text=f"⚡ {t('settings.automation_title')}")
                 if hasattr(self, "auto_champ_select_lbl"):
@@ -2664,6 +2722,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             log_callback=self.log_message,
             status_callback=self.set_replay_status,
             mute_callback=self.set_replay_mute_state,
+            voice_mode_callback=self._on_replay_voice_mode_changed_from_worker,
         )
         if getattr(self, "_replay_muted", False):
             self.replay_worker.set_mute(True)
@@ -2731,6 +2790,57 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         else:
             self._replay_muted = not getattr(self, "_replay_muted", False)
             self._update_volume_display()
+
+    def _get_voice_mode_btn_text(self, is_suppressed=None):
+        if is_suppressed is None:
+            is_suppressed = bool(self.config.get("prefer_suppressed_replay", False))
+        if is_suppressed:
+            return f"✨ {t('replay.voice_mode_suppressed')}"
+        return f"🎙️ {t('replay.voice_mode_raw')}"
+
+    def _update_voice_mode_button_visuals(self, is_suppressed):
+        if not hasattr(self, "track_toggle_btn"):
+            return
+        btn_text = self._get_voice_mode_btn_text(is_suppressed)
+        if is_suppressed:
+            self.track_toggle_btn.configure(
+                text=btn_text,
+                fg_color="#064E3B",
+                hover_color="#047857",
+                text_color="#6EE7B7",
+                border_color="#10B981",
+            )
+        else:
+            self.track_toggle_btn.configure(
+                text=btn_text,
+                fg_color=("#E2E8F0", "#1E293B"),
+                hover_color=("#CBD5E1", "#334155"),
+                text_color=("#0F172A", "#E2E8F0"),
+                border_color=("#94A3B8", "#475569"),
+            )
+
+    def _toggle_replay_voice_mode(self):
+        new_mode = not bool(self.config.get("prefer_suppressed_replay", False))
+        self.config["prefer_suppressed_replay"] = new_mode
+        save_config(self.config)
+        self._update_voice_mode_button_visuals(new_mode)
+        if getattr(self, "hud", None):
+            self.hud.set_voice_mode(new_mode)
+        if self.replay_worker:
+            self.replay_worker.set_voice_mode(new_mode)
+        else:
+            mode_label = (
+                t("replay.voice_mode_suppressed")
+                if new_mode
+                else t("replay.voice_mode_raw")
+            )
+            self.log_message(f"🎙️ Replay voice mode set to: {mode_label}")
+
+    def _on_replay_voice_mode_changed_from_worker(self, is_suppressed):
+        self.config["prefer_suppressed_replay"] = is_suppressed
+        self._update_voice_mode_button_visuals(is_suppressed)
+        if getattr(self, "hud", None):
+            self.hud.set_voice_mode(is_suppressed)
 
     def _on_replay_volume_slider_changed(self, value):
         vol = int(value)
@@ -3077,17 +3187,22 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             row.pack(fill="x", padx=6, pady=4)
             row.grid_columnconfigure(0, weight=1)
 
+            is_suppressed = "_suppressed." in filename.lower()
+            badge_icon = "✨ AI Denoised" if is_suppressed else "🎙️ Raw Audio"
+            display_title = f"{'✨' if is_suppressed else '🎵'} {filename}"
+
             name_lbl = ctk.CTkLabel(
                 row,
-                text=f"🎵 {filename}",
+                text=display_title,
                 font=ctk.CTkFont(size=13, weight="bold"),
-                text_color=("#0F172A", "#F8FAFC"),
+                text_color=("#0284C7", "#38BDF8") if is_suppressed else ("#0F172A", "#F8FAFC"),
             )
             name_lbl.grid(row=0, column=0, padx=14, pady=(8, 2), sticky="w")
 
+            meta_text = f"[{badge_icon}] • {t('recordings.meta', size=size_mb, date=dt_str)}"
             meta_lbl = ctk.CTkLabel(
                 row,
-                text=t("recordings.meta", size=size_mb, date=dt_str),
+                text=meta_text,
                 font=ctk.CTkFont(size=11),
                 text_color=("#64748B", "#94A3B8"),
             )
@@ -3211,20 +3326,14 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 else self.current_theme
             )
 
-            selected_audio_fmt_display = self.audio_format_menu.get() if hasattr(self, "audio_format_menu") else None
-            selected_audio_fmt = (
-                self.audio_format_options.get(selected_audio_fmt_display, self.config.get("audio_format", "opus"))
-                if hasattr(self, "audio_format_options") and selected_audio_fmt_display
-                else self.config.get("audio_format", "opus")
-            )
-
             new_config = {
                 **self.config,
                 "recording_mode": "native",
                 "record_folder": self.rec_folder_entry.get().strip(),
                 "vlc_dir": self.vlc_dir_entry.get().strip(),
                 "replay_volume": vol_val,
-                "audio_format": selected_audio_fmt,
+                "audio_format": "opus",
+                "ai_noise_suppression": bool(self.ai_noise_suppression_var.get()) if hasattr(self, "ai_noise_suppression_var") else True,
                 "language": selected_lang_code,
                 "theme": selected_theme_code,
                 "auto_start_champ_select": bool(self.auto_champ_select_var.get()),
@@ -3239,7 +3348,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 set_language(selected_lang_code)
                 self._set_theme(selected_theme_code)
                 if hasattr(self, "recorder_worker") and self.recorder_worker and hasattr(self.recorder_worker, "native_recorder"):
-                    self.recorder_worker.native_recorder.audio_format = selected_audio_fmt
+                    self.recorder_worker.native_recorder.audio_format = "opus"
+                    self.recorder_worker.native_recorder.set_ai_noise_suppression(new_config["ai_noise_suppression"])
                 if self.hud:
                     self.hud.set_locked(new_config["hud_locked"])
                     self.hud.set_opacity(new_config["hud_opacity"])
