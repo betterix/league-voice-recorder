@@ -52,16 +52,17 @@ class TestReplaySyncModule(unittest.TestCase):
             matched = find_matching_audio_file(tmpdir, "1234567890")
             self.assertEqual(matched, file_path)
 
-    def test_find_matching_audio_file_opus(self):
+    def test_find_matching_audio_file_only_mp3(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             opus_path = os.path.join(tmpdir, "1234567890.opus")
             with open(opus_path, "wb") as f:
                 f.write(b"x" * 20000)
 
+            # Opus is not matched because only MP3 is supported
             matched = find_matching_audio_file(tmpdir, "1234567890")
-            self.assertEqual(matched, opus_path)
+            self.assertIsNone(matched)
 
-    def test_find_matching_audio_file_prefers_opus_over_mp3(self):
+    def test_find_matching_audio_file_selects_mp3(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             mp3_path = os.path.join(tmpdir, "1234567890.mp3")
             with open(mp3_path, "wb") as f:
@@ -72,7 +73,7 @@ class TestReplaySyncModule(unittest.TestCase):
                 f.write(b"x" * 20000)
 
             matched = find_matching_audio_file(tmpdir, "1234567890")
-            self.assertEqual(matched, opus_path)
+            self.assertEqual(matched, mp3_path)
 
     def test_find_matching_audio_file_skips_stub(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -203,48 +204,16 @@ class TestReplaySyncModule(unittest.TestCase):
         sync.toggle_mute()
         self.assertTrue(sync.is_muted)
 
-    def test_find_matching_audio_file_prefer_suppressed(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            raw_path = os.path.join(tmpdir, "999999.mp3")
-            suppressed_path = os.path.join(tmpdir, "999999_suppressed.mp3")
-
-            # Create dummy files > 10KB
-            with open(raw_path, "wb") as f:
-                f.write(b"0" * 15000)
-            with open(suppressed_path, "wb") as f:
-                f.write(b"1" * 15000)
-
-            # When prefer_suppressed=False, should return raw_path
-            self.assertEqual(
-                find_matching_audio_file(tmpdir, "999999", prefer_suppressed=False),
-                raw_path,
-            )
-            # When prefer_suppressed=True, should return suppressed_path
-            self.assertEqual(
-                find_matching_audio_file(tmpdir, "999999", prefer_suppressed=True),
-                suppressed_path,
-            )
-
-    def test_find_matching_audio_file_fallback_behavior(self):
+    def test_find_matching_audio_file_legacy_fallback(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             raw_only = os.path.join(tmpdir, "111111.mp3")
             with open(raw_only, "wb") as f:
                 f.write(b"0" * 15000)
 
-            # Requesting suppressed when only raw exists -> falls back to raw
+            # Finds legacy MP3 when only MP3 exists
             self.assertEqual(
-                find_matching_audio_file(tmpdir, "111111", prefer_suppressed=True),
+                find_matching_audio_file(tmpdir, "111111"),
                 raw_only,
-            )
-
-            suppressed_only = os.path.join(tmpdir, "222222_suppressed.mp3")
-            with open(suppressed_only, "wb") as f:
-                f.write(b"0" * 15000)
-
-            # Requesting raw when only suppressed exists -> falls back to suppressed
-            self.assertEqual(
-                find_matching_audio_file(tmpdir, "222222", prefer_suppressed=False),
-                suppressed_only,
             )
 
 

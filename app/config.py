@@ -132,6 +132,7 @@ def get_clean_default_config():
         "hud_opacity": 0.85,
         "hud_x": -1,
         "hud_y": -1,
+        "audio_format": "mp3",
     }
 
 
@@ -175,7 +176,7 @@ def get_default_config():
         "hud_opacity": _parse_float(os.getenv("HUD_OPACITY", "0.85"), 0.85),
         "hud_x": _parse_int(os.getenv("HUD_X", "-1"), -1),
         "hud_y": _parse_int(os.getenv("HUD_Y", "-1"), -1),
-        "audio_format": os.getenv("AUDIO_FORMAT", "opus").lower(),
+        "audio_format": os.getenv("AUDIO_FORMAT", "mp3").lower(),
     }
 
 

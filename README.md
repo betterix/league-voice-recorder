@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://betterix.github.io/league-voice-recorder/"><img src="https://img.shields.io/badge/website-live-success?logo=googlechrome&logoColor=white" alt="Live Website" /></a>
-  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.4.3-blue?logo=github" alt="Release Version" /></a>
+  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.4.4-blue?logo=github" alt="Release Version" /></a>
   <img src="https://img.shields.io/badge/python-3.14.10-blue?logo=python&logoColor=white" alt="Python Version" />
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%2064--bit-0078D6?logo=windows&logoColor=white" alt="Platform" />
   <img src="https://img.shields.io/badge/build-passing-brightgreen?logo=githubactions&logoColor=white" alt="Build Status" />
@@ -293,7 +293,7 @@ uv run python -m app.play_replay
 
 ### Running the Automated Test Suite
 
-The project includes an automated test suite with 82 unit tests covering configuration, Discord Local IPC mute/deafen synchronization, microphone input selection, internationalization, sample-accurate recorder alignment, replay parsing and hotkey mute, in-game floating HUD game-exclusive visibility guards, and headless UI rendering:
+The project includes an automated test suite with 119 unit tests covering configuration, Discord Local IPC mute/deafen synchronization, microphone input selection, internationalization, sample-accurate recorder alignment, replay parsing and hotkey mute, in-game floating HUD game-exclusive visibility guards, zero-latency timing benchmarks, and headless UI rendering:
 
 ```powershell
 # Run tests with the Windows launcher script
@@ -321,7 +321,7 @@ Every time a new GitHub Release is published or a tag matching `v*` (e.g., `v1.0
 
 1. Spins up a clean `windows-latest` virtual environment.
 2. Installs Python 3.14.10 and dependencies via `uv`.
-3. Provisions VLC Media Player and runs the complete 82-test suite via `uv run pytest`.
+3. Provisions VLC Media Player and runs the complete 119-test suite via `uv run pytest`.
 4. Compiles the standalone distribution with Nuitka using parallel multi-core compilation (`--jobs`) and compiler caching.
 5. Packages both the **Windows Setup Installer** (`LeagueVoiceRecorder-Setup-*.exe`) and the portable **ZIP archive** (`LeagueVoiceRecorder-Windows-x64.zip`).
 6. Attaches both release assets directly to the GitHub Release.
@@ -338,7 +338,7 @@ To ensure complete transparency and player safety:
 - **Public Verification Badges**: Every [GitHub Release](https://github.com/betterix/league-voice-recorder/releases) includes direct links to the public VirusTotal scan reports and cryptographic SHA256 checksums.
 - **Independent Local Verification**: You can verify the integrity of any downloaded binary at any time in Windows PowerShell:
   ```powershell
-  Get-FileHash .\LeagueVoiceRecorder-Setup-v0.4.3.exe -Algorithm SHA256
+  Get-FileHash .\LeagueVoiceRecorder-Setup-v0.4.4.exe -Algorithm SHA256
   ```
 - **100% Riot Vanguard & Anti-Cheat Safe**: League Voice Recorder strictly utilizes official developer APIs (`127.0.0.1:2999`) and Windows WASAPI audio loopback. It contains **no memory injectors, no DLL hooks, and no game modifications**.
 
@@ -384,7 +384,7 @@ League Voice Recorder/
 │   ├── build_exe.bat       # Standalone Windows .exe compiler batch script
 │   └── virustotal_scan.py  # Automated VirusTotal scanner & release verification reporter
 │
-├── tests/                  # Automated test suite (82 unit tests)
+├── tests/                  # Automated test suite (119 unit tests)
 │   ├── __init__.py
 │   ├── test_config.py      # Config defaults, path resolution, and directory creation
 │   ├── test_discord_ipc.py # Discord Local IPC & mute silence injection

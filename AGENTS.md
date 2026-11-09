@@ -59,14 +59,16 @@ League Voice Recorder/
 │   ├── index.html          # Semantic showcase landing page
 │   └── README.md           # Web documentation & local preview guide
 │
-├── tests/                  # Automated test suite (82 unittests)
+├── tests/                  # Automated test suite (119 unittests)
 │   ├── __init__.py
 │   ├── test_config.py      # Config defaults, path resolution, and directory creation
 │   ├── test_discord_ipc.py # Discord Local IPC & mute silence injection
 │   ├── test_i18n.py        # Locale discovery, translation lookup, and key parity
+│   ├── test_overlay.py     # In-game floating HUD overlay & click-through hit-testing
 │   ├── test_recorder.py    # FFmpeg sample-accurate offset alignment & replay guard
 │   ├── test_replay_config.py # 1-Click game.cfg Replay API detection & safe backup
 │   ├── test_replay_sync.py # ROFL Game ID extraction & volume clamping
+│   ├── test_timing_accuracy.py # Zero-latency timing & sample-accurate match alignment
 │   ├── test_ui.py          # CustomTkinter headless UI & live language switching
 │   └── test_updater.py     # Release asset check, zip extraction, and in-place update
 │
@@ -189,8 +191,8 @@ Responsible for live match detection, native WASAPI voice capture, and audio exp
 - **Native WASAPI Capture (`native_audio.py`)**:
   - Captures Discord voice chat directly via Windows WASAPI Process Loopback.
   - Captures player microphone via native WASAPI (pyaudiowpatch) with dynamic input device selection and live VU visualizers.
-  - Tracks Discord mute & deafen state in real time via local IPC (\\.\pipe\discord-ipc-*). When muted, feeds synchronized silence bytes to keep timeline aligned.
-  - Automatically mixes and normalizes both streams into sample-accurate <GameID>.mp3.
+  - Tracks Discord mute & deafen state in real time via local IPC (`\\.\pipe\discord-ipc-*`). When muted, feeds synchronized silence bytes to keep timeline aligned.
+  - Automatically mixes both streams into sample-accurate studio-grade `<GameID>.opus` (160 kbps full-band audio).
 
 ### 3.3 `play_replay.py` (`ReplaySynchronizer`)
 Responsible for detecting opened `.rofl` replays and synchronizing audio playback in VLC.

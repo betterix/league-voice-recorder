@@ -3,7 +3,7 @@
 
 #define MyAppName "League Voice Recorder"
 #ifndef MyAppVersion
-#define MyAppVersion "0.4.3"
+#define MyAppVersion "0.4.4"
 #endif
 #define MyAppPublisher "betterix"
 #define MyAppURL "https://github.com/betterix/league-voice-recorder"

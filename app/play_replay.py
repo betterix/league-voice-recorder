@@ -96,9 +96,9 @@ def is_process_running(pid):
 
 def find_matching_audio_file(audio_directory, game_id, prefer_suppressed=False):
     """
-    Finds the best matching audio file for the game ID.
-    Supports <game_id>.mp3, <game_id>_suppressed.mp3, <game_id>_1.mp3, etc.
-    Prioritizes valid non-empty files (>10 KB) and honors prefer_suppressed preference with fallback.
+    Finds the best matching MP3 audio file for the game ID.
+    Supports <game_id>.mp3.
+    Prioritizes valid non-empty files (>4 KB) sorted by modification time.
     """
     if not game_id or not audio_directory or not os.path.exists(audio_directory):
         return None
@@ -109,7 +109,7 @@ def find_matching_audio_file(audio_directory, game_id, prefer_suppressed=False):
         with os.scandir(audio_directory) as it:
             for entry in it:
                 lower = entry.name.lower()
-                if entry.name.startswith(prefix) and lower.endswith((".opus", ".mp3")):
+                if entry.name.startswith(prefix) and lower.endswith(".mp3"):
                     try:
                         stat = entry.stat()
                         candidates.append((entry.path, stat.st_size, stat.st_mtime))
@@ -125,30 +125,9 @@ def find_matching_audio_file(audio_directory, game_id, prefer_suppressed=False):
     valid_candidates = [c for c in candidates if c[1] > 4 * 1024]
     pool = valid_candidates if valid_candidates else candidates
 
-    # Separate into suppressed and raw pools
-    suppressed_pool = [c for c in pool if "_suppressed" in os.path.basename(c[0]).lower()]
-    raw_pool = [c for c in pool if "_suppressed" not in os.path.basename(c[0]).lower()]
-
-    # Sort each pool prioritizing Opus (.opus) first, then modification time, then file size
-    def _rank_candidate(c):
-        is_opus = 1 if c[0].lower().endswith(".opus") else 0
-        return (is_opus, c[2], c[1])
-
-    suppressed_pool.sort(key=_rank_candidate, reverse=True)
-    raw_pool.sort(key=_rank_candidate, reverse=True)
-
-    if prefer_suppressed:
-        if suppressed_pool:
-            return suppressed_pool[0][0]
-        if raw_pool:
-            return raw_pool[0][0]
-    else:
-        if raw_pool:
-            return raw_pool[0][0]
-        if suppressed_pool:
-            return suppressed_pool[0][0]
-
-    return None
+    # Sort prioritizing newest modification time, then file size
+    pool.sort(key=lambda c: (c[2], c[1]), reverse=True)
+    return pool[0][0]
 
 
 def create_vlc_instance():
@@ -213,21 +192,17 @@ class ReplaySynchronizer:
         log_callback=None,
         status_callback=None,
         mute_callback=None,
-        voice_mode_callback=None,
     ):
         self.config = config or load_config()
         self.log_callback = log_callback
         self.status_callback = status_callback
         self.mute_callback = mute_callback
-        self.voice_mode_callback = voice_mode_callback
         self.audio_directory = self.config.get("record_folder", DEFAULT_AUDIO_DIRECTORY)
         self.volume = int(self.config.get("replay_volume", 80))
-        self.prefer_suppressed = False
         self.current_player = None
         self.vlc_instance = None
         self.current_audio_path = None
         self.current_game_id = None
-        self._pending_voice_mode = None
         self.running = False
         self.is_muted = False
         self.last_mute_toggle_time = 0.0
@@ -304,14 +279,6 @@ class ReplaySynchronizer:
             return self.is_muted
         self.last_mute_toggle_time = now
         return self.set_mute(not self.is_muted)
-
-    def set_voice_mode(self, prefer_suppressed):
-        """No-op on main branch."""
-        return False
-
-    def toggle_voice_mode(self):
-        """No-op on main branch."""
-        return False
 
     def _hotkey_listener_loop(self):
         """Background listener for M hotkey (VK_M = 0x4D) to mute/unmute replay audio."""
@@ -573,7 +540,6 @@ class ReplaySynchronizer:
         self.vlc_instance = None
         self.current_audio_path = None
         self.current_game_id = None
-        self._pending_voice_mode = None
 
     def run_loop(self):
         self.stop_event.clear()
@@ -605,7 +571,7 @@ class ReplaySynchronizer:
                 if game_id:
                     self.current_game_id = game_id
                     matched_file = find_matching_audio_file(
-                        self.audio_directory, game_id, prefer_suppressed=self.prefer_suppressed
+                        self.audio_directory, game_id
                     )
 
                     if matched_file:

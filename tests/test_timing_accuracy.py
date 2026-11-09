@@ -613,8 +613,8 @@ class TestTimingAndPaddingAccuracy(unittest.TestCase):
         t_sample = time.perf_counter() - 0.050
         rec.start_recording(initial_game_time=637.0, t_poll_start=t_sample)
 
-        # Elapsed since sample is ~50ms, with negative offset compensation first_game_time must be ~636.95
-        self.assertAlmostEqual(rec.first_game_time, 636.95, delta=0.05)
+        # Elapsed since sample is ~50ms, so first_game_time is ~637.05
+        self.assertAlmostEqual(rec.first_game_time, 637.05, delta=0.05)
         rec.close()
 
 

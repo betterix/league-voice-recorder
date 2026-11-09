@@ -26,7 +26,9 @@ body:
       label: "Application Version"
       description: "Which version of League Voice Recorder are you using?"
       options:
-        - "v0.4.2 (Latest Release)"
+        - "v0.4.4 (Latest Release)"
+        - "v0.4.3"
+        - "v0.4.2"
         - "v0.4.1"
         - "v0.4.0"
         - "v0.3.4"

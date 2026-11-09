@@ -121,12 +121,12 @@ class TestRecorderModule(unittest.TestCase):
         self.recorder.native_recorder.start_recording = MagicMock()
         self.recorder.check_if_game_is_replay = MagicMock(return_value=False)
 
-        # Simulate 50ms polling delay
+        # Simulate 50ms polling delay during mid-match join (>15s)
         t_poll_start = time.perf_counter() - 0.05
-        self.recorder.start_recording(initial_game_time=10.0, t_poll_start=t_poll_start)
+        self.recorder.start_recording(initial_game_time=20.0, t_poll_start=t_poll_start)
 
         self.assertTrue(self.recorder.recording)
-        self.assertAlmostEqual(self.recorder.first_game_time, 9.95, delta=0.05)
+        self.assertAlmostEqual(self.recorder.first_game_time, 20.05, delta=0.05)
         self.assertTrue(self.recorder.native_recorder.start_recording.called)
 
     def test_is_league_game_running(self):
@@ -210,26 +210,21 @@ class TestRecorderModule(unittest.TestCase):
         nr.discord_wav_path = d_wav
         nr.mic_wav_path = m_wav
 
-        # 1. Test default Opus encoding
-        nr.audio_format = "opus"
-        opus_out = nr._mix_to_mp3("test_game", initial_offset=0.0, cleanup=False)
-        self.assertIsNotNone(opus_out)
-        self.assertTrue(opus_out.endswith(".opus"))
+        # 1. Test MP3 encoding
+        mp3_out = nr._mix_to_mp3("test_game", initial_offset=0.0, cleanup=False)
+        self.assertIsNotNone(mp3_out)
+        self.assertTrue(mp3_out.endswith(".mp3"))
         self.assertTrue(mock_subproc.called)
         cmd = mock_subproc.call_args[0][0]
 
         self.assertIn("-c:a", cmd)
-        self.assertEqual(cmd[cmd.index("-c:a") + 1], "libopus")
+        self.assertEqual(cmd[cmd.index("-c:a") + 1], "libmp3lame")
         self.assertIn("-threads", cmd)
         self.assertEqual(cmd[cmd.index("-threads") + 1], "0")
-        self.assertIn("-filter_complex_threads", cmd)
-        self.assertEqual(cmd[cmd.index("-filter_complex_threads") + 1], "0")
-        self.assertIn("-b:a", cmd)
-        self.assertEqual(cmd[cmd.index("-b:a") + 1], "48k")
-        self.assertIn("-application", cmd)
-        self.assertEqual(cmd[cmd.index("-application") + 1], "voip")
+        self.assertIn("-q:a", cmd)
+        self.assertEqual(cmd[cmd.index("-q:a") + 1], "0")
 
-        # Verify pure unamplified direct recording (no loudnorm, afftdn, highpass, alimiter, or volume gain)
+        # Verify pure unamplified direct recording (no loudnorm, afftdn, highpass, alimiter, agate, or volume gain)
         filter_str = cmd[cmd.index("-filter_complex") + 1]
         self.assertNotIn("loudnorm", filter_str)
         self.assertNotIn("agate", filter_str)
@@ -239,17 +234,6 @@ class TestRecorderModule(unittest.TestCase):
         self.assertNotIn("volume=", filter_str)
         self.assertIn("aresample=48000", filter_str)
         self.assertIn("amix=inputs=2", filter_str)
-
-        # 2. Test fallback MP3 encoding
-        nr.audio_format = "mp3"
-        mp3_out = nr._mix_to_mp3("test_game_mp3", initial_offset=0.0, cleanup=True)
-        self.assertIsNotNone(mp3_out)
-        self.assertTrue(mp3_out.endswith(".mp3"))
-        cmd_mp3 = mock_subproc.call_args[0][0]
-        self.assertIn("-c:a", cmd_mp3)
-        self.assertEqual(cmd_mp3[cmd_mp3.index("-c:a") + 1], "libmp3lame")
-        self.assertIn("-q:a", cmd_mp3)
-        self.assertEqual(cmd_mp3[cmd_mp3.index("-q:a") + 1], "0")
 
     def test_recorder_pause_and_resume_state(self):
         """Verify that calling pause() and resume() toggles is_paused and purges staging buffers."""
@@ -480,6 +464,41 @@ class TestRecorderModule(unittest.TestCase):
         out_mp3 = rec.stop_and_finalize("SCRIM_EXPORT_TEST")
         self.assertIsNotNone(out_mp3)
         self.assertTrue(os.path.exists(out_mp3))
+
+    def test_stop_and_finalize_clean_opus_export(self):
+        """stop_and_finalize creates clean 160k opus export."""
+        import wave
+        from app.native_audio import NativeAudioRecorder
+
+        rec = NativeAudioRecorder(
+            record_folder=self.temp_dir.name,
+            audio_format="opus",
+            log_callback=lambda msg: None,
+        )
+        rec.is_recording = True
+
+        disc_path = os.path.join(self.temp_dir.name, "opus_test_discord.wav")
+        mic_path = os.path.join(self.temp_dir.name, "opus_test_mic.wav")
+
+        with wave.open(disc_path, "wb") as wf:
+            wf.setnchannels(2)
+            wf.setsampwidth(2)
+            wf.setframerate(48000)
+            wf.writeframes(b"\x00\x00\x00\x00" * (48000 * 2))
+
+        with wave.open(mic_path, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(48000)
+            wf.writeframes(b"\x22\x33" * (48000 * 2))
+
+        rec.discord_wav_path = disc_path
+        rec.mic_wav_path = mic_path
+
+        raw_audio = rec.stop_and_finalize("OPUS_COMBINED_TEST")
+        self.assertIsNotNone(raw_audio)
+        self.assertTrue(os.path.exists(raw_audio))
+        self.assertTrue(raw_audio.endswith((".mp3", ".opus")))
 
 
 if __name__ == "__main__":

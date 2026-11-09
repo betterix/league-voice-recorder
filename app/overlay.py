@@ -144,9 +144,14 @@ class LeagueOverlay:
     TRACK_END_X = 240.0
     TRACK_WIDTH = 152.0
     NUM_BARS = 36
+    REPLAY_TRACK_START_X = 16.0
+    REPLAY_TRACK_END_X = 240.0
+    REPLAY_TRACK_WIDTH = 224.0
+    REPLAY_NUM_BARS = 52
     DIVIDER_X = 250
     SLIDER_X1 = 88.0
     SLIDER_X2 = 240.0
+    SLIDER_WIDTH = 152.0
     LOCK_X = 332
     LOCK_Y = 22
     TIMER_X = 300
@@ -192,7 +197,6 @@ class LeagueOverlay:
         on_volume_changed: Callable[[int], None] | None = None,
         on_position_changed: Callable[[int, int], None] | None = None,
         on_lock_changed: Callable[[bool], None] | None = None,
-        on_voice_mode_toggle: Callable[[], None] | None = None,
     ) -> None:
         self.master = master
         self.opacity = max(0.3, min(1.0, float(opacity)))
@@ -201,11 +205,9 @@ class LeagueOverlay:
         self.on_volume_changed = on_volume_changed
         self.on_position_changed = on_position_changed
         self.on_lock_changed = on_lock_changed
-        self.on_voice_mode_toggle = on_voice_mode_toggle
 
         self.mode = "RECORD"  # "RECORD" or "REPLAY"
         self.is_visible = False
-        self.prefer_suppressed = False
 
         # Live state variables
         self.time_str = "00:00"
@@ -267,7 +269,7 @@ class LeagueOverlay:
         self.canvas.bind("<Button-3>", self._on_right_click)
         self.canvas.bind("<Motion>", self._on_mouse_hover)
 
-        # Dedicated transparent hit-test windows for Lock icon and Volume slider in click-through mode
+        # Dedicated transparent hit-test windows for Lock icon and Volume slider
         self.lock_hit_win = None
         self.volume_hit_win = None
         self._init_lock_hit_window()
@@ -444,10 +446,6 @@ class LeagueOverlay:
         canvas_x = self.SLIDER_X1 - 6 + event.x
         self._update_volume_from_mouse(canvas_x)
 
-    def set_voice_mode(self, prefer_suppressed: bool) -> None:
-        """Legacy helper for voice mode state compatibility."""
-        self.prefer_suppressed = bool(prefer_suppressed)
-
     def _sync_hit_windows(self) -> None:
         """Synchronizes all hit-test windows (lock icon, volume slider) with the overlay position."""
         self._sync_lock_hit_window()
@@ -529,6 +527,7 @@ class LeagueOverlay:
                 self.volume_hit_win.withdraw()
             except Exception:
                 pass
+
 
     def reset_position(self) -> None:
         """Resets HUD position back to top-right screen corner."""
@@ -741,20 +740,10 @@ class LeagueOverlay:
         )
 
     def _render_replay_content(self) -> None:
-        """Renders the Replay Overlay (AUDIO wave with playhead, VOLUME slider, REPLAY, Timer, Lock)."""
-        # Row 1: AUDIO Label
-        self.canvas.create_text(
-            16,
-            22,
-            text="AUDIO",
-            anchor="w",
-            fill=self.COLOR_LABEL,
-            font=("Segoe UI", 10, "bold"),
-        )
-
-        # Row 1: Audio waveform vertical bars with moving playhead cursor
+        """Renders the Replay Overlay (Audio wave with playhead, VOLUME slider, REPLAY, Timer, Lock)."""
+        # Row 1: Audio waveform vertical bars with moving playhead cursor (expanded across full width)
         progress = max(0.0, min(1.0, self.current_time / self.total_duration))
-        cursor_x = self.TRACK_START_X + progress * self.TRACK_WIDTH
+        cursor_x = self.REPLAY_TRACK_START_X + progress * self.REPLAY_TRACK_WIDTH
 
         # Draw played portion (Teal) and upcoming portion (Muted slate)
         played_bars, upcoming_bars = self._split_waveform(cursor_x, audio_level=self.audio_level)
@@ -804,7 +793,7 @@ class LeagueOverlay:
         slider_x1, slider_x2 = self.SLIDER_X1, self.SLIDER_X2
         effective_vol = 0 if self.is_muted else self.volume
         vol_pct = max(0.0, min(1.0, effective_vol / 200.0))
-        knob_x = slider_x1 + vol_pct * self.TRACK_WIDTH
+        knob_x = slider_x1 + vol_pct * self.SLIDER_WIDTH
 
         # Background track capsule
         self.canvas.create_line(
@@ -880,10 +869,10 @@ class LeagueOverlay:
     # ==========================================
     def _generate_static_waveform(self) -> list[tuple[float, float, float]]:
         """Generates baseline vertical bar coordinates (x, y1, y2) for the replay audio track."""
-        width = self.TRACK_WIDTH
-        start_x = self.TRACK_START_X
+        width = self.REPLAY_TRACK_WIDTH
+        start_x = self.REPLAY_TRACK_START_X
         center_y = 22.0
-        num_bars = self.NUM_BARS
+        num_bars = self.REPLAY_NUM_BARS
         step = width / (num_bars - 1)
         bars = []
 
@@ -1099,7 +1088,7 @@ class LeagueOverlay:
     def _update_volume_from_mouse(self, mouse_x: float) -> None:
         """Computes volume percentage from mouse X coordinate in slider track."""
         clamped_x = max(self.SLIDER_X1, min(self.SLIDER_X2, mouse_x))
-        pct = round(((clamped_x - self.SLIDER_X1) / self.TRACK_WIDTH) * 200)
+        pct = round(((clamped_x - self.SLIDER_X1) / self.SLIDER_WIDTH) * 200)
         self.volume = pct
         self.render()
         if self.on_volume_changed:
@@ -1170,11 +1159,11 @@ LeagueOverlay._RESTING_DISCORD_BARS = tuple(
 )
 LeagueOverlay._REPLAY_HARMONICS = tuple(
     (
-        (0.40 + 0.60 * (math.sin((_i / (LeagueOverlay.NUM_BARS - 1)) * math.pi) ** 0.6)) * 4.5,
-        (_i / (LeagueOverlay.NUM_BARS - 1)) * 5.0 * math.pi,
-        (_i / (LeagueOverlay.NUM_BARS - 1)) * 10.0 * math.pi,
+        (0.40 + 0.60 * (math.sin((_i / (LeagueOverlay.REPLAY_NUM_BARS - 1)) * math.pi) ** 0.6)) * 4.5,
+        (_i / (LeagueOverlay.REPLAY_NUM_BARS - 1)) * 5.0 * math.pi,
+        (_i / (LeagueOverlay.REPLAY_NUM_BARS - 1)) * 10.0 * math.pi,
     )
-    for _i in range(LeagueOverlay.NUM_BARS)
+    for _i in range(LeagueOverlay.REPLAY_NUM_BARS)
 )
 
 # Backward-compatibility alias

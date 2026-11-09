@@ -67,9 +67,6 @@
         "stop_btn": "⏹ Stop Replay Auto-Sync",
         "stopping_btn": "Stopping...",
         "volume": "Volume",
-        "voice_track": "Voice Track",
-        "voice_mode_raw": "Standard Comms",
-        "voice_mode_suppressed": "AI Suppressed",
         "muted_label": "MUTED (M)",
         "hotkey_hint": "Press M to Mute/Unmute replay voice",
         "info": "• Auto-detects opened .rofl replay in League\n• Matches Game ID & syncs voice in VLC with replay time"
@@ -100,9 +97,6 @@
         "vlc_dir": "VLC Directory:",
         "browse": "Browse...",
         "replay_volume": "Replay Volume (%):",
-        "audio_format": "Audio Format:",
-        "audio_format_opus": "Opus (.opus) [Recommended - 70% smaller]",
-        "audio_format_mp3": "MP3 (.mp3) [Legacy]",
         "interface_title": "Interface & Audio Input",
         "automation_title": "Match Automation & Workflow",
         "language": "Interface Language:",
@@ -111,8 +105,6 @@
         "theme_light": "Light ☀️",
         "theme_system": "System Default 💻",
         "mic_device": "Microphone Input:",
-        "ai_noise_suppression": "AI Noise Suppression (RNNoise):",
-        "ai_noise_suppression_info": "Filters mechanical keyboard clicks & background noise, exporting <GameID>_suppressed.mp3",
         "auto_start_champ_select": "Auto-Start in Champ Select:",
         "auto_start_champ_select_info": "Automatically starts recording watcher when entering Champion Select",
         "auto_start_replay": "Auto-Start Replay Sync:",
@@ -196,9 +188,6 @@
         "replay_watcher_stopped": "🛑 Replay Auto-Sync stopped.",
         "vlc_end_reload": "ℹ️ Audio reached end, reloaded for seeking.",
         "replay_api_waiting": "ℹ️ Replay API not responding yet ({error}), waiting...",
-        "replay_init_wait": "⏳ Waiting for League replay engine to initialize...",
-        "voice_mode_switched": "🔀 Switched replay audio to: {mode} ({file})",
-        "voice_mode_no_alternate": "ℹ️ No alternate voice track found for {file}",
-        "voice_mode_file_not_found": "⚠️ Target audio track not found on disk."
+        "replay_init_wait": "⏳ Waiting for League replay engine to initialize..."
     }
 }

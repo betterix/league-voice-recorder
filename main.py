@@ -869,20 +869,39 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 native_rec = self._preview_native_recorder
 
             if native_rec:
-                app_l, mic_l = native_rec.poll_audio_levels()
+                raw_app_l, raw_mic_l = native_rec.poll_audio_levels()
                 is_discord_muted = getattr(native_rec, "is_discord_muted", lambda: False)()
 
-                # Throttled redraw: only redraw app meter if level changed significantly
+                # Smooth ballistic interpolation for App audio (Discord)
+                if not hasattr(self, "_smooth_app_l"):
+                    self._smooth_app_l = 0.0
+                if raw_app_l > self._smooth_app_l:
+                    # Snappy attack: jump towards peak quickly
+                    self._smooth_app_l = self._smooth_app_l * 0.35 + raw_app_l * 0.65
+                else:
+                    # Silky exponential decay
+                    self._smooth_app_l = max(0.0, self._smooth_app_l * 0.84)
+                if self._smooth_app_l < 0.002:
+                    self._smooth_app_l = 0.0
+
+                disp_app = round(self._smooth_app_l, 4)
                 last_app_l = getattr(self, "_last_rendered_app_l", -1.0)
-                if abs(app_l - last_app_l) > 0.015 or (app_l == 0.0 and last_app_l > 0.0):
-                    app_color = "#22C55E" if app_l < 0.65 else ("#EAB308" if app_l < 0.85 else "#EF4444")
+                if abs(disp_app - last_app_l) > 0.003 or (disp_app == 0.0 and last_app_l > 0.0):
+                    app_color = "#22C55E" if disp_app < 0.65 else ("#EAB308" if disp_app < 0.85 else "#EF4444")
                     if getattr(self, "_last_app_color", None) != app_color:
                         self.app_meter_bar.configure(progress_color=app_color)
                         self._last_app_color = app_color
-                    self.app_meter_bar.set(app_l)
-                    self._last_rendered_app_l = app_l
+                    self.app_meter_bar.set(disp_app)
+                    self._last_rendered_app_l = disp_app
+
+                # Smooth ballistic interpolation for Microphone
+                if not hasattr(self, "_smooth_mic_l"):
+                    self._smooth_mic_l = 0.0
 
                 if is_discord_muted:
+                    self._smooth_mic_l = max(0.0, self._smooth_mic_l * 0.70)
+                    if self._smooth_mic_l < 0.002:
+                        self._smooth_mic_l = 0.0
                     if getattr(self, "_last_mic_muted_state", None) is not True:
                         self._last_mic_muted_state = True
                         self.mic_meter_title.configure(
@@ -901,15 +920,27 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                             text=f"🎤 {t('record.microphone')}:",
                             text_color="#94A3B8",
                         )
-                    # Throttled redraw: only redraw mic meter if level changed significantly
+                    if raw_mic_l > self._smooth_mic_l:
+                        # Snappy attack: jump towards peak quickly
+                        self._smooth_mic_l = self._smooth_mic_l * 0.35 + raw_mic_l * 0.65
+                    else:
+                        # Silky exponential decay
+                        self._smooth_mic_l = max(0.0, self._smooth_mic_l * 0.84)
+                    if self._smooth_mic_l < 0.002:
+                        self._smooth_mic_l = 0.0
+
+                    disp_mic = round(self._smooth_mic_l, 4)
                     last_mic_l = getattr(self, "_last_rendered_mic_l", -1.0)
-                    if abs(mic_l - last_mic_l) > 0.015 or (mic_l == 0.0 and last_mic_l > 0.0):
-                        mic_color = "#0284C7" if mic_l < 0.65 else ("#EAB308" if mic_l < 0.85 else "#EF4444")
+                    if abs(disp_mic - last_mic_l) > 0.003 or (disp_mic == 0.0 and last_mic_l > 0.0):
+                        mic_color = "#0284C7" if disp_mic < 0.65 else ("#EAB308" if disp_mic < 0.85 else "#EF4444")
                         if getattr(self, "_last_mic_color", None) != mic_color:
                             self.mic_meter_bar.configure(progress_color=mic_color)
                             self._last_mic_color = mic_color
-                        self.mic_meter_bar.set(mic_l)
-                        self._last_rendered_mic_l = mic_l
+                        self.mic_meter_bar.set(disp_mic)
+                        self._last_rendered_mic_l = disp_mic
+
+                app_l = disp_app
+                mic_l = disp_mic
 
             # Live HUD overlay visibility & waveform synchronization (in-game only)
             cur_mic = mic_l if "mic_l" in locals() else 0.0
@@ -920,7 +951,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             )
         except Exception:
             pass
-        self._meter_timer = self.after(75, self._update_audio_meters)
+        self._meter_timer = self.after(30, self._update_audio_meters)
 
     def _setup_tab_log(self, parent):
         parent.grid_columnconfigure(0, weight=1)
@@ -1198,40 +1229,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.replay_vol_entry.bind("<FocusOut>", self._on_settings_entry_changed)
         self.replay_vol_entry.bind("<Return>", self._on_settings_entry_changed)
         self.replay_vol_entry.bind("<KeyRelease>", self._on_settings_entry_debounced)
-
-        # Audio Format (Opus vs MP3)
-        self.audio_format_lbl = ctk.CTkLabel(
-            card_storage,
-            text=t("settings.audio_format"),
-            font=ctk.CTkFont(size=11, weight="bold"),
-            text_color=("#0F172A", "#CBD5E1"),
-        )
-        self.audio_format_lbl.grid(row=4, column=0, padx=(14, 8), pady=(6, 12), sticky="w")
-
-        curr_fmt = str(self.config.get("audio_format", "opus")).lower()
-        self.audio_format_options = {
-            t("settings.audio_format_opus"): "opus",
-            t("settings.audio_format_mp3"): "mp3",
-        }
-        self.audio_format_code_to_display = {v: k for k, v in self.audio_format_options.items()}
-        curr_fmt_disp = self.audio_format_code_to_display.get(curr_fmt, t("settings.audio_format_opus"))
-
-        self.audio_format_menu = ctk.CTkOptionMenu(
-            card_storage,
-            values=list(self.audio_format_options.keys()),
-            command=self._on_audio_format_selected,
-            height=32,
-            fg_color=("#F8FAFC", "#070D1E"),
-            button_color=("#E2E8F0", "#0F1A36"),
-            button_hover_color=("#CBD5E1", "#1E2A4A"),
-            dropdown_fg_color=("#FFFFFF", "#0A1224"),
-            dropdown_hover_color=("#F1F5F9", "#162244"),
-            dropdown_text_color=("#0F172A", "#E2E8F0"),
-            text_color=("#0F172A", "#F8FAFC"),
-            corner_radius=6,
-        )
-        self.audio_format_menu.set(curr_fmt_disp)
-        self.audio_format_menu.grid(row=4, column=1, padx=6, pady=(6, 12), sticky="w")
 
         # -------------------------------------------------------------
         # CARD 2: INTERFACE & AUDIO INPUT
@@ -2086,15 +2083,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             if disp and self.theme_menu.get() != disp:
                 self.theme_menu.set(disp)
 
-    def _on_audio_format_selected(self, chosen_display):
-        if hasattr(self, "audio_format_options"):
-            fmt_code = self.audio_format_options.get(chosen_display, "opus")
-            self.config["audio_format"] = fmt_code
-            save_config(self.config)
-            if hasattr(self, "recorder_worker") and self.recorder_worker and hasattr(self.recorder_worker, "native_recorder"):
-                self.recorder_worker.native_recorder.audio_format = fmt_code
-            self.log_message(f"🎵 {t('settings.audio_format')}: {fmt_code.upper()}")
-
     def _on_language_selected(self, selected_name):
         code = self.lang_name_to_code.get(selected_name, "en")
         if code != get_language():
@@ -2171,18 +2159,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.vlc_dir_lbl.configure(text=t("settings.vlc_dir"))
                 self.browse_vlc_btn.configure(text=t("settings.browse"))
                 self.replay_vol_lbl.configure(text=t("settings.replay_volume"))
-                if hasattr(self, "audio_format_lbl"):
-                    self.audio_format_lbl.configure(text=t("settings.audio_format"))
-                    self.audio_format_options = {
-                        t("settings.audio_format_opus"): "opus",
-                        t("settings.audio_format_mp3"): "mp3",
-                    }
-                    self.audio_format_code_to_display = {v: k for k, v in self.audio_format_options.items()}
-                    self.audio_format_menu.configure(values=list(self.audio_format_options.keys()))
-                    curr_fmt = str(self.config.get("audio_format", "opus")).lower()
-                    curr_fmt_disp = self.audio_format_code_to_display.get(curr_fmt, t("settings.audio_format_opus"))
-                    if self.audio_format_menu.get() != curr_fmt_disp:
-                        self.audio_format_menu.set(curr_fmt_disp)
                 if hasattr(self, "interface_title_lbl"):
                     self.interface_title_lbl.configure(text=f"🌐 {t('settings.interface_title')}")
                 self.lang_lbl.configure(text=t("settings.language"))
@@ -3042,7 +3018,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         if not os.path.exists(folder):
             os.makedirs(folder, exist_ok=True)
 
-        files = [f for f in os.listdir(folder) if f.lower().endswith((".opus", ".mp3"))]
+        files = [f for f in os.listdir(folder) if f.lower().endswith(".mp3")]
         files.sort(key=lambda x: os.path.getmtime(os.path.join(folder, x)), reverse=True)
 
         total_size_bytes = sum(os.path.getsize(os.path.join(folder, f)) for f in files)
@@ -3211,20 +3187,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 else self.current_theme
             )
 
-            selected_audio_fmt_display = self.audio_format_menu.get() if hasattr(self, "audio_format_menu") else None
-            selected_audio_fmt = (
-                self.audio_format_options.get(selected_audio_fmt_display, self.config.get("audio_format", "opus"))
-                if hasattr(self, "audio_format_options") and selected_audio_fmt_display
-                else self.config.get("audio_format", "opus")
-            )
-
             new_config = {
                 **self.config,
                 "recording_mode": "native",
                 "record_folder": self.rec_folder_entry.get().strip(),
                 "vlc_dir": self.vlc_dir_entry.get().strip(),
                 "replay_volume": vol_val,
-                "audio_format": selected_audio_fmt,
+                "audio_format": "mp3",
                 "language": selected_lang_code,
                 "theme": selected_theme_code,
                 "auto_start_champ_select": bool(self.auto_champ_select_var.get()),
@@ -3239,7 +3208,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 set_language(selected_lang_code)
                 self._set_theme(selected_theme_code)
                 if hasattr(self, "recorder_worker") and self.recorder_worker and hasattr(self.recorder_worker, "native_recorder"):
-                    self.recorder_worker.native_recorder.audio_format = selected_audio_fmt
+                    self.recorder_worker.native_recorder.audio_format = "mp3"
+                    self.recorder_worker.native_recorder.set_ai_noise_suppression(new_config["ai_noise_suppression"])
                 if self.hud:
                     self.hud.set_locked(new_config["hud_locked"])
                     self.hud.set_opacity(new_config["hud_opacity"])

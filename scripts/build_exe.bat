@@ -130,6 +130,7 @@ for %%d in (msvcp140.dll msvcp140_1.dll msvcp140_2.dll msvcp140_atomic_wait.dll 
     )
 )
 
+
 echo [OK] Standalone distribution assembled in dist\LeagueVoiceRecorder\
 
 echo.
