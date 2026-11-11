@@ -86,6 +86,46 @@ class TestConfigModule(unittest.TestCase):
         self.assertIn("record_folder", reloaded)
         self.assertIn("vlc_dir", reloaded)
 
+    def test_secret_dpapi_encryption_and_safe_storage(self):
+        import json
+        from app.config import (
+            decrypt_secret,
+            encrypt_secret,
+            get_config_file_path,
+            load_config,
+            save_config,
+        )
+
+        # 1. Test DPAPI round-trip
+        secret_sample = "lvr_upload_sample_token_xyz987"
+        encrypted = encrypt_secret(secret_sample)
+        self.assertNotEqual(secret_sample, encrypted)
+        self.assertTrue(len(encrypted) > 10)
+        decrypted = decrypt_secret(encrypted)
+        self.assertEqual(secret_sample, decrypted)
+
+        # 2. Test saving plaintext key is automatically encrypted on disk
+        save_config({
+            "remote_server_url": "https://scrims.example.com:8443",
+            "remote_api_key": secret_sample,
+            "remote_auto_upload": True,
+        })
+
+        # Inspect on-disk file directly
+        cfg_path = get_config_file_path()
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            disk_content = json.load(f)
+
+        self.assertNotIn("remote_api_key", disk_content, "Plaintext API key must NEVER be saved to disk!")
+        self.assertIn("remote_api_key_encrypted", disk_content)
+        self.assertNotEqual(disk_content["remote_api_key_encrypted"], secret_sample)
+
+        # 3. Test load_config provides decrypted key in memory
+        loaded = load_config()
+        self.assertEqual(loaded.get("remote_api_key"), secret_sample)
+        self.assertEqual(loaded.get("remote_server_url"), "https://scrims.example.com:8443")
+        self.assertTrue(loaded.get("remote_auto_upload"))
+
 
 if __name__ == "__main__":
     unittest.main()

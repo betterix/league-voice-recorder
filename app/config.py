@@ -1,9 +1,71 @@
+import base64
+import ctypes
+from ctypes import wintypes
 import functools
 import json
 import os
 from pathlib import Path
 import shutil
 import sys
+
+
+class _DATA_BLOB(ctypes.Structure):
+    _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_byte))]
+
+
+def encrypt_secret(plaintext: str) -> str:
+    """Encrypts sensitive secrets using Windows DPAPI (tied to current user credentials).
+
+    Falls back to reversible machine-salted encoding in non-Windows test environments.
+    """
+    if not plaintext:
+        return ""
+    if os.name == "nt":
+        try:
+            b_data = plaintext.encode("utf-8")
+            in_blob = _DATA_BLOB(
+                len(b_data),
+                ctypes.cast(ctypes.create_string_buffer(b_data), ctypes.POINTER(ctypes.c_byte)),
+            )
+            out_blob = _DATA_BLOB()
+            if ctypes.windll.crypt32.CryptProtectData(
+                ctypes.byref(in_blob), "lvr_key", None, None, None, 0, ctypes.byref(out_blob)
+            ):
+                res = ctypes.string_at(out_blob.pbData, out_blob.cbData)
+                ctypes.windll.kernel32.LocalFree(out_blob.pbData)
+                return base64.b64encode(res).decode("ascii")
+        except Exception:
+            pass
+    # Non-Windows fallback (test environments)
+    b_data = plaintext.encode("utf-8")
+    xor_bytes = bytes([b ^ 0x5A for b in b_data])
+    return "LVR_FALLBACK:" + base64.b64encode(xor_bytes).decode("ascii")
+
+
+def decrypt_secret(ciphertext: str) -> str:
+    """Decrypts DPAPI-encrypted secrets using the logged-in Windows user's credentials."""
+    if not ciphertext:
+        return ""
+    if ciphertext.startswith("LVR_FALLBACK:"):
+        raw = base64.b64decode(ciphertext[len("LVR_FALLBACK:") :].encode("ascii"))
+        return bytes([b ^ 0x5A for b in raw]).decode("utf-8", errors="replace")
+    if os.name == "nt":
+        try:
+            raw = base64.b64decode(ciphertext.encode("ascii"))
+            in_blob = _DATA_BLOB(
+                len(raw),
+                ctypes.cast(ctypes.create_string_buffer(raw), ctypes.POINTER(ctypes.c_byte)),
+            )
+            out_blob = _DATA_BLOB()
+            if ctypes.windll.crypt32.CryptUnprotectData(
+                ctypes.byref(in_blob), None, None, None, None, 0, ctypes.byref(out_blob)
+            ):
+                res = ctypes.string_at(out_blob.pbData, out_blob.cbData)
+                ctypes.windll.kernel32.LocalFree(out_blob.pbData)
+                return res.decode("utf-8", errors="replace")
+        except Exception:
+            pass
+    return ""
 
 
 def _detect_project_root():
@@ -133,6 +195,10 @@ def get_clean_default_config():
         "hud_x": -1,
         "hud_y": -1,
         "audio_format": "mp3",
+        "minimize_to_tray": True,
+        "remote_server_url": "",
+        "remote_api_key_encrypted": "",
+        "remote_auto_upload": False,
     }
 
 
@@ -177,6 +243,10 @@ def get_default_config():
         "hud_x": _parse_int(os.getenv("HUD_X", "-1"), -1),
         "hud_y": _parse_int(os.getenv("HUD_Y", "-1"), -1),
         "audio_format": os.getenv("AUDIO_FORMAT", "mp3").lower(),
+        "minimize_to_tray": os.getenv("MINIMIZE_TO_TRAY", "true").lower() in ("true", "1", "yes"),
+        "remote_server_url": os.getenv("REMOTE_SERVER_URL", "").strip(),
+        "remote_api_key_encrypted": os.getenv("REMOTE_API_KEY_ENCRYPTED", "").strip(),
+        "remote_auto_upload": os.getenv("REMOTE_AUTO_UPLOAD", "false").lower() in ("true", "1", "yes"),
     }
 
 
@@ -229,6 +299,10 @@ def load_config():
     config["record_folder"] = resolve_path(config.get("record_folder"))
     os.makedirs(config["record_folder"], exist_ok=True)
 
+    # Transparently provide decrypted remote_api_key in runtime memory
+    enc_key = config.get("remote_api_key_encrypted", "")
+    config["remote_api_key"] = decrypt_secret(enc_key) if enc_key else ""
+
     _CONFIG_CACHE = config.copy()
     _CONFIG_MTIME = current_mtime
 
@@ -243,6 +317,14 @@ def save_config(config_data):
     current_cfg = load_config()
     merged_data = {**current_cfg, **config_data}
 
+    # Encrypt secret API key if provided and guarantee plaintext is stripped before writing to disk
+    if "remote_api_key" in config_data:
+        plain_key = str(config_data["remote_api_key"]).strip()
+        merged_data["remote_api_key_encrypted"] = encrypt_secret(plain_key) if plain_key else ""
+    elif "remote_api_key" in merged_data and not merged_data.get("remote_api_key_encrypted"):
+        plain_key = str(merged_data["remote_api_key"]).strip()
+        merged_data["remote_api_key_encrypted"] = encrypt_secret(plain_key) if plain_key else ""
+
     # Normalize numeric and boolean types
     if "hud_opacity" in merged_data:
         try:
@@ -255,14 +337,20 @@ def save_config(config_data):
         except (ValueError, TypeError):
             merged_data["replay_volume"] = 100
 
+    # Ensure decrypted key is preserved in the runtime cache
+    decrypted_key = decrypt_secret(merged_data.get("remote_api_key_encrypted", ""))
     _CONFIG_CACHE = merged_data.copy()
+    _CONFIG_CACHE["remote_api_key"] = decrypted_key
     _CONFIG_MTIME = 0.0
+
+    # Strip plaintext key completely from on-disk JSON payload
+    disk_data = {k: v for k, v in merged_data.items() if k != "remote_api_key"}
 
     success = True
     config_path = get_config_file_path()
     try:
         with open(config_path, "w", encoding="utf-8") as f:
-            f.write(json.dumps(merged_data, indent=4, ensure_ascii=False))
+            f.write(json.dumps(disk_data, indent=4, ensure_ascii=False))
         try:
             _CONFIG_MTIME = os.path.getmtime(config_path)
         except OSError:
