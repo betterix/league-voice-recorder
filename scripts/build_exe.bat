@@ -72,6 +72,8 @@ uv run --python 3.14.10 python -m nuitka ^
     --include-package=proctap ^
     --include-package=pyaudiowpatch ^
     --include-package=pycaw ^
+    --include-package=pystray ^
+    --include-package=PIL ^
     --nofollow-import-to=scipy ^
     --nofollow-import-to=unittest ^
     --nofollow-import-to=doctest ^

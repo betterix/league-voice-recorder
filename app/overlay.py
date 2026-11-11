@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import math
+import os
 import sys
 import tkinter as tk
 
@@ -235,7 +236,18 @@ class LeagueOverlay:
         self.window = tk.Toplevel(self.master)
         self.window.withdraw()
         self.window.overrideredirect(True)
-        self.window.attributes("-topmost", True)
+        if not (os.environ.get("LVR_TEST_MODE") or os.environ.get("PYTEST_CURRENT_TEST")):
+            self.window.attributes("-topmost", True)
+
+        try:
+            wid = self.window.winfo_id()
+            if sys.platform == "win32":
+                import ctypes
+
+                parent = ctypes.windll.user32.GetParent(wid)
+                set_window_no_activate(int(parent if parent else wid))
+        except Exception:
+            pass
 
         try:
             self.window.attributes("-alpha", self.opacity)
@@ -366,8 +378,9 @@ class LeagueOverlay:
                 hy = wy + self.LOCK_Y - 14
                 self.lock_hit_win.geometry(f"28x28+{hx}+{hy}")
                 self.lock_hit_win.deiconify()
-                self.lock_hit_win.attributes("-topmost", True)
-                self.lock_hit_win.attributes("-alpha", 0.01)
+                if not (os.environ.get("LVR_TEST_MODE") or os.environ.get("PYTEST_CURRENT_TEST")):
+                    self.lock_hit_win.attributes("-topmost", True)
+                    self.lock_hit_win.attributes("-alpha", 0.01)
                 try:
                     wid = self.lock_hit_win.winfo_id()
                     if sys.platform == "win32":
@@ -422,8 +435,9 @@ class LeagueOverlay:
                 vh = 24
                 self.volume_hit_win.geometry(f"{vw}x{vh}+{vx}+{vy}")
                 self.volume_hit_win.deiconify()
-                self.volume_hit_win.attributes("-topmost", True)
-                self.volume_hit_win.attributes("-alpha", 0.01)
+                if not (os.environ.get("LVR_TEST_MODE") or os.environ.get("PYTEST_CURRENT_TEST")):
+                    self.volume_hit_win.attributes("-topmost", True)
+                    self.volume_hit_win.attributes("-alpha", 0.01)
                 try:
                     wid = self.volume_hit_win.winfo_id()
                     if sys.platform == "win32":
@@ -502,14 +516,16 @@ class LeagueOverlay:
     def show(self) -> None:
         """Displays the floating HUD."""
         self.is_visible = True
-        self.window.deiconify()
-        try:
-            self.window.attributes("-alpha", self.opacity)
-            self.window.attributes("-topmost", True)
-        except Exception:
-            pass
-        self.window.update_idletasks()
-        self._apply_click_through(self.locked)
+        is_test = bool(os.environ.get("LVR_TEST_MODE") or os.environ.get("PYTEST_CURRENT_TEST"))
+        if not is_test:
+            self.window.deiconify()
+            try:
+                self.window.attributes("-alpha", self.opacity)
+                self.window.attributes("-topmost", True)
+            except Exception:
+                pass
+            self.window.update_idletasks()
+            self._apply_click_through(self.locked)
         self._sync_hit_windows()
         self.render()
 
@@ -635,7 +651,7 @@ class LeagueOverlay:
             self.LOCK_Y,
             text=lock_icon,
             anchor="center",
-            font=("Segoe UI Emoji", 10),
+            font=("Segoe UI", 10),
             fill=lock_color,
         )
 
