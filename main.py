@@ -3480,9 +3480,11 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             )
             badge.pack(side="left", padx=8)
 
+            remote_patch = item.get("patch") or item.get("game_patch") or ""
+            date_display = f"{date_str}  |  Patch: {remote_patch}" if remote_patch else date_str
             meta_lbl = ctk.CTkLabel(
                 row,
-                text=t("recordings.remote_meta", size=size_mb, date=date_str),
+                text=t("recordings.remote_meta", size=size_mb, date=date_display),
                 font=ctk.CTkFont(size=11),
                 text_color=("#64748B", "#94A3B8"),
             )
@@ -3589,6 +3591,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             )
             badge.pack(side="left", padx=8)
 
+            patch = meta.get("game_patch", "")
+            date_display = f"{recorded_date}  |  Patch: {patch}" if patch else recorded_date
             notes_preview = (
                 f"  |  \"{saved_notes[:35]}...\""
                 if len(saved_notes) > 35
@@ -3596,7 +3600,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             )
             meta_lbl = ctk.CTkLabel(
                 row,
-                text=t("recordings.meta", size=size_mb, date=recorded_date) + notes_preview,
+                text=t("recordings.meta", size=size_mb, date=date_display) + notes_preview,
                 font=ctk.CTkFont(size=11),
                 text_color=("#64748B", "#94A3B8"),
             )
@@ -3854,6 +3858,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             meta = get_scrim_metadata(folder, game_id, file_path)
             team_tag = meta.get("team_tag", "")
             notes = meta.get("notes", "")
+            patch = meta.get("game_patch", "")
 
             client = CloudSyncClient(server_url=url, api_key=key)
 
@@ -3869,6 +3874,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                                 "file_size": os.path.getsize(file_path),
                                 "team_tag": team_tag,
                                 "notes": notes,
+                                "patch": patch,
                             })
                     self._refresh_recordings_list()
 
@@ -3878,7 +3884,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             # Perform the upload
             self.log_message(t("logs.cloud_upload_start", filename=f"{game_id}.mp3"))
             success, res = client.upload_recording(
-                game_id, file_path, team_tag=team_tag, notes=notes, check_first=False
+                game_id, file_path, team_tag=team_tag, notes=notes, game_patch=patch, check_first=False
             )
 
             def _ui():
@@ -3891,6 +3897,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                                 "file_size": os.path.getsize(file_path),
                                 "team_tag": team_tag,
                                 "notes": notes,
+                                "patch": patch,
                                 "created_at": datetime.datetime.now().isoformat(),
                             })
                 else:
@@ -3914,7 +3921,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         # Dialog window
         dialog = ctk.CTkToplevel(self)
         dialog.title(f"{t('recordings.details_title')} — {game_id}.mp3")
-        dialog.geometry("490x440")
+        dialog.geometry("490x495")
         dialog.resizable(False, False)
         dialog.transient(self)
         if not getattr(self, "_in_test_suite", False):
@@ -3923,7 +3930,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         # Center over parent
         try:
             px = self.winfo_x() + (self.winfo_width() - 490) // 2
-            py = self.winfo_y() + (self.winfo_height() - 440) // 2
+            py = self.winfo_y() + (self.winfo_height() - 495) // 2
             dialog.geometry(f"+{max(0, px)}+{max(0, py)}")
         except Exception:
             pass
@@ -3971,13 +3978,32 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         date_entry.insert(0, default_date)
         date_entry.grid(row=2, column=1, padx=16, pady=6, sticky="ew")
 
-        # Row 2: Team Tag
+        # Row 2: Game Patch (e.g. 14.22)
+        patch_lbl = ctk.CTkLabel(
+            container,
+            text=t("recordings.field_patch"),
+            font=ctk.CTkFont(size=12, weight="bold"),
+        )
+        patch_lbl.grid(row=3, column=0, padx=16, pady=6, sticky="w")
+
+        patch_entry = ctk.CTkEntry(
+            container,
+            placeholder_text=t("recordings.field_patch_placeholder"),
+            font=ctk.CTkFont(size=12),
+            height=32,
+        )
+        saved_patch = meta.get("game_patch", "")
+        if saved_patch:
+            patch_entry.insert(0, saved_patch)
+        patch_entry.grid(row=3, column=1, padx=16, pady=6, sticky="ew")
+
+        # Row 3: VS Opponent Team
         team_lbl = ctk.CTkLabel(
             container,
             text=t("recordings.field_team"),
             font=ctk.CTkFont(size=12, weight="bold"),
         )
-        team_lbl.grid(row=3, column=0, padx=16, pady=6, sticky="w")
+        team_lbl.grid(row=4, column=0, padx=16, pady=6, sticky="w")
 
         team_entry = ctk.CTkEntry(
             container,
@@ -3988,15 +4014,15 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         saved_vs_team = meta.get("team_tag", "")
         if saved_vs_team:
             team_entry.insert(0, saved_vs_team)
-        team_entry.grid(row=3, column=1, padx=16, pady=6, sticky="ew")
+        team_entry.grid(row=4, column=1, padx=16, pady=6, sticky="ew")
 
-        # Row 3: Scrim Notes
+        # Row 4: Scrim Notes
         notes_lbl = ctk.CTkLabel(
             container,
             text=t("recordings.field_notes"),
             font=ctk.CTkFont(size=12, weight="bold"),
         )
-        notes_lbl.grid(row=4, column=0, padx=16, pady=(8, 2), sticky="nw")
+        notes_lbl.grid(row=5, column=0, padx=16, pady=(8, 2), sticky="nw")
 
         notes_box = ctk.CTkTextbox(
             container,
@@ -4005,15 +4031,19 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         )
         if meta.get("notes"):
             notes_box.insert("1.0", meta.get("notes"))
-        notes_box.grid(row=4, column=1, padx=16, pady=6, sticky="nsew")
+        notes_box.grid(row=5, column=1, padx=16, pady=6, sticky="nsew")
 
         # Button Bar
         btn_bar = ctk.CTkFrame(container, fg_color="transparent")
-        btn_bar.grid(row=5, column=0, columnspan=2, padx=16, pady=(16, 12), sticky="e")
+        btn_bar.grid(row=6, column=0, columnspan=2, padx=16, pady=(16, 12), sticky="e")
 
         def _save(and_upload=False):
+            from app.record import format_patch_version
+
+            raw_p = patch_entry.get().strip()
             new_meta = {
                 "recorded_at": date_entry.get().strip() or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "game_patch": format_patch_version(raw_p),
                 "team_tag": team_entry.get().strip(),
                 "notes": notes_box.get("1.0", "end-1c").strip(),
             }
@@ -4051,6 +4081,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
         # Expose widgets on dialog for test assertions
         dialog._date_entry = date_entry
+        dialog._patch_entry = patch_entry
         dialog._team_entry = team_entry
         dialog._notes_box = notes_box
         dialog._save_btn = save_btn

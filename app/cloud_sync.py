@@ -222,6 +222,7 @@ class CloudSyncClient:
         file_path: str | Path,
         team_tag: str | None = None,
         notes: str | None = None,
+        game_patch: str | None = None,
         check_first: bool = True,
         progress_callback: Callable[[float], None] | None = None,
     ) -> tuple[bool, dict[str, Any] | str]:
@@ -257,6 +258,9 @@ class CloudSyncClient:
             data["team_tag"] = team_tag
         if notes:
             data["notes"] = notes
+        if game_patch:
+            data["patch"] = game_patch
+            data["game_patch"] = game_patch
 
         try:
             with open(file, "rb") as audio_file:

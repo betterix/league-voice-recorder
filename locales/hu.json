@@ -117,6 +117,8 @@
         "details_subtitle": "Scrim metaadatok, ellenfél csapat (VS) és meccs jegyzetek kezelése.",
         "field_game_id": "Meccs azonosító:",
         "field_date": "Felvétel dátuma:",
+        "field_patch": "Játékverzió (Patch):",
+        "field_patch_placeholder": "pl. 14.22, 26.11",
         "field_team": "Ellenfél csapat (VS):",
         "field_team_placeholder": "pl. DEO, FNC, G2",
         "field_notes": "Scrim jegyzetek:",

@@ -501,5 +501,50 @@ class TestRecorderModule(unittest.TestCase):
         self.assertTrue(raw_audio.endswith((".mp3", ".opus")))
 
 
+class TestPatchVersionDetection(unittest.TestCase):
+    def test_format_patch_version(self):
+        from app.record import format_patch_version
+
+        self.assertEqual(format_patch_version("14.22.632.4172"), "14.22")
+        self.assertEqual(format_patch_version("26.11"), "26.11")
+        self.assertEqual(format_patch_version("26.11.99.123"), "26.11")
+        self.assertEqual(format_patch_version('"14.22.1"'), "14.22")
+        self.assertEqual(format_patch_version(""), "")
+        self.assertEqual(format_patch_version(None), "")
+
+    @patch("app.record.find_league_install_dir")
+    def test_get_lcu_game_version_success(self, mock_find_dir):
+        from app.record import get_lcu_game_version
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            mock_find_dir.return_value = td
+            lockfile_path = os.path.join(td, "lockfile")
+            with open(lockfile_path, "w", encoding="utf-8") as f:
+                f.write("LeagueClient:1234:2999:secretpass:https")
+
+            with patch("requests.Session.get") as mock_get:
+                mock_resp = MagicMock()
+                mock_resp.status_code = 200
+                mock_resp.json.return_value = "14.22.632.4172"
+                mock_get.return_value = mock_resp
+
+                patch_ver = get_lcu_game_version()
+                self.assertEqual(patch_ver, "14.22")
+
+    @patch("app.record.get_lcu_game_version", return_value=None)
+    @patch("requests.get")
+    def test_get_current_patch_version_data_dragon_fallback(self, mock_get, mock_lcu):
+        from app.record import get_current_patch_version
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = ["14.22.1", "14.21.1"]
+        mock_get.return_value = mock_resp
+
+        patch_ver = get_current_patch_version()
+        self.assertEqual(patch_ver, "14.22")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -659,11 +659,30 @@ class TestUIApp(unittest.TestCase):
                     dialog = self.app._open_edit_details_dialog("8018190134", str(fake_mp3))
                     self.assertIsNotNone(dialog)
                     self.assertTrue(hasattr(dialog, "_date_entry"))
+                    self.assertTrue(hasattr(dialog, "_patch_entry"))
                     self.assertTrue(hasattr(dialog, "_team_entry"))
                     self.assertTrue(hasattr(dialog, "_notes_box"))
                     # Pre-filled recorded date should not be empty
                     self.assertTrue(len(dialog._date_entry.get().strip()) >= 10)
-                    dialog.destroy()
+
+                    # Test saving details with patch version
+                    dialog._patch_entry.delete(0, "end")
+                    dialog._patch_entry.insert(0, "14.22.632.4172")
+                    dialog._team_entry.delete(0, "end")
+                    dialog._team_entry.insert(0, "DEO")
+                    dialog._notes_box.delete("1.0", "end")
+                    dialog._notes_box.insert("1.0", "Scrim vs DEO")
+
+                    # Trigger save
+                    dialog._save_btn.invoke()
+
+                    # Verify list row now displays patch 14.22 next to the date
+                    found_patch_text = False
+                    for child in self.app.rec_scroll_frame.winfo_children():
+                        for sub in child.winfo_children():
+                            if isinstance(sub, ctk.CTkLabel) and "Patch: 14.22" in str(sub.cget("text")):
+                                found_patch_text = True
+                    self.assertTrue(found_patch_text, "Recordings list must display 'Patch: 14.22' next to the date")
 
                     # Case D: Pull role attempting to open details dialog returns None
                     self.app._cloud_role = "pull"

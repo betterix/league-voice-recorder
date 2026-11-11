@@ -46,6 +46,7 @@ class TestScrimMeta(unittest.TestCase):
         data = {
             "team_tag": "T1",
             "notes": "Game 1 vs Fnatic - Mid lane draft test",
+            "game_patch": "14.22",
             "recorded_at": "2026-11-10 19:00:00",
         }
         success = save_scrim_metadata(self.folder, "8018190134", data, embed_id3=False)
@@ -56,6 +57,7 @@ class TestScrimMeta(unittest.TestCase):
         loaded = all_meta["8018190134"]
         self.assertEqual(loaded["team_tag"], "T1")
         self.assertEqual(loaded["notes"], "Game 1 vs Fnatic - Mid lane draft test")
+        self.assertEqual(loaded["game_patch"], "14.22")
         self.assertEqual(loaded["recorded_at"], "2026-11-10 19:00:00")
         self.assertIn("updated_at", loaded)
 
@@ -84,6 +86,7 @@ class TestScrimMeta(unittest.TestCase):
             team_tag="G2-ESPORTS",
             notes="Game 2 - Baron control victory",
             recorded_at="2026-11-10 19:15:00",
+            game_patch="14.22",
         )
         self.assertTrue(ok)
         self.assertTrue(mp3_file.exists())

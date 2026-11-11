@@ -117,6 +117,8 @@
         "details_subtitle": "Organize scrim metadata, opponent team (VS), and match notes.",
         "field_game_id": "Match ID:",
         "field_date": "Date Recorded:",
+        "field_patch": "Game Patch:",
+        "field_patch_placeholder": "e.g. 14.22, 26.11",
         "field_team": "VS Opponent Team:",
         "field_team_placeholder": "e.g. DEO, FNC, G2",
         "field_notes": "Scrim Notes:",

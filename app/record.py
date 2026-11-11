@@ -188,6 +188,79 @@ def get_lcu_gameflow_phase():
     return None
 
 
+def format_patch_version(raw_version: str | None) -> str:
+    """Extracts major.minor patch string (e.g. '14.22' or '26.11') from raw version string."""
+    if not raw_version:
+        return ""
+    cleaned = str(raw_version).strip().strip('"').strip("'")
+    parts = cleaned.split(".")
+    if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+        return f"{parts[0]}.{parts[1]}"
+    return cleaned
+
+
+def get_lcu_game_version() -> str | None:
+    """Queries LCU /lol-patch/v1/game-version (Method 2) and returns major.minor patch (e.g. '14.22')."""
+    global _CACHED_LEAGUE_INSTALL_DIR, _LCU_SESSION
+
+    if not _CACHED_LEAGUE_INSTALL_DIR or not os.path.exists(os.path.join(_CACHED_LEAGUE_INSTALL_DIR, "lockfile")):
+        _CACHED_LEAGUE_INSTALL_DIR = find_league_install_dir()
+        if not _CACHED_LEAGUE_INSTALL_DIR:
+            return None
+
+    lockfile_path = os.path.join(_CACHED_LEAGUE_INSTALL_DIR, "lockfile")
+    if not os.path.exists(lockfile_path):
+        return None
+
+    try:
+        with open(lockfile_path, "r", encoding="utf-8") as f:
+            data = f.read().split(":")
+        if len(data) < 4:
+            return None
+        port = data[2]
+        password = data[3]
+        auth = base64.b64encode(f"riot:{password}".encode()).decode()
+
+        if _LCU_SESSION is None:
+            _LCU_SESSION = requests.Session()
+            _LCU_SESSION.verify = False
+
+        r = _LCU_SESSION.get(
+            f"https://127.0.0.1:{port}/lol-patch/v1/game-version",
+            headers={"Authorization": f"Basic {auth}"},
+            timeout=1.0,
+        )
+        if r.status_code == 200:
+            val = r.json()
+            formatted = format_patch_version(val)
+            if formatted:
+                return formatted
+    except Exception:
+        pass
+
+    return None
+
+
+def get_current_patch_version() -> str:
+    """Gets League patch version, prioritizing local LCU (Method 2) with fallback to Data Dragon."""
+    # Method 2: Local LCU API
+    v = get_lcu_game_version()
+    if v:
+        return v
+
+    # Fallback: Riot Data Dragon
+    try:
+        r = requests.get("https://ddragon.leagueoflegends.com/api/versions.json", timeout=1.5)
+        if r.status_code == 200:
+            items = r.json()
+            if isinstance(items, list) and items:
+                return format_patch_version(items[0])
+    except Exception:
+        pass
+
+    return ""
+
+
 class LeagueRecorder:
     def __init__(self, config=None, log_callback=None, status_callback=None):
         self.config = config or load_config()
@@ -212,6 +285,7 @@ class LeagueRecorder:
         self.recording = False
         self.is_paused = False
         self.real_game_id = None
+        self.game_patch = ""
         self.last_game_time = -1
         self.first_game_time = 0.0
         self.stop_event = threading.Event()
@@ -263,6 +337,10 @@ class LeagueRecorder:
                             verify=False,
                             timeout=2,
                         )
+                        if not self.game_patch:
+                            p_ver = get_lcu_game_version()
+                            if p_ver:
+                                self.game_patch = p_ver
                         gid = r.json().get("gameData", {}).get("gameId")
                         if gid and gid > 0:
                             self.real_game_id = str(gid)
@@ -406,6 +484,9 @@ class LeagueRecorder:
         self.last_advance_time = time.monotonic()
         self.pause_tick_count = 0
         self.real_game_id = None
+        self.game_patch = get_current_patch_version()
+        if self.game_patch:
+            self.log(f"🎮 [Patch] League of Legends patch detected: {self.game_patch}")
         self.log(t("logs.match_detected", time=self.first_game_time))
         init_time = max(0.0, self.first_game_time)
         init_time_str = f"{int(init_time // 60):02d}:{int(init_time % 60):02d}"
@@ -531,6 +612,7 @@ class LeagueRecorder:
                         "game_id": base_name,
                         "team_tag": "",
                         "notes": "",
+                        "game_patch": self.game_patch or "",
                         "recorded_at": recorded_dt,
                     },
                     embed_id3=True,
@@ -566,11 +648,14 @@ class LeagueRecorder:
             meta = get_scrim_metadata(self.record_folder, game_id, mp3_path)
             team_tag = meta.get("team_tag", "")
             notes = meta.get("notes", "")
+            patch = meta.get("game_patch", "")
 
             filename = os.path.basename(mp3_path)
             self.log(t("logs.cloud_upload_start", filename=filename))
             client = CloudSyncClient(server_url=server_url, api_key=api_key)
-            success, res = client.upload_recording(game_id, mp3_path, team_tag=team_tag, notes=notes)
+            success, res = client.upload_recording(
+                game_id, mp3_path, team_tag=team_tag, notes=notes, game_patch=patch
+            )
             if success:
                 self.log(t("logs.cloud_upload_success", filename=filename))
             else:

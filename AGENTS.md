@@ -322,10 +322,13 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
 - **In-Place ID3 Tag Embedding via FFmpeg Stream Copy**:
   - Embeds standard ID3v2 tags directly into `.mp3` files (`title=Game <ID>`, `artist=<VSOpponentTeam>`, `comment=<Notes>`, `date=<RecordedAt>`) using FFmpeg `-codec copy`.
   - Runs in ~20 milliseconds with zero audio re-encoding and preserves original file modification times (`os.utime`).
+- **Automatic Patch Version Detection (Method 2)**:
+  - Detects the active League patch when a match begins using LCU `/lol-patch/v1/game-version` (formatted strictly as `major.minor`, e.g. `14.22` or `26.11`).
+  - Stamped into `scrim_metadata.json`, embedded into ID3 album tags (`Patch <major.minor>`), and rendered directly next to the date in the Scrim Recordings explorer list.
 - **Interactive UI Organizer Dialog (Upload & Admin Only)**:
   - Only accessible to users with upload or admin roles (`self._can_upload_to_cloud()`).
   - Accessible either by clicking the `📝 Details` button or clicking the `.mp3` title directly in the Scrim Recordings list.
-  - Allows editing the opponent team faced (e.g. `DEO`, `FNC`), match notes, and prefilled recorded date, with one-click `💾 Save Details` and `💾 Save & Upload` actions.
+  - Allows editing the opponent team faced (e.g. `DEO`, `FNC`), game patch, match notes, and prefilled recorded date, with one-click `💾 Save Details` and `💾 Save & Upload` actions.
   - Automatically displays `[Local] • vs <Opponent>` in the recording explorer badge.
 
 ---
@@ -337,6 +340,7 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
 | **Live Client Data API** | `https://127.0.0.1:2999/liveclientdata/allgamedata` | None (SSL verify=False) | Read `gameData.gameTime` during live games |
 | **Replay Playback API** | `https://127.0.0.1:2999/replay/playback` | None (SSL verify=False) | Read `time`, `paused`, `speed` during replay (requires `EnableReplayApi=1` in `Config\game.cfg`) |
 | **LCU Gameflow API** | `https://127.0.0.1:{port}/lol-gameflow/v1/session` | Basic Auth (`riot:<lockfile_pw>`) | Retrieve real match `gameId` from client |
+| **LCU Patch Version API** | `https://127.0.0.1:{port}/lol-patch/v1/game-version` | Basic Auth (`riot:<lockfile_pw>`) | Retrieve installed game patch version (e.g. `14.22`) |
 
 > [!NOTE]
 > Port `2999` uses a self-signed Riot Games SSL certificate. All HTTP requests must set `verify=False` and disable `urllib3` warnings.

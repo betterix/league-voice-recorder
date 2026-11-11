@@ -68,6 +68,7 @@ def get_scrim_metadata(
         "game_id": clean_id,
         "team_tag": "",
         "notes": "",
+        "game_patch": "",
         "recorded_at": recorded_at,
     }
 
@@ -120,6 +121,7 @@ def save_scrim_metadata(
                 team_tag=current.get("team_tag", ""),
                 notes=current.get("notes", ""),
                 recorded_at=current.get("recorded_at", ""),
+                game_patch=current.get("game_patch", ""),
             )
 
     return True
@@ -131,6 +133,7 @@ def embed_mp3_metadata(
     team_tag: str = "",
     notes: str = "",
     recorded_at: str = "",
+    game_patch: str = "",
 ) -> bool:
     """Uses FFmpeg stream copy to write standard ID3 tags into the MP3 without re-encoding.
 
@@ -165,6 +168,8 @@ def embed_mp3_metadata(
         cmd.extend(["-metadata", f"comment={notes}"])
     if date_str:
         cmd.extend(["-metadata", f"date={date_str}"])
+    if game_patch:
+        cmd.extend(["-metadata", f"album=Patch {game_patch}"])
 
     cmd.append(str(temp_out))
 
