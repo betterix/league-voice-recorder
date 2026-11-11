@@ -17,7 +17,7 @@ const i18n = {
     nav_faq: "FAQ",
     nav_download: "Download Latest Release",
 
-    hero_badge: "v0.4.4 Released • Windows 10/11 64-bit • Open Source",
+    hero_badge: "v0.5.0 Released • Windows 10/11 64-bit • Open Source",
     hero_title_1: "Frame-Accurate Scrim Comms &",
     hero_title_2: "Replay Synchronization",
     hero_title_3: "For League of Legends",
@@ -70,7 +70,7 @@ const i18n = {
     sim_tab_settings: "⚙️ Settings",
     sim_mic_select: "Microphone Device:",
     sim_settings_update: "Software Updates:",
-    sim_settings_update_status: "● You are running the latest version (v0.4.4)",
+    sim_settings_update_status: "● You are running the latest version (v0.5.0)",
     sim_settings_update_btn: "🔄 Check for Updates",
     sim_settings_hud: "In-Game Floating HUD Overlay:",
     sim_settings_hud_desc: "● Opacity 85% • WS_EX_TRANSPARENT Click-Through • LoL.exe Auto-Focus",
@@ -167,7 +167,7 @@ const i18n = {
     nav_faq: "GYIK",
     nav_download: "Legfrissebb Kiadás Letöltése",
 
-    hero_badge: "v0.4.4 Megjelent • Windows 10/11 64-bit • Nyílt forráskód",
+    hero_badge: "v0.5.0 Megjelent • Windows 10/11 64-bit • Nyílt forráskód",
     hero_title_1: "Képkocka-Pontos Scrim Hang &",
     hero_title_2: "Visszajátszás Szinkronizáció",
     hero_title_3: "League of Legends-hez",
@@ -220,7 +220,7 @@ const i18n = {
     sim_tab_settings: "⚙️ Beállítások",
     sim_mic_select: "Mikrofon Eszköz:",
     sim_settings_update: "Szoftverfrissítések:",
-    sim_settings_update_status: "● A legfrissebb verziót használod (v0.4.4)",
+    sim_settings_update_status: "● A legfrissebb verziót használod (v0.5.0)",
     sim_settings_update_btn: "🔄 Frissítések keresése",
     sim_settings_hud: "Játékon Belüli Lebegő HUD:",
     sim_settings_hud_desc: "● Átlátszóság 85% • WS_EX_TRANSPARENT Átkattintás • LoL.exe Auto-Fókusz",
@@ -648,7 +648,7 @@ function startVuMeters() {
 }
 
 function initSimulator() {
-  // In-Game Floating HUD Overlay Controls (v0.4.4)
+  // In-Game Floating HUD Overlay Controls (v0.5.0)
   const hudOverlay = document.getElementById("sim-hud-overlay");
   const hudBadge = document.getElementById("sim-hud-badge");
   const hudDot = document.getElementById("sim-hud-dot");
@@ -879,10 +879,10 @@ function initSimulator() {
           statusEl.replaceChildren();
           const span = document.createElement("span");
           span.style.color = "#4ade80";
-          span.textContent = "● You are running the latest version (v0.4.4)";
+          span.textContent = "● You are running the latest version (v0.5.0)";
           statusEl.appendChild(span);
         }
-        appendSimLog("✅ [UPDATER] Version check complete. Running latest release v0.4.4.", "success");
+        appendSimLog("✅ [UPDATER] Version check complete. Running latest release v0.5.0.", "success");
       }, 900);
     });
   }

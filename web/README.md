@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.4.4-blue?logo=github" alt="Release" /></a>
+  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.5.0-blue?logo=github" alt="Release" /></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%2064--bit-0078D6?logo=windows&logoColor=white" alt="Platform" />
   <img src="https://img.shields.io/badge/i18n-English%20%7C%20Magyar-success" alt="i18n" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License" />

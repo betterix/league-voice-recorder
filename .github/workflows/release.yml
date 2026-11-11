@@ -39,7 +39,7 @@ jobs:
       - name: 🧪 Run Automated Test Suite
         shell: pwsh
         run: |
-          Write-Host "::group::Running pytest suite (116 tests)..."
+          Write-Host "::group::Running pytest suite (151 tests)..."
           uv run pytest
           Write-Host "::endgroup::"
 
@@ -207,7 +207,7 @@ jobs:
           ---
 
           ### 🧪 Quality & Test Results
-          - ✅ **Automated Tests**: 116 / 116 passed (0 failures)
+          - ✅ **Automated Tests**: 151 / 151 passed (0 failures)
           - ⏱️ **Audio Synchronization**: Frame-accurate (\`±0.000s\` Riot Match Clock Alignment)
           - 🔊 **Replay Playback**: VLC 64-bit engine with up to 200% volume boost
           - 🛡️ **Anti-Cheat Integrity**: 100% Riot Vanguard Safe (Official Local APIs & Windows Loopback only)
