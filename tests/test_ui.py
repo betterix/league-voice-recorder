@@ -521,7 +521,6 @@ class TestUIApp(unittest.TestCase):
         self.assertTrue(hasattr(self.app, "cloud_url_entry"))
         self.assertTrue(hasattr(self.app, "cloud_key_entry"))
         self.assertTrue(hasattr(self.app, "cloud_test_btn"))
-        self.assertTrue(hasattr(self.app, "cloud_auto_upload_switch"))
         self.assertTrue(hasattr(self.app, "cloud_key_reveal_btn"))
 
         # Verify default masking is show="*"
@@ -532,15 +531,6 @@ class TestUIApp(unittest.TestCase):
         self.assertEqual(self.app.cloud_key_entry.cget("show"), "")
         self.app._toggle_cloud_key_visibility()
         self.assertEqual(self.app.cloud_key_entry.cget("show"), "*")
-
-        # Test auto-upload switch toggle updates config
-        self.app.cloud_auto_upload_var.set(True)
-        self.app._on_cloud_auto_upload_toggled()
-        self.assertTrue(self.app.config.get("remote_auto_upload"))
-
-        self.app.cloud_auto_upload_var.set(False)
-        self.app._on_cloud_auto_upload_toggled()
-        self.assertFalse(self.app.config.get("remote_auto_upload"))
 
         # 2. Verify Scrim Recordings tab widgets
         self.assertTrue(hasattr(self.app, "sync_remote_btn"))
@@ -689,11 +679,6 @@ class TestUIApp(unittest.TestCase):
                     self.app.config["remote_api_key"] = "lvr_pull_token"
                     dialog_pull = self.app._open_edit_details_dialog("8018190134", str(fake_mp3))
                     self.assertIsNone(dialog_pull, "Pull key cannot open or edit details")
-
-                    # Case E: Pull role attempting auto-upload toggle is reverted
-                    self.app.cloud_auto_upload_var.set(True)
-                    self.app._on_cloud_auto_upload_toggled()
-                    self.assertFalse(self.app.cloud_auto_upload_var.get())
                 finally:
                     self.app.config["record_folder"] = orig_folder
         finally:

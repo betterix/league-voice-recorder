@@ -179,8 +179,6 @@
         "cloud_connected_pull": "✔ Connected (Download Only)",
         "cloud_connected_admin": "✔ Connected (Full Admin)",
         "cloud_failed": "✖ Connection Failed: {error}",
-        "cloud_auto_upload": "Auto-Upload Scrim Recordings When Match Ends:",
-        "cloud_auto_upload_info": "Automatically uploads <GameID>.mp3 to your remote server if upload key is configured",
         "save_btn": "💾 Save Settings",
         "saved_success": "✅ Settings saved successfully to config.json!",
         "saved_error": "❌ Failed to write config.json!",

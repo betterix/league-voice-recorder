@@ -311,8 +311,8 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
   - Never stores plain-text API secrets on disk in `config.json`.
   - Automatically encrypts keys via native Windows `CryptProtectData` (`remote_api_key_encrypted`) and decrypts in memory on boot.
 - **Role-Based UI Permissions (Upload / Pull / Admin)**:
-  - **Pull Key (`pull`)**: Read-only access for analysts, players, or coaches who only download scrims. The `⬆ Upload` button is strictly hidden to prevent HTTP 403 Forbidden errors; Auto-upload is blocked.
-  - **Upload Key (`upload`)**: Enables local recording upload (`⬆ Upload` button rendered for unsynced files) and auto-upload on match end.
+  - **Pull Key (`pull`)**: Read-only access for analysts, players, or coaches who only download scrims. The `⬆ Upload` button is strictly hidden to prevent HTTP 403 Forbidden errors.
+  - **Upload Key (`upload`)**: Enables local recording upload (`⬆ Upload` button rendered for unsynced files) and scrim metadata editing.
   - **Admin Key (`admin`)**: Grants full capabilities, including the special red `🗑 Delete` button to permanently unlink and purge remote scrim audio from the server.
 
 ### 3.11 Scrim Metadata Organizer & In-Place ID3 Tag Embedding (`app/scrim_meta.py`)

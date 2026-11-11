@@ -623,45 +623,9 @@ class LeagueRecorder:
 
             # Match recording completed: automatically stop listening
             self.stop()
-            if self.config.get("remote_auto_upload"):
-                self._trigger_auto_upload(final_mp3, base_name)
         else:
             self.update_status("WATCHING", t("record.waiting_for_match"))
         self.first_game_time = 0.0
-
-    def _trigger_auto_upload(self, mp3_path, game_id):
-        """Dispatches background thread to upload completed MP3 to remote server."""
-        server_url = self.config.get("remote_server_url", "").strip()
-        api_key = self.config.get("remote_api_key", "").strip()
-        if not server_url or not api_key or not os.path.exists(mp3_path):
-            return
-
-        # Pull role keys are read-only and cannot upload (prevent HTTP 403)
-        if "pull" in api_key.lower():
-            self.log("☁ [Cloud] Skipping auto-upload: Pull API key is read-only.")
-            return
-
-        def _upload_worker():
-            from app.cloud_sync import CloudSyncClient
-            from app.scrim_meta import get_scrim_metadata
-
-            meta = get_scrim_metadata(self.record_folder, game_id, mp3_path)
-            team_tag = meta.get("team_tag", "")
-            notes = meta.get("notes", "")
-            patch = meta.get("game_patch", "")
-
-            filename = os.path.basename(mp3_path)
-            self.log(t("logs.cloud_upload_start", filename=filename))
-            client = CloudSyncClient(server_url=server_url, api_key=api_key)
-            success, res = client.upload_recording(
-                game_id, mp3_path, team_tag=team_tag, notes=notes, game_patch=patch
-            )
-            if success:
-                self.log(t("logs.cloud_upload_success", filename=filename))
-            else:
-                self.log(t("logs.cloud_upload_failed", filename=filename, error=str(res)))
-
-        threading.Thread(target=_upload_worker, daemon=True).start()
 
     def run_loop(self):
         self.stop_event.clear()

@@ -108,7 +108,6 @@ class TestConfigModule(unittest.TestCase):
         save_config({
             "remote_server_url": "https://scrims.example.com:8443",
             "remote_api_key": secret_sample,
-            "remote_auto_upload": True,
         })
 
         # Inspect on-disk file directly
@@ -124,7 +123,6 @@ class TestConfigModule(unittest.TestCase):
         loaded = load_config()
         self.assertEqual(loaded.get("remote_api_key"), secret_sample)
         self.assertEqual(loaded.get("remote_server_url"), "https://scrims.example.com:8443")
-        self.assertTrue(loaded.get("remote_auto_upload"))
 
 
 if __name__ == "__main__":

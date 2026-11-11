@@ -1833,32 +1833,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         )
         self.cloud_status_lbl.pack(side="left")
 
-        # Auto-upload switch
-        self.cloud_auto_upload_var = ctk.BooleanVar(
-            value=bool(self.config.get("remote_auto_upload", False))
-        )
-        self.cloud_auto_upload_switch = ctk.CTkSwitch(
-            card_cloud,
-            text=t("settings.cloud_auto_upload"),
-            variable=self.cloud_auto_upload_var,
-            onvalue=True,
-            offvalue=False,
-            fg_color=("#CBD5E1", "#1E2A4A"),
-            progress_color=("#0891B2", "#0AC8B9"),
-            button_color=("#FFFFFF", "#FFFFFF"),
-            button_hover_color=("#F8FAFC", "#E2E8F0"),
-            text_color=("#334155", "#94A3B8"),
-            command=self._on_cloud_auto_upload_toggled,
-        )
-        self.cloud_auto_upload_switch.grid(row=4, column=0, columnspan=3, padx=14, pady=(8, 2), sticky="w")
-
-        self.cloud_auto_upload_info = ctk.CTkLabel(
-            card_cloud,
-            text=t("settings.cloud_auto_upload_info"),
-            font=ctk.CTkFont(size=10),
-            text_color=("#64748B", "#94A3B8"),
-        )
-        self.cloud_auto_upload_info.grid(row=5, column=0, columnspan=3, padx=14, pady=(0, 10), sticky="w")
 
         # -------------------------------------------------------------
         # CARD 6: SOFTWARE & UPDATES
@@ -1976,15 +1950,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         if not val and hasattr(self, "tray_manager") and self.tray_manager:
             self.tray_manager.hide()
 
-    def _on_cloud_auto_upload_toggled(self):
-        val = bool(self.cloud_auto_upload_var.get())
-        if val and getattr(self, "_cloud_role", "") == "pull":
-            self.cloud_auto_upload_var.set(False)
-            self.log_message(t("recordings.upload_failed", filename="", error="Pull API key has read-only permissions."))
-            return
-        self.config["remote_auto_upload"] = val
-        save_config(self.config)
-
     def _toggle_cloud_key_visibility(self):
         self._cloud_key_revealed = not getattr(self, "_cloud_key_revealed", False)
         if hasattr(self, "cloud_key_entry"):
@@ -2026,10 +1991,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                         txt = t("settings.cloud_connected_upload")
                     elif role == "pull":
                         txt = t("settings.cloud_connected_pull")
-                        if hasattr(self, "cloud_auto_upload_var") and self.cloud_auto_upload_var.get():
-                            self.cloud_auto_upload_var.set(False)
-                            self.config["remote_auto_upload"] = False
-                            save_config(self.config)
                     elif role == "admin":
                         txt = t("settings.cloud_connected_admin")
                     else:
@@ -2573,8 +2534,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                     self.cloud_url_lbl.configure(text=t("settings.cloud_url"))
                     self.cloud_key_lbl.configure(text=t("settings.cloud_api_key"))
                     self.cloud_test_btn.configure(text=t("settings.cloud_test_btn"))
-                    self.cloud_auto_upload_switch.configure(text=t("settings.cloud_auto_upload"))
-                    self.cloud_auto_upload_info.configure(text=t("settings.cloud_auto_upload_info"))
                 if hasattr(self, "save_btn") and self.save_btn:
                     self.save_btn.configure(text=t("settings.save_btn"))
                 if hasattr(self, "updates_title_lbl"):
@@ -4167,12 +4126,26 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         )
         save_btn.pack(side="left")
 
+        save_and_upload_btn = ctk.CTkButton(
+            btn_bar,
+            text=t("recordings.save_and_upload"),
+            width=135,
+            height=32,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color=("#0284C7", "#38BDF8"),
+            hover_color=("#0369A1", "#0284C7"),
+            text_color="#FFFFFF",
+            command=lambda: _save(and_upload=True),
+        )
+        save_and_upload_btn.pack(side="left", padx=(8, 0))
+
         # Expose widgets on dialog for test assertions
         dialog._date_entry = date_entry
         dialog._patch_entry = patch_entry
         dialog._team_entry = team_entry
         dialog._notes_box = notes_box
         dialog._save_btn = save_btn
+        dialog._save_and_upload_btn = save_and_upload_btn
 
         if getattr(self, "_in_test_suite", False):
             dialog.withdraw()
@@ -4356,7 +4329,6 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 "hud_opacity": round(float(self.hud_opacity_slider.get()), 2) if hasattr(self, "hud_opacity_slider") else 0.85,
                 "remote_server_url": self.cloud_url_entry.get().strip() if hasattr(self, "cloud_url_entry") else "",
                 "remote_api_key": self.cloud_key_entry.get().strip() if hasattr(self, "cloud_key_entry") else "",
-                "remote_auto_upload": bool(self.cloud_auto_upload_var.get()) if hasattr(self, "cloud_auto_upload_var") else False,
             }
             if save_config(new_config):
                 self.config = new_config

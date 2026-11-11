@@ -179,8 +179,6 @@
         "cloud_connected_pull": "✔ Csatlakozva (Csak Letöltés)",
         "cloud_connected_admin": "✔ Csatlakozva (Teljes Admin)",
         "cloud_failed": "✖ Kapcsolódási hiba: {error}",
-        "cloud_auto_upload": "Felvétel automatikus feltöltése a meccs végén:",
-        "cloud_auto_upload_info": "Automatikusan feltölti a <GameID>.mp3 fájlt a szerverre, ha van feltöltési kulcs beállítva",
         "save_btn": "💾 Beállítások mentése",
         "saved_success": "✅ A beállítások sikeresen mentve a config.json fájlba!",
         "saved_error": "❌ Nem sikerült írni a config.json fájlt!",

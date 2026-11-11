@@ -198,7 +198,6 @@ def get_clean_default_config():
         "minimize_to_tray": True,
         "remote_server_url": "",
         "remote_api_key_encrypted": "",
-        "remote_auto_upload": False,
     }
 
 
@@ -246,7 +245,6 @@ def get_default_config():
         "minimize_to_tray": os.getenv("MINIMIZE_TO_TRAY", "true").lower() in ("true", "1", "yes"),
         "remote_server_url": os.getenv("REMOTE_SERVER_URL", "").strip(),
         "remote_api_key_encrypted": os.getenv("REMOTE_API_KEY_ENCRYPTED", "").strip(),
-        "remote_auto_upload": os.getenv("REMOTE_AUTO_UPLOAD", "false").lower() in ("true", "1", "yes"),
     }
 
 
