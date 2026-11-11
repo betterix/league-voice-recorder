@@ -24,18 +24,123 @@ def get_metadata_path(record_folder: str | Path) -> Path:
     return Path(record_folder) / METADATA_FILENAME
 
 
-def load_all_scrim_metadata(record_folder: str | Path) -> dict[str, dict]:
-    """Loads all saved scrim metadata from the recordings folder."""
-    meta_path = get_metadata_path(record_folder)
-    if not meta_path.exists():
+def read_mp3_metadata(mp3_path: str | Path) -> dict:
+    """Reads embedded ID3 tags from an MP3 file (Title, Artist, Album/Patch, Comment, Date).
+
+    Returns a dictionary with keys: game_id, team_tag, notes, game_patch, recorded_at.
+    """
+    target = Path(mp3_path)
+    if not target.exists() or not target.is_file():
         return {}
+
+    clean_id = target.stem
+    result = {
+        "game_id": clean_id,
+        "team_tag": "",
+        "notes": "",
+        "game_patch": "",
+        "recorded_at": "",
+    }
+
     try:
-        with open(meta_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else {}
+        mtime = os.path.getmtime(target)
+        result["recorded_at"] = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
+    except Exception:
+        pass
+
+    ffmpeg_cmd = get_ffmpeg_path()
+    try:
+        proc = subprocess.run(
+            [ffmpeg_cmd, "-i", str(target), "-f", "ffmetadata", "-"],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            timeout=3.0,
+        )
+        if proc.returncode == 0 and proc.stdout:
+            for line in proc.stdout.splitlines():
+                if "=" not in line or line.startswith(";"):
+                    continue
+                k, v = line.split("=", 1)
+                k = k.strip().lower()
+                v = v.strip()
+                if k == "artist":
+                    result["team_tag"] = v
+                elif k == "comment":
+                    result["notes"] = v
+                elif k == "album":
+                    if v.lower().startswith("patch"):
+                        v = v[5:].strip()
+                    result["game_patch"] = v
+                elif k == "date":
+                    result["recorded_at"] = v[:10]
+                elif k == "title" and v.lower().startswith("game "):
+                    parsed_id = v[5:].strip()
+                    if parsed_id:
+                        result["game_id"] = parsed_id
     except Exception as exc:
-        logger.warning("Failed to load scrim metadata from %s: %s", meta_path, exc)
-        return {}
+        logger.debug("Failed to read metadata via ffmpeg from %s: %s", target, exc)
+
+    return result
+
+
+def load_all_scrim_metadata(record_folder: str | Path) -> dict[str, dict]:
+    """Loads all saved scrim metadata from the recordings folder.
+
+    If the metadata JSON does not exist or is missing entries for existing MP3 files,
+    it automatically scans and reconstructs metadata by reading embedded ID3 tags directly from the MP3s.
+    """
+    folder = Path(record_folder)
+    meta_path = get_metadata_path(folder)
+    data = {}
+    if meta_path.exists():
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    data = loaded
+        except Exception as exc:
+            logger.warning("Failed to load scrim metadata from %s: %s", meta_path, exc)
+
+    # Check if folder exists and has MP3 files missing from data
+    if folder.exists() and folder.is_dir():
+        needs_persist = False
+        try:
+            for entry in os.scandir(folder):
+                if entry.is_file() and entry.name.lower().endswith(".mp3"):
+                    gid = entry.name[:-4]
+                    if gid not in data:
+                        parsed = read_mp3_metadata(entry.path)
+                        if parsed:
+                            data[gid] = parsed
+                            needs_persist = True
+                    else:
+                        # If existing JSON entry is missing patch or team_tag, attempt to fill from ID3
+                        entry_meta = data[gid]
+                        if not entry_meta.get("game_patch") or not entry_meta.get("team_tag"):
+                            parsed = read_mp3_metadata(entry.path)
+                            updated = False
+                            if parsed.get("game_patch") and not entry_meta.get("game_patch"):
+                                entry_meta["game_patch"] = parsed["game_patch"]
+                                updated = True
+                            if parsed.get("team_tag") and not entry_meta.get("team_tag"):
+                                entry_meta["team_tag"] = parsed["team_tag"]
+                                updated = True
+                            if parsed.get("notes") and not entry_meta.get("notes"):
+                                entry_meta["notes"] = parsed["notes"]
+                                updated = True
+                            if updated:
+                                needs_persist = True
+            if needs_persist:
+                temp_meta = meta_path.with_suffix(".tmp_meta")
+                with open(temp_meta, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                temp_meta.replace(meta_path)
+        except Exception as exc:
+            logger.debug("Error while scanning MP3 files for metadata reconstruction: %s", exc)
+
+    return data
 
 
 def get_scrim_metadata(
@@ -53,6 +158,12 @@ def get_scrim_metadata(
         if item.get("recorded_at"):
             item["recorded_at"] = str(item["recorded_at"])[:10]
         return item
+
+    # If not in all_meta, check filepath directly via read_mp3_metadata
+    if filepath and os.path.exists(filepath) and str(filepath).lower().endswith(".mp3"):
+        parsed = read_mp3_metadata(filepath)
+        if parsed:
+            return parsed
 
     # Fallback to automatic date extraction
     recorded_at = ""

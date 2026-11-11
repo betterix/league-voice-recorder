@@ -12,6 +12,7 @@ from app.scrim_meta import (
     get_metadata_path,
     get_scrim_metadata,
     load_all_scrim_metadata,
+    read_mp3_metadata,
     save_scrim_metadata,
 )
 
@@ -92,6 +93,55 @@ class TestScrimMeta(unittest.TestCase):
         self.assertTrue(mp3_file.exists())
         # Verify mtime is preserved
         self.assertEqual(os.path.getmtime(mp3_file), past_time)
+
+        # Test reading ID3 metadata directly from the MP3
+        read_data = read_mp3_metadata(mp3_file)
+        self.assertEqual(read_data["game_id"], "8018190134")
+        self.assertEqual(read_data["team_tag"], "G2-ESPORTS")
+        self.assertEqual(read_data["notes"], "Game 2 - Baron control victory")
+        self.assertEqual(read_data["recorded_at"], "2026-11-10")
+        self.assertEqual(read_data["game_patch"], "14.22")
+
+    def test_metadata_recovery_when_json_deleted(self):
+        ffmpeg_cmd = get_ffmpeg_path()
+        mp3_file = self.folder / "99887766.mp3"
+
+        subprocess.run(
+            [ffmpeg_cmd, "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-t", "0.2", str(mp3_file)],
+            capture_output=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+
+        # Save metadata and embed into MP3
+        save_scrim_metadata(
+            self.folder,
+            "99887766",
+            {
+                "team_tag": "DEO",
+                "notes": "Patch 26.12 match",
+                "game_patch": "26.12",
+                "recorded_at": "2026-11-11",
+            },
+            embed_id3=True,
+            filepath=mp3_file,
+        )
+
+        meta_json = get_metadata_path(self.folder)
+        self.assertTrue(meta_json.exists())
+
+        # Simulate user deleting scrim_metadata.json
+        meta_json.unlink()
+        self.assertFalse(meta_json.exists())
+
+        # Calling load_all_scrim_metadata should read ID3 tags from MP3 and reconstruct the metadata!
+        recovered = load_all_scrim_metadata(self.folder)
+        self.assertIn("99887766", recovered)
+        self.assertEqual(recovered["99887766"]["team_tag"], "DEO")
+        self.assertEqual(recovered["99887766"]["game_patch"], "26.12")
+        self.assertEqual(recovered["99887766"]["notes"], "Patch 26.12 match")
+
+        # The JSON file should also be re-persisted automatically
+        self.assertTrue(meta_json.exists())
 
     def test_corrupted_json_handling(self):
         meta_file = get_metadata_path(self.folder)
