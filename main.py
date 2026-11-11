@@ -3747,8 +3747,38 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 if hasattr(self, "sync_remote_btn"):
                     self.sync_remote_btn.configure(text=t("recordings.sync_remote"), state="normal")
                 self._remote_recordings = items
-                self._refresh_recordings_list()
+
+                # Sync remote metadata (opponent, patch, notes) to any existing local files
                 folder = self.config.get("record_folder") or get_current_user_documents_recordings_dir()
+                try:
+                    from app.scrim_meta import get_scrim_metadata, save_scrim_metadata
+
+                    for it in items:
+                        gid = str(it.get("game_id", "")).strip()
+                        if not gid:
+                            continue
+                        loc_file = os.path.join(folder, f"{gid}.mp3")
+                        if os.path.exists(loc_file):
+                            loc_meta = get_scrim_metadata(folder, gid, loc_file)
+                            updated = False
+                            remote_team = it.get("team_tag")
+                            remote_patch = it.get("patch") or it.get("game_patch")
+                            remote_notes = it.get("notes")
+                            if remote_team and loc_meta.get("team_tag") != remote_team:
+                                loc_meta["team_tag"] = remote_team
+                                updated = True
+                            if remote_patch and loc_meta.get("game_patch") != remote_patch:
+                                loc_meta["game_patch"] = remote_patch
+                                updated = True
+                            if remote_notes and loc_meta.get("notes") != remote_notes:
+                                loc_meta["notes"] = remote_notes
+                                updated = True
+                            if updated:
+                                save_scrim_metadata(folder, gid, loc_meta, embed_id3=True, filepath=loc_file)
+                except Exception:
+                    pass
+
+                self._refresh_recordings_list()
                 local_files = set(os.listdir(folder)) if os.path.exists(folder) else set()
                 missing = sum(1 for it in items if f"{it.get('game_id')}.mp3" not in local_files)
                 self.log_message(t("recordings.remote_sync_success", total=len(items), missing=missing))
@@ -3775,6 +3805,35 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
             client = CloudSyncClient(server_url=url, api_key=key)
             success = client.download_recording(game_id, dest_path)
+
+            if success:
+                try:
+                    from app.scrim_meta import save_scrim_metadata
+
+                    item = next(
+                        (
+                            it
+                            for it in getattr(self, "_remote_recordings", [])
+                            if str(it.get("game_id", "")).strip() == str(game_id).strip()
+                        ),
+                        None,
+                    )
+                    if item:
+                        save_scrim_metadata(
+                            folder,
+                            game_id,
+                            {
+                                "game_id": str(game_id).strip(),
+                                "team_tag": item.get("team_tag") or "",
+                                "notes": item.get("notes") or "",
+                                "game_patch": item.get("patch") or item.get("game_patch") or "",
+                                "recorded_at": item.get("created_at") or item.get("upload_timestamp") or "",
+                            },
+                            embed_id3=True,
+                            filepath=dest_path,
+                        )
+                except Exception:
+                    pass
 
             def _ui():
                 if success:
@@ -3819,6 +3878,33 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 dest = os.path.join(folder, f"{gid}.mp3")
                 if client.download_recording(gid, dest):
                     success_count += 1
+                    try:
+                        from app.scrim_meta import save_scrim_metadata
+
+                        item = next(
+                            (
+                                it
+                                for it in getattr(self, "_remote_recordings", [])
+                                if str(it.get("game_id", "")).strip() == str(gid).strip()
+                            ),
+                            None,
+                        )
+                        if item:
+                            save_scrim_metadata(
+                                folder,
+                                gid,
+                                {
+                                    "game_id": str(gid).strip(),
+                                    "team_tag": item.get("team_tag") or "",
+                                    "notes": item.get("notes") or "",
+                                    "game_patch": item.get("patch") or item.get("game_patch") or "",
+                                    "recorded_at": item.get("created_at") or item.get("upload_timestamp") or "",
+                                },
+                                embed_id3=True,
+                                filepath=dest,
+                            )
+                    except Exception:
+                        pass
                     self.log_message(t("recordings.download_success", filename=f"{gid}.mp3"))
 
             def _ui():
