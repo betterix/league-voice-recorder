@@ -1,70 +1,76 @@
 import base64
-import ctypes
-from ctypes import wintypes
 import functools
+import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
+import secrets
 import shutil
 import sys
 
 
-class _DATA_BLOB(ctypes.Structure):
-    _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_byte))]
+def _derive_local_key() -> bytes:
+    """Derives a stable 256-bit machine and user key for local secret protection."""
+    user = os.environ.get("USERNAME") or os.environ.get("USER", "lvr_user")
+    computer = os.environ.get("COMPUTERNAME") or os.environ.get("HOSTNAME", "lvr_host")
+    app_dir = os.environ.get("LOCALAPPDATA", "")
+    seed = f"LVR-SECRET-V1::{computer}::{user}::{app_dir}".encode()
+    return hashlib.sha256(seed).digest()
+
+
+def _keystream(key: bytes, nonce: bytes, length: int) -> bytes:
+    stream = bytearray()
+    counter = 0
+    while len(stream) < length:
+        block = hashlib.sha256(key + nonce + counter.to_bytes(4, "big")).digest()
+        stream.extend(block)
+        counter += 1
+    return bytes(stream[:length])
 
 
 def encrypt_secret(plaintext: str) -> str:
-    """Encrypts sensitive secrets using Windows DPAPI (tied to current user credentials).
-
-    Falls back to reversible machine-salted encoding in non-Windows test environments.
-    """
+    """Encrypts sensitive secrets tied to the local user environment."""
     if not plaintext:
         return ""
-    if os.name == "nt":
-        try:
-            b_data = plaintext.encode("utf-8")
-            in_blob = _DATA_BLOB(
-                len(b_data),
-                ctypes.cast(ctypes.create_string_buffer(b_data), ctypes.POINTER(ctypes.c_byte)),
-            )
-            out_blob = _DATA_BLOB()
-            if ctypes.windll.crypt32.CryptProtectData(
-                ctypes.byref(in_blob), "lvr_key", None, None, None, 0, ctypes.byref(out_blob)
-            ):
-                res = ctypes.string_at(out_blob.pbData, out_blob.cbData)
-                ctypes.windll.kernel32.LocalFree(out_blob.pbData)
-                return base64.b64encode(res).decode("ascii")
-        except Exception:
-            pass
-    # Non-Windows fallback (test environments)
     b_data = plaintext.encode("utf-8")
-    xor_bytes = bytes([b ^ 0x5A for b in b_data])
-    return "LVR_FALLBACK:" + base64.b64encode(xor_bytes).decode("ascii")
+    key = _derive_local_key()
+    nonce = secrets.token_bytes(16)
+    ks = _keystream(key, nonce, len(b_data))
+    ciphertext = bytes(a ^ b for a, b in zip(b_data, ks))
+    tag = hmac.new(key, nonce + ciphertext, hashlib.sha256).digest()[:16]
+    blob = nonce + tag + ciphertext
+    return "LVR_ENC:" + base64.b64encode(blob).decode("ascii")
 
 
 def decrypt_secret(ciphertext: str) -> str:
-    """Decrypts DPAPI-encrypted secrets using the logged-in Windows user's credentials."""
+    """Decrypts secrets encrypted for this user and machine."""
     if not ciphertext:
         return ""
-    if ciphertext.startswith("LVR_FALLBACK:"):
-        raw = base64.b64decode(ciphertext[len("LVR_FALLBACK:") :].encode("ascii"))
-        return bytes([b ^ 0x5A for b in raw]).decode("utf-8", errors="replace")
-    if os.name == "nt":
+    if ciphertext.startswith("LVR_ENC:"):
         try:
-            raw = base64.b64decode(ciphertext.encode("ascii"))
-            in_blob = _DATA_BLOB(
-                len(raw),
-                ctypes.cast(ctypes.create_string_buffer(raw), ctypes.POINTER(ctypes.c_byte)),
-            )
-            out_blob = _DATA_BLOB()
-            if ctypes.windll.crypt32.CryptUnprotectData(
-                ctypes.byref(in_blob), None, None, None, None, 0, ctypes.byref(out_blob)
-            ):
-                res = ctypes.string_at(out_blob.pbData, out_blob.cbData)
-                ctypes.windll.kernel32.LocalFree(out_blob.pbData)
-                return res.decode("utf-8", errors="replace")
+            raw = base64.b64decode(ciphertext[len("LVR_ENC:") :].encode("ascii"))
+            if len(raw) < 32:
+                return ""
+            nonce = raw[:16]
+            expected_tag = raw[16:32]
+            enc_bytes = raw[32:]
+            key = _derive_local_key()
+            computed_tag = hmac.new(key, nonce + enc_bytes, hashlib.sha256).digest()[:16]
+            if not hmac.compare_digest(expected_tag, computed_tag):
+                return ""
+            ks = _keystream(key, nonce, len(enc_bytes))
+            decrypted = bytes(a ^ b for a, b in zip(enc_bytes, ks))
+            return decrypted.decode("utf-8", errors="replace")
         except Exception:
-            pass
+            return ""
+    # Backward compatibility with older fallback strings
+    if ciphertext.startswith("LVR_FALLBACK:"):
+        try:
+            raw = base64.b64decode(ciphertext[len("LVR_FALLBACK:") :].encode("ascii"))
+            return bytes([b ^ 0x5A for b in raw]).decode("utf-8", errors="replace")
+        except Exception:
+            return ""
     return ""
 
 
