@@ -72,6 +72,7 @@ class TestTrayManager(unittest.TestCase):
         # Update tooltip
         tm.update_tooltip("New Tooltip")
         self.assertEqual(mock_icon.title, "New Tooltip")
+        self.assertTrue(mock_icon.update_menu.called)
 
         # Show & Hide
         tm.show()
@@ -102,6 +103,32 @@ class TestTrayConfigAndUI(unittest.TestCase):
         default_cfg = get_default_config()
         self.assertIn("minimize_to_tray", default_cfg)
         self.assertTrue(default_cfg["minimize_to_tray"])
+
+    def test_tray_dynamic_status_resolution(self):
+        from main import LeagueVoiceRecorderApp
+
+        app = LeagueVoiceRecorderApp()
+        try:
+            # Idle
+            self.assertEqual(app._get_tray_status_text(), t("tray.status_idle"))
+
+            # Recording active
+            app.last_rec_status = ("RECORDING", "12:34")
+            self.assertEqual(app._get_tray_status_text(), t("tray.status_recording"))
+
+            # Replay syncing
+            app.last_rec_status = ("IDLE", "")
+            app.last_replay_status = ("SYNCING", "Game 123")
+            self.assertEqual(app._get_tray_status_text(), t("tray.status_syncing"))
+
+            # Watching match
+            app.last_replay_status = ("IDLE", "")
+            app.recorder_worker = MagicMock()
+            app.recorder_worker.stop_event.is_set.return_value = False
+            app.recorder_worker.recording = False
+            self.assertEqual(app._get_tray_status_text(), t("tray.status_watching_rec"))
+        finally:
+            app.destroy()
 
 
 if __name__ == "__main__":

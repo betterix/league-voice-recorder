@@ -245,10 +245,14 @@
         "tooltip_idle": "League Voice Recorder — Idle",
         "tooltip_recording": "League Voice Recorder — 🔴 Recording Live Match",
         "tooltip_syncing": "League Voice Recorder — ▶ Syncing Replay",
+        "tooltip_watching_rec": "League Voice Recorder — ⏳ Watching for Match",
+        "tooltip_watching_replay": "League Voice Recorder — ⏳ Watching for Replay",
         "open": "Open League Voice Recorder",
         "exit": "Exit",
         "status_idle": "● Status: Idle",
         "status_recording": "🔴 Status: Recording",
-        "status_syncing": "▶ Status: Syncing"
+        "status_syncing": "▶ Status: Syncing",
+        "status_watching_rec": "⏳ Status: Watching for Match",
+        "status_watching_replay": "⏳ Status: Watching for Replay"
     }
 }

@@ -129,6 +129,7 @@ class TrayManager:
         elif self._icon is not None:
             try:
                 self._icon.visible = True
+                self._icon.update_menu()
             except Exception:
                 pass
 
@@ -142,12 +143,13 @@ class TrayManager:
                     pass
 
     def update_tooltip(self, text: str) -> None:
-        """Updates the hover tooltip text."""
+        """Updates the hover tooltip text and refreshes context menu status."""
         self._tooltip = text
         with self._lock:
             if self._icon is not None:
                 try:
                     self._icon.title = text
+                    self._icon.update_menu()
                 except Exception:
                     pass
 

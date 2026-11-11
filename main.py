@@ -269,22 +269,57 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
     def _get_tray_status_text(self) -> str:
         """Returns dynamic live status string for the tray context menu."""
-        if hasattr(self, "recorder_worker") and self.recorder_worker and getattr(self.recorder_worker, "recording", False):
+        rec_status = getattr(self, "last_rec_status", (None, None))[0]
+        rep_status = getattr(self, "last_replay_status", (None, None))[0]
+
+        # 1. In-game live match recording takes priority
+        if rec_status == "RECORDING" or (hasattr(self, "recorder_worker") and self.recorder_worker and getattr(self.recorder_worker, "recording", False)):
             return t("tray.status_recording")
-        elif hasattr(self, "replay_worker") and self.replay_worker and getattr(self.replay_worker, "syncing", False):
+
+        # 2. In-replay voice audio sync
+        if rep_status in ("SYNCING", "PAUSED") or (hasattr(self, "replay_worker") and self.replay_worker and (getattr(self.replay_worker, "syncing", False) or getattr(self.replay_worker, "current_player", None) is not None)):
             return t("tray.status_syncing")
+
+        # 3. Watchers active (listening / waiting for match or replay)
+        if hasattr(self, "recorder_worker") and self.recorder_worker:
+            stop_ev = getattr(self.recorder_worker, "stop_event", None)
+            if stop_ev is None or not stop_ev.is_set():
+                return t("tray.status_watching_rec")
+
+        if hasattr(self, "replay_worker") and self.replay_worker:
+            stop_ev = getattr(self.replay_worker, "stop_event", None)
+            if stop_ev is None or not stop_ev.is_set():
+                return t("tray.status_watching_replay")
+
         return t("tray.status_idle")
 
     def _update_tray_status(self):
-        """Updates tray tooltip to match current active state."""
+        """Updates tray tooltip and dynamic menu to match current active state."""
         if not hasattr(self, "tray_manager") or not self.tray_manager:
             return
-        if hasattr(self, "recorder_worker") and self.recorder_worker and getattr(self.recorder_worker, "recording", False):
+
+        rec_status = getattr(self, "last_rec_status", (None, None))[0]
+        rep_status = getattr(self, "last_replay_status", (None, None))[0]
+
+        if rec_status == "RECORDING" or (hasattr(self, "recorder_worker") and self.recorder_worker and getattr(self.recorder_worker, "recording", False)):
             tooltip = t("tray.tooltip_recording")
-        elif hasattr(self, "replay_worker") and self.replay_worker and getattr(self.replay_worker, "syncing", False):
+        elif rep_status in ("SYNCING", "PAUSED") or (hasattr(self, "replay_worker") and self.replay_worker and (getattr(self.replay_worker, "syncing", False) or getattr(self.replay_worker, "current_player", None) is not None)):
             tooltip = t("tray.tooltip_syncing")
+        elif hasattr(self, "recorder_worker") and self.recorder_worker:
+            stop_ev = getattr(self.recorder_worker, "stop_event", None)
+            if stop_ev is None or not stop_ev.is_set():
+                tooltip = t("tray.tooltip_watching_rec")
+            else:
+                tooltip = t("tray.tooltip_idle")
+        elif hasattr(self, "replay_worker") and self.replay_worker:
+            stop_ev = getattr(self.replay_worker, "stop_event", None)
+            if stop_ev is None or not stop_ev.is_set():
+                tooltip = t("tray.tooltip_watching_replay")
+            else:
+                tooltip = t("tray.tooltip_idle")
         else:
             tooltip = t("tray.tooltip_idle")
+
         self.tray_manager.update_tooltip(tooltip)
 
     def _setup_ui(self):
@@ -2850,6 +2885,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             daemon=True,
         )
         self.recorder_thread.start()
+        self._update_tray_status()
 
         if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
             self.hud.set_mode("RECORD")
@@ -2889,6 +2925,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         )
         self.recorder_worker = None
         self.recorder_thread = None
+        self._update_tray_status()
 
     def _start_auto_detect_monitor(self):
         self._auto_detect_thread = threading.Thread(
@@ -2984,6 +3021,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             daemon=True,
         )
         self.replay_thread.start()
+        self._update_tray_status()
 
         if getattr(self, "hud", None) and self.config.get("hud_overlay_enabled", True):
             self.hud.set_mode("REPLAY")
@@ -3097,6 +3135,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         )
         self.replay_worker = None
         self.replay_thread = None
+        self._update_tray_status()
 
     # ==========================================
     # SYSTEM HEALTH CHECK

@@ -245,10 +245,14 @@
         "tooltip_idle": "League Voice Recorder — Készenlét",
         "tooltip_recording": "League Voice Recorder — 🔴 Élő mérkőzés felvétele",
         "tooltip_syncing": "League Voice Recorder — ▶ Visszajátszás szinkronizálása",
+        "tooltip_watching_rec": "League Voice Recorder — ⏳ Meccs figyelése",
+        "tooltip_watching_replay": "League Voice Recorder — ⏳ Replay figyelése",
         "open": "League Voice Recorder megnyitása",
         "exit": "Kilépés",
         "status_idle": "● Állapot: Készenlét",
         "status_recording": "🔴 Állapot: Felvétel folyamatban",
-        "status_syncing": "▶ Állapot: Replay szinkron"
+        "status_syncing": "▶ Állapot: Replay szinkron",
+        "status_watching_rec": "⏳ Állapot: Meccs figyelése",
+        "status_watching_replay": "⏳ Állapot: Replay figyelése"
     }
 }

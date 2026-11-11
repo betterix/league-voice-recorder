@@ -204,6 +204,7 @@ class ReplaySynchronizer:
         self.current_audio_path = None
         self.current_game_id = None
         self.running = False
+        self.syncing = False
         self.is_muted = False
         self.last_mute_toggle_time = 0.0
         self.current_replay_pid = None
@@ -344,6 +345,7 @@ class ReplaySynchronizer:
             return
 
         self.log(t("logs.vlc_loaded", file=os.path.basename(abs_path)))
+        self.syncing = True
         self.update_status("SYNCING", os.path.basename(abs_path))
 
         API_URL = "https://127.0.0.1:2999/replay/playback"
@@ -540,6 +542,7 @@ class ReplaySynchronizer:
         self.vlc_instance = None
         self.current_audio_path = None
         self.current_game_id = None
+        self.syncing = False
 
     def run_loop(self):
         self.stop_event.clear()
@@ -613,11 +616,13 @@ class ReplaySynchronizer:
             self.current_player = None
 
         self.running = False
+        self.syncing = False
         self.log(t("logs.replay_watcher_stopped"))
         self.update_status("STOPPED", "")
 
     def stop(self):
         self.stop_event.set()
+        self.syncing = False
         if self._hotkey_thread and self._hotkey_thread.is_alive():
             try:
                 self._hotkey_thread.join(timeout=0.1)
