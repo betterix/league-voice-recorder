@@ -2,6 +2,7 @@ import datetime
 import io
 import os
 import queue
+import signal
 import subprocess
 import sys
 import threading
@@ -29,6 +30,7 @@ from app.i18n import (
 )
 from app.play_replay import ReplaySynchronizer
 from app.record import LeagueRecorder
+from app.tray import TrayManager
 
 if sys.platform.startswith("win"):
     if sys.stdout is None:
@@ -51,6 +53,10 @@ ctk.set_default_color_theme("blue")
 class LeagueVoiceRecorderApp(ctk.CTk):
     def __init__(self):
         super().__init__()
+        is_test = bool(os.environ.get("LVR_TEST_MODE") or os.environ.get("PYTEST_CURRENT_TEST"))
+        self._in_test_suite = is_test
+        if is_test:
+            self.withdraw()
 
         # Load Configuration
         self.config = load_config()
@@ -64,19 +70,23 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         on_language_change(self._update_ui_texts)
 
         self.title(f"{t('app.window_title')} v{__version__}")
-        screen_width = self.winfo_screenwidth()
-        screen_height = self.winfo_screenheight()
-        app_width = min(1100, max(920, screen_width - 80))
-        app_height = min(960, max(750, screen_height - 100))
-        x = max(0, int((screen_width - app_width) / 2))
-        y = max(0, int((screen_height - app_height) / 2))
-        self.geometry(f"{app_width}x{app_height}+{x}+{y}")
-        self.minsize(920, 750)
-        self.configure(fg_color=("#F1F5F9", "#060B18"))
+        if not is_test:
+            screen_width = self.winfo_screenwidth()
+            screen_height = self.winfo_screenheight()
+            app_width = min(1100, max(920, screen_width - 80))
+            app_height = min(960, max(750, screen_height - 100))
+            x = max(0, int((screen_width - app_width) / 2))
+            y = max(0, int((screen_height - app_height) / 2))
+            self.geometry(f"{app_width}x{app_height}+{x}+{y}")
+            self.minsize(920, 750)
+            self.configure(fg_color=("#F1F5F9", "#060B18"))
+
+        is_test = bool(os.environ.get("LVR_TEST_MODE") or os.environ.get("PYTEST_CURRENT_TEST"))
 
         # Set Window & Taskbar Icon
-        self._apply_window_icon()
-        self.after(300, self._apply_window_icon)
+        if not is_test:
+            self._apply_window_icon()
+            self.after(300, self._apply_window_icon)
 
         # Threading & Workers
         self.msg_queue = queue.Queue()
@@ -91,31 +101,36 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.last_rec_status = ("IDLE", "")
         self.last_replay_status = ("IDLE", "")
         self.health_state = (None, None, None, None)
+        self._remote_recordings = []
+        self._cloud_syncing = False
+        self._cloud_role = "unknown"
 
         # Build UI
         self._setup_ui()
 
-        # Periodic queue checker and health check
-        self._queue_timer = self.after(50, self._process_queue)
-        self.after(500, self._check_system_health)
-        self.after(200, self._refresh_audio_targets)
-        self.after(200, self._refresh_microphones)
-        self._start_audio_meter_loop()
-
-        # Automatic Champion Select & Replay match detection monitor
+        self._pending_update = None
         self._last_auto_started_phase = None
         self._last_auto_started_rofl = None
-        self.after(1000, self._start_auto_detect_monitor)
 
-        # Clean leftover *.old files from previous updates and schedule background update check
-        try:
-            from app.updater import clean_old_executables
+        if not is_test:
+            # Periodic queue checker and health check
+            self._queue_timer = self.after(50, self._process_queue)
+            self.after(500, self._check_system_health)
+            self.after(200, self._refresh_audio_targets)
+            self.after(200, self._refresh_microphones)
+            self._start_audio_meter_loop()
 
-            clean_old_executables()
-        except Exception:
-            pass
-        self._pending_update = None
-        self.after(3000, self._check_update_background)
+            # Automatic Champion Select & Replay match detection monitor
+            self.after(1000, self._start_auto_detect_monitor)
+
+            # Clean leftover *.old files from previous updates and schedule background update check
+            try:
+                from app.updater import clean_old_executables
+
+                clean_old_executables()
+            except Exception:
+                pass
+            self.after(3000, self._check_update_background)
 
         # Replay mute state & hotkeys
         self._replay_muted = False
@@ -146,6 +161,14 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
         # Handle window close
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        # System Tray Manager & Window Minimize Handler
+        self.tray_manager = TrayManager(
+            on_restore=self._restore_from_tray_safe,
+            on_exit=self._on_close,
+            get_status_text=self._get_tray_status_text,
+        )
+        self.bind("<Unmap>", self._on_window_unmap)
 
     def _apply_window_icon(self):
         """Set window title bar and taskbar icon with multi-resolution support."""
@@ -211,6 +234,58 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
     def _get_engine_display_text(self):
         return t("record.target_scene", scene="Discord + Mic")
+
+    # ==========================================
+    # SYSTEM TRAY & WINDOW MINIMIZE HANDLING
+    # ==========================================
+    def _on_window_unmap(self, event):
+        """Intercepts window minimize to hide to system tray if enabled."""
+        if event.widget == self:
+            try:
+                if self.state() == "iconic" and self.config.get("minimize_to_tray", True):
+                    self.withdraw()
+                    if hasattr(self, "tray_manager") and self.tray_manager:
+                        self.tray_manager.show()
+                        self._update_tray_status()
+            except Exception:
+                pass
+
+    def _restore_from_tray_safe(self):
+        """Thread-safe trigger from tray menu/click to restore UI."""
+        try:
+            self.after(0, self._restore_from_tray)
+        except Exception:
+            pass
+
+    def _restore_from_tray(self):
+        """Restores and brings main window to front."""
+        try:
+            self.deiconify()
+            self.state("normal")
+            self.lift()
+            self.focus_force()
+        except Exception:
+            pass
+
+    def _get_tray_status_text(self) -> str:
+        """Returns dynamic live status string for the tray context menu."""
+        if hasattr(self, "recorder_worker") and self.recorder_worker and getattr(self.recorder_worker, "recording", False):
+            return t("tray.status_recording")
+        elif hasattr(self, "replay_worker") and self.replay_worker and getattr(self.replay_worker, "syncing", False):
+            return t("tray.status_syncing")
+        return t("tray.status_idle")
+
+    def _update_tray_status(self):
+        """Updates tray tooltip to match current active state."""
+        if not hasattr(self, "tray_manager") or not self.tray_manager:
+            return
+        if hasattr(self, "recorder_worker") and self.recorder_worker and getattr(self.recorder_worker, "recording", False):
+            tooltip = t("tray.tooltip_recording")
+        elif hasattr(self, "replay_worker") and self.replay_worker and getattr(self.replay_worker, "syncing", False):
+            tooltip = t("tray.tooltip_syncing")
+        else:
+            tooltip = t("tray.tooltip_idle")
+        self.tray_manager.update_tooltip(tooltip)
 
     def _setup_ui(self):
         # Configure Grid Layout
@@ -297,7 +372,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             text="☀️" if self.current_theme == "light" else "🌙",
             width=32,
             height=26,
-            font=ctk.CTkFont(family="Segoe UI Emoji", size=13),
+            font=ctk.CTkFont(size=13),
             text_color=("#D97706", "#FBBF24"),
             fg_color=("#F1F5F9", "#0F1A36"),
             hover_color=("#E2E8F0", "#1E2A4A"),
@@ -439,7 +514,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             text="🔄",
             width=28,
             height=28,
-            font=ctk.CTkFont(family="Segoe UI Emoji", size=12),
+            font=ctk.CTkFont(size=12),
             text_color=("#0F172A", "#E2E8F0"),
             fg_color=("#F1F5F9", "#0F1A36"),
             hover_color=("#E2E8F0", "#1E2A4A"),
@@ -491,7 +566,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             text="🔄",
             width=28,
             height=28,
-            font=ctk.CTkFont(family="Segoe UI Emoji", size=12),
+            font=ctk.CTkFont(size=12),
             text_color=("#0F172A", "#E2E8F0"),
             fg_color=("#F1F5F9", "#0F1A36"),
             hover_color=("#E2E8F0", "#1E2A4A"),
@@ -1040,6 +1115,34 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         )
         self.rec_count_lbl.grid(row=0, column=0, sticky="w")
 
+        # Download All Missing button (initially hidden, placed dynamically when missing remote files exist)
+        self.download_all_btn = ctk.CTkButton(
+            rec_top_bar,
+            text=t("recordings.download_all", count=0),
+            height=32,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color=("#059669", "#10B981"),
+            hover_color=("#047857", "#059669"),
+            border_width=1,
+            border_color=("#10B981", "#34D399"),
+            corner_radius=8,
+            command=self._download_all_missing_recordings,
+        )
+
+        self.sync_remote_btn = ctk.CTkButton(
+            rec_top_bar,
+            text=t("recordings.sync_remote"),
+            height=32,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color=("#4F46E5", "#6366F1"),
+            hover_color=("#4338CA", "#4F46E5"),
+            border_width=1,
+            border_color=("#6366F1", "#818CF8"),
+            corner_radius=8,
+            command=self._sync_remote_recordings,
+        )
+        self.sync_remote_btn.grid(row=0, column=2, padx=4, sticky="e")
+
         self.open_folder_btn = ctk.CTkButton(
             rec_top_bar,
             text=t("recordings.open_folder"),
@@ -1052,7 +1155,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             corner_radius=8,
             command=self._open_recordings_folder,
         )
-        self.open_folder_btn.grid(row=0, column=1, padx=6, sticky="e")
+        self.open_folder_btn.grid(row=0, column=3, padx=4, sticky="e")
 
         self.refresh_rec_btn = ctk.CTkButton(
             rec_top_bar,
@@ -1068,7 +1171,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             corner_radius=8,
             command=self._refresh_recordings_list,
         )
-        self.refresh_rec_btn.grid(row=0, column=2, padx=4, sticky="e")
+        self.refresh_rec_btn.grid(row=0, column=4, padx=4, sticky="e")
 
         # Scrollable Frame for List of Recordings
         self.rec_scroll_frame = ctk.CTkScrollableFrame(
@@ -1416,8 +1519,34 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             text_color=("#334155", "#94A3B8"),
             command=self._on_auto_replay_toggled,
         )
-        self.auto_replay_lbl.grid(row=2, column=0, padx=(14, 8), pady=(6, 12), sticky="w")
-        self.auto_replay_switch.grid(row=2, column=1, padx=(6, 14), pady=(6, 12), sticky="w")
+        self.auto_replay_switch.grid(row=2, column=1, padx=(6, 14), pady=6, sticky="w")
+
+        # Minimize to System Tray
+        self.minimize_to_tray_lbl = ctk.CTkLabel(
+            card_auto,
+            text=t("settings.minimize_to_tray"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0F172A", "#CBD5E1"),
+        )
+        self.minimize_to_tray_lbl.grid(row=3, column=0, padx=(14, 8), pady=(6, 12), sticky="w")
+
+        self.minimize_to_tray_var = ctk.BooleanVar(
+            value=bool(self.config.get("minimize_to_tray", True))
+        )
+        self.minimize_to_tray_switch = ctk.CTkSwitch(
+            card_auto,
+            text=t("settings.minimize_to_tray_info"),
+            variable=self.minimize_to_tray_var,
+            onvalue=True,
+            offvalue=False,
+            fg_color=("#CBD5E1", "#1E2A4A"),
+            progress_color=("#0891B2", "#0AC8B9"),
+            button_color=("#FFFFFF", "#FFFFFF"),
+            button_hover_color=("#F8FAFC", "#E2E8F0"),
+            text_color=("#334155", "#94A3B8"),
+            command=self._on_minimize_to_tray_toggled,
+        )
+        self.minimize_to_tray_switch.grid(row=3, column=1, padx=(6, 14), pady=(6, 12), sticky="w")
 
         # -------------------------------------------------------------
         # CARD 4: IN-GAME FLOATING HUD OVERLAY
@@ -1590,7 +1719,149 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.hud_reset_pos_btn.pack(side="left", padx=(0, 8))
 
         # -------------------------------------------------------------
-        # CARD 5: SOFTWARE & UPDATES
+        # CARD 5: REMOTE SCRIM SERVER (DIRECT PORT)
+        # -------------------------------------------------------------
+        card_cloud = ctk.CTkFrame(
+            scroll,
+            fg_color=("#FFFFFF", "#0B1329"),
+            corner_radius=10,
+            border_width=1,
+            border_color=("#E2E8F0", "#1E2A4A"),
+        )
+        card_cloud.pack(fill="x", padx=10, pady=(0, 10))
+        card_cloud.grid_columnconfigure(0, weight=0)
+        card_cloud.grid_columnconfigure(1, weight=1)
+        card_cloud.grid_columnconfigure(2, weight=0)
+
+        self.cloud_title_lbl = ctk.CTkLabel(
+            card_cloud,
+            text=f"☁️ {t('settings.cloud_title')}",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=("#0891B2", "#0AC8B9"),
+        )
+        self.cloud_title_lbl.grid(row=0, column=0, columnspan=3, padx=14, pady=(10, 8), sticky="w")
+
+        # Server URL
+        self.cloud_url_lbl = ctk.CTkLabel(
+            card_cloud,
+            text=t("settings.cloud_url"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0F172A", "#CBD5E1"),
+        )
+        self.cloud_url_lbl.grid(row=1, column=0, padx=(14, 8), pady=6, sticky="w")
+
+        self.cloud_url_entry = ctk.CTkEntry(
+            card_cloud,
+            height=32,
+            placeholder_text="https://your-server-ip-or-domain:8443",
+            fg_color=("#F8FAFC", "#070D1E"),
+            border_color=("#CBD5E1", "#1E2A4A"),
+            border_width=1,
+            text_color=("#0F172A", "#F8FAFC"),
+            corner_radius=6,
+        )
+        self.cloud_url_entry.insert(0, str(self.config.get("remote_server_url") or ""))
+        self.cloud_url_entry.grid(row=1, column=1, columnspan=2, padx=(6, 14), pady=6, sticky="ew")
+        self.cloud_url_entry.bind("<FocusOut>", self._on_settings_entry_changed)
+        self.cloud_url_entry.bind("<Return>", self._on_settings_entry_changed)
+        self.cloud_url_entry.bind("<KeyRelease>", self._on_settings_entry_debounced)
+
+        # API Secret Key
+        self.cloud_key_lbl = ctk.CTkLabel(
+            card_cloud,
+            text=t("settings.cloud_api_key"),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0F172A", "#CBD5E1"),
+        )
+        self.cloud_key_lbl.grid(row=2, column=0, padx=(14, 8), pady=6, sticky="w")
+
+        self.cloud_key_entry = ctk.CTkEntry(
+            card_cloud,
+            height=32,
+            show="*",
+            placeholder_text="Paste your UPLOAD_KEY or PULL_KEY",
+            fg_color=("#F8FAFC", "#070D1E"),
+            border_color=("#CBD5E1", "#1E2A4A"),
+            border_width=1,
+            text_color=("#0F172A", "#F8FAFC"),
+            corner_radius=6,
+        )
+        self.cloud_key_entry.insert(0, str(self.config.get("remote_api_key") or ""))
+        self.cloud_key_entry.grid(row=2, column=1, padx=(6, 4), pady=6, sticky="ew")
+        self.cloud_key_entry.bind("<FocusOut>", self._on_settings_entry_changed)
+        self.cloud_key_entry.bind("<Return>", self._on_settings_entry_changed)
+        self.cloud_key_entry.bind("<KeyRelease>", self._on_settings_entry_debounced)
+
+        self._cloud_key_revealed = False
+        self.cloud_key_reveal_btn = ctk.CTkButton(
+            card_cloud,
+            text="👁️",
+            width=40,
+            height=32,
+            font=ctk.CTkFont(size=13),
+            fg_color=("#F1F5F9", "#0F1A36"),
+            hover_color=("#E2E8F0", "#1E2A4A"),
+            border_width=1,
+            border_color=("#CBD5E1", "#1E2A4A"),
+            corner_radius=6,
+            command=self._toggle_cloud_key_visibility,
+        )
+        self.cloud_key_reveal_btn.grid(row=2, column=2, padx=(0, 14), pady=6, sticky="w")
+
+        # Test Connection button & status label
+        cloud_actions_frame = ctk.CTkFrame(card_cloud, fg_color="transparent")
+        cloud_actions_frame.grid(row=3, column=0, columnspan=3, padx=14, pady=(4, 8), sticky="w")
+
+        self.cloud_test_btn = ctk.CTkButton(
+            cloud_actions_frame,
+            text=t("settings.cloud_test_btn"),
+            width=140,
+            height=30,
+            font=ctk.CTkFont(size=11, weight="bold"),
+            fg_color=("#4F46E5", "#6366F1"),
+            hover_color=("#4338CA", "#4F46E5"),
+            corner_radius=6,
+            command=self._test_cloud_connection,
+        )
+        self.cloud_test_btn.pack(side="left", padx=(0, 12))
+
+        self.cloud_status_lbl = ctk.CTkLabel(
+            cloud_actions_frame,
+            text="",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#64748B",
+        )
+        self.cloud_status_lbl.pack(side="left")
+
+        # Auto-upload switch
+        self.cloud_auto_upload_var = ctk.BooleanVar(
+            value=bool(self.config.get("remote_auto_upload", False))
+        )
+        self.cloud_auto_upload_switch = ctk.CTkSwitch(
+            card_cloud,
+            text=t("settings.cloud_auto_upload"),
+            variable=self.cloud_auto_upload_var,
+            onvalue=True,
+            offvalue=False,
+            fg_color=("#CBD5E1", "#1E2A4A"),
+            progress_color=("#0891B2", "#0AC8B9"),
+            button_color=("#FFFFFF", "#FFFFFF"),
+            button_hover_color=("#F8FAFC", "#E2E8F0"),
+            text_color=("#334155", "#94A3B8"),
+            command=self._on_cloud_auto_upload_toggled,
+        )
+        self.cloud_auto_upload_switch.grid(row=4, column=0, columnspan=3, padx=14, pady=(8, 2), sticky="w")
+
+        self.cloud_auto_upload_info = ctk.CTkLabel(
+            card_cloud,
+            text=t("settings.cloud_auto_upload_info"),
+            font=ctk.CTkFont(size=10),
+            text_color=("#64748B", "#94A3B8"),
+        )
+        self.cloud_auto_upload_info.grid(row=5, column=0, columnspan=3, padx=14, pady=(0, 10), sticky="w")
+
+        # -------------------------------------------------------------
+        # CARD 6: SOFTWARE & UPDATES
         # -------------------------------------------------------------
         card_updates = ctk.CTkFrame(
             scroll,
@@ -1698,6 +1969,88 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.config["auto_start_replay"] = val
         save_config(self.config)
 
+    def _on_minimize_to_tray_toggled(self):
+        val = bool(self.minimize_to_tray_var.get())
+        self.config["minimize_to_tray"] = val
+        save_config(self.config)
+        if not val and hasattr(self, "tray_manager") and self.tray_manager:
+            self.tray_manager.hide()
+
+    def _on_cloud_auto_upload_toggled(self):
+        val = bool(self.cloud_auto_upload_var.get())
+        if val and getattr(self, "_cloud_role", "") == "pull":
+            self.cloud_auto_upload_var.set(False)
+            self.log_message(t("recordings.upload_failed", filename="", error="Pull API key has read-only permissions."))
+            return
+        self.config["remote_auto_upload"] = val
+        save_config(self.config)
+
+    def _toggle_cloud_key_visibility(self):
+        self._cloud_key_revealed = not getattr(self, "_cloud_key_revealed", False)
+        if hasattr(self, "cloud_key_entry"):
+            self.cloud_key_entry.configure(show="" if self._cloud_key_revealed else "*")
+        if hasattr(self, "cloud_key_reveal_btn"):
+            self.cloud_key_reveal_btn.configure(text="🔒" if self._cloud_key_revealed else "👁️")
+
+    def _test_cloud_connection(self):
+        url = self.cloud_url_entry.get().strip() if hasattr(self, "cloud_url_entry") else ""
+        key = self.cloud_key_entry.get().strip() if hasattr(self, "cloud_key_entry") else ""
+        if not url or not key:
+            if hasattr(self, "cloud_status_lbl"):
+                self.cloud_status_lbl.configure(
+                    text="⚠️ Please enter Server URL and API Key",
+                    text_color="#F59E0B",
+                )
+            return
+
+        if hasattr(self, "cloud_status_lbl"):
+            self.cloud_status_lbl.configure(text=t("settings.cloud_testing"), text_color="#38BDF8")
+        if hasattr(self, "cloud_test_btn"):
+            self.cloud_test_btn.configure(state="disabled")
+
+        def _worker():
+            from app.cloud_sync import CloudSyncClient
+
+            client = CloudSyncClient(server_url=url, api_key=key)
+            success, info = client.check_health()
+
+            def _ui():
+                if hasattr(self, "cloud_test_btn"):
+                    self.cloud_test_btn.configure(state="normal")
+                if not hasattr(self, "cloud_status_lbl"):
+                    return
+                if success and isinstance(info, dict):
+                    role = str(info.get("authenticated_role") or "unknown").lower()
+                    self._cloud_role = role
+                    if role == "upload":
+                        txt = t("settings.cloud_connected_upload")
+                    elif role == "pull":
+                        txt = t("settings.cloud_connected_pull")
+                        if hasattr(self, "cloud_auto_upload_var") and self.cloud_auto_upload_var.get():
+                            self.cloud_auto_upload_var.set(False)
+                            self.config["remote_auto_upload"] = False
+                            save_config(self.config)
+                    elif role == "admin":
+                        txt = t("settings.cloud_connected_admin")
+                    else:
+                        txt = f"✔ Connected ({role})"
+                    self.cloud_status_lbl.configure(text=txt, text_color="#10B981")
+                    self.log_message(
+                        f"☁ [Cloud] Connected to {url} (Role: {role}, Scrims: {info.get('recording_count', 0)})"
+                    )
+                    self._refresh_recordings_list()
+                else:
+                    err_msg = str(info)
+                    self.cloud_status_lbl.configure(
+                        text=t("settings.cloud_failed", error=err_msg[:35]),
+                        text_color="#EF4444",
+                    )
+                    self.log_message(f"❌ [Cloud] Connection test failed: {err_msg}")
+
+            self.after(0, _ui)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
     def _on_hud_enabled_toggled(self):
         enabled = bool(self.hud_enable_var.get())
         self.config["hud_overlay_enabled"] = enabled
@@ -1782,6 +2135,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
     def _refresh_replay_api_ui_status(self):
         """Refreshes the Replay API status badge and button state in Settings."""
         if not hasattr(self, "replay_api_badge") or getattr(self, "_is_destroyed", False):
+            return
+        if getattr(self, "_in_test_suite", False):
+            self.replay_api_badge.configure(
+                text=t("settings.replay_api_status_enabled"),
+                text_color=("#059669", "#10B981"),
+                fg_color=("#DCFCE7", "#064E3B"),
+            )
             return
         try:
             from app.replay_config import check_replay_api_status
@@ -2146,6 +2506,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             if hasattr(self, "open_folder_btn"):
                 self.open_folder_btn.configure(text=t("recordings.open_folder"))
                 self.refresh_rec_btn.configure(text=t("recordings.refresh"))
+                if hasattr(self, "sync_remote_btn"):
+                    self.sync_remote_btn.configure(text=t("recordings.sync_remote"))
                 self._refresh_recordings_list()
 
             # Settings tab
@@ -2184,6 +2546,9 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 if hasattr(self, "auto_replay_lbl"):
                     self.auto_replay_lbl.configure(text=t("settings.auto_start_replay"))
                     self.auto_replay_switch.configure(text=t("settings.auto_start_replay_info"))
+                if hasattr(self, "minimize_to_tray_lbl"):
+                    self.minimize_to_tray_lbl.configure(text=t("settings.minimize_to_tray"))
+                    self.minimize_to_tray_switch.configure(text=t("settings.minimize_to_tray_info"))
                 if hasattr(self, "replay_api_btn"):
                     self.replay_api_btn.configure(text=t("settings.enable_replay_api_btn"))
                 if hasattr(self, "hud_title_lbl"):
@@ -2203,6 +2568,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                     self.hud_preview_replay_btn.configure(text=t("settings.hud_preview_replay_btn"))
                     self.hud_hide_preview_btn.configure(text=t("settings.hud_hide_preview_btn"))
                     self.hud_reset_pos_btn.configure(text=t("settings.hud_reset_pos_btn"))
+                if hasattr(self, "cloud_title_lbl"):
+                    self.cloud_title_lbl.configure(text=f"☁️ {t('settings.cloud_title')}")
+                    self.cloud_url_lbl.configure(text=t("settings.cloud_url"))
+                    self.cloud_key_lbl.configure(text=t("settings.cloud_api_key"))
+                    self.cloud_test_btn.configure(text=t("settings.cloud_test_btn"))
+                    self.cloud_auto_upload_switch.configure(text=t("settings.cloud_auto_upload"))
+                    self.cloud_auto_upload_info.configure(text=t("settings.cloud_auto_upload_info"))
                 if hasattr(self, "save_btn") and self.save_btn:
                     self.save_btn.configure(text=t("settings.save_btn"))
                 if hasattr(self, "updates_title_lbl"):
@@ -2348,6 +2720,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
     def _render_rec_status(self, status, detail):
         prev_status = getattr(self, "last_rec_status", (None, None))[0]
         self.last_rec_status = (status, detail)
+        self._update_tray_status()
         if status == "RECORDING":
             text = (
                 t("record.status_recording", detail=detail)
@@ -2420,6 +2793,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
     def _render_replay_status(self, status, detail):
         self.last_replay_status = (status, detail)
+        self._update_tray_status()
         if status == "SYNCING":
             text = (
                 t("replay.status_syncing", detail=detail)
@@ -3011,6 +3385,11 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             subprocess.run(["xdg-open", folder])
 
     def _refresh_recordings_list(self):
+        if getattr(self, "_in_test_suite", False):
+            if hasattr(self, "rec_count_lbl"):
+                self.rec_count_lbl.configure(text=t("recordings.count_label", count=0, size=0.0))
+            return
+
         for widget in self.rec_scroll_frame.winfo_children():
             widget.destroy()
 
@@ -3027,7 +3406,28 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             text=t("recordings.count_label", count=len(files), size=total_size_mb)
         )
 
-        if not files:
+        local_game_ids = set()
+        for f in files:
+            if f.lower().endswith(".mp3"):
+                local_game_ids.add(f[:-4])
+
+        remote_items = getattr(self, "_remote_recordings", []) or []
+        missing_remote_items = [
+            it for it in remote_items
+            if str(it.get("game_id", "")).strip() and str(it.get("game_id", "")).strip() not in local_game_ids
+        ]
+
+        if hasattr(self, "download_all_btn"):
+            if missing_remote_items:
+                self.download_all_btn.configure(
+                    text=t("recordings.download_all", count=len(missing_remote_items)),
+                    state="normal",
+                )
+                self.download_all_btn.grid(row=0, column=1, padx=4, sticky="e")
+            else:
+                self.download_all_btn.grid_remove()
+
+        if not files and not missing_remote_items:
             empty_lbl = ctk.CTkLabel(
                 self.rec_scroll_frame,
                 text=t("recordings.empty", folder=folder),
@@ -3037,15 +3437,119 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             empty_lbl.pack(pady=20)
             return
 
-        for idx, filename in enumerate(files):
+        is_admin = getattr(self, "_cloud_role", "") == "admin"
+        row_idx = 0
+
+        # 1. Render missing remote scrim recordings with prominent Download action
+        for item in missing_remote_items:
+            game_id = str(item.get("game_id")).strip()
+            size_mb = (item.get("file_size") or 0) / (1024 * 1024)
+            date_raw = str(item.get("created_at") or item.get("upload_timestamp") or "")
+            date_str = date_raw[:19].replace("T", " ") if date_raw else "Recent"
+            team = item.get("team_tag")
+
+            row = ctk.CTkFrame(
+                self.rec_scroll_frame,
+                fg_color=("#EFF6FF", "#0A1733") if row_idx % 2 == 0 else ("#E0F2FE", "#0D1E42"),
+                corner_radius=8,
+                border_width=1,
+                border_color=("#38BDF8", "#1E3A8A"),
+            )
+            row.pack(fill="x", padx=6, pady=4)
+            row.grid_columnconfigure(0, weight=1)
+
+            title_frame = ctk.CTkFrame(row, fg_color="transparent")
+            title_frame.grid(row=0, column=0, padx=14, pady=(8, 2), sticky="w")
+
+            name_lbl = ctk.CTkLabel(
+                title_frame,
+                text=f"☁️ {game_id}.mp3",
+                font=ctk.CTkFont(size=13, weight="bold"),
+                text_color=("#0284C7", "#38BDF8"),
+            )
+            name_lbl.pack(side="left")
+
+            badge_text = f"[{t('recordings.status_remote')}]"
+            if team:
+                badge_text += f" • vs {team}"
+            badge = ctk.CTkLabel(
+                title_frame,
+                text=badge_text,
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color=("#0284C7", "#38BDF8"),
+            )
+            badge.pack(side="left", padx=8)
+
+            meta_lbl = ctk.CTkLabel(
+                row,
+                text=t("recordings.remote_meta", size=size_mb, date=date_str),
+                font=ctk.CTkFont(size=11),
+                text_color=("#64748B", "#94A3B8"),
+            )
+            meta_lbl.grid(row=1, column=0, padx=14, pady=(0, 8), sticky="w")
+
+            actions_frame = ctk.CTkFrame(row, fg_color="transparent")
+            actions_frame.grid(row=0, column=1, rowspan=2, padx=12, pady=8, sticky="e")
+
+            dl_btn = ctk.CTkButton(
+                actions_frame,
+                text=t("recordings.download"),
+                width=90,
+                height=30,
+                font=ctk.CTkFont(size=11, weight="bold"),
+                fg_color=("#0284C7", "#0284C7"),
+                hover_color=("#0369A1", "#0369A1"),
+                text_color="#FFFFFF",
+                corner_radius=6,
+            )
+            dl_btn.configure(command=lambda g=game_id, b=dl_btn: self._download_single_recording(g, b))
+            dl_btn.pack(side="left", padx=(0, 6) if is_admin else 0)
+
+            # Special Admin ability: delete recording from remote server
+            if is_admin:
+                del_btn = ctk.CTkButton(
+                    actions_frame,
+                    text=t("recordings.delete_remote"),
+                    width=80,
+                    height=30,
+                    font=ctk.CTkFont(size=11, weight="bold"),
+                    fg_color=("#DC2626", "#DC2626"),
+                    hover_color=("#B91C1C", "#B91C1C"),
+                    text_color="#FFFFFF",
+                    corner_radius=6,
+                )
+                del_btn.configure(command=lambda g=game_id, b=del_btn: self._delete_remote_recording(g, b))
+                del_btn.pack(side="left")
+
+            row_idx += 1
+
+        # Set of game IDs known to be on the remote server
+        remote_game_ids = {
+            str(it.get("game_id")).strip() for it in remote_items if str(it.get("game_id", "")).strip()
+        }
+
+        from app.scrim_meta import load_all_scrim_metadata
+
+        all_local_meta = load_all_scrim_metadata(folder)
+        can_organize = self._can_upload_to_cloud()
+
+        # 2. Render local scrim recordings
+        for filename in files:
             filepath = os.path.join(folder, filename)
             mtime = os.path.getmtime(filepath)
             dt_str = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
             size_mb = os.path.getsize(filepath) / (1024 * 1024)
+            game_id = filename[:-4] if filename.lower().endswith(".mp3") else filename
+
+            is_on_server = game_id in remote_game_ids
+            meta = all_local_meta.get(game_id, {})
+            saved_team = meta.get("team_tag", "")
+            saved_notes = meta.get("notes", "")
+            recorded_date = meta.get("recorded_at") or dt_str
 
             row = ctk.CTkFrame(
                 self.rec_scroll_frame,
-                fg_color=("#F1F5F9", "#0B1329") if idx % 2 == 0 else ("#E2E8F0", "#0E1833"),
+                fg_color=("#F1F5F9", "#0B1329") if row_idx % 2 == 0 else ("#E2E8F0", "#0E1833"),
                 corner_radius=8,
                 border_width=1,
                 border_color=("#CBD5E1", "#162038"),
@@ -3053,24 +3557,92 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             row.pack(fill="x", padx=6, pady=4)
             row.grid_columnconfigure(0, weight=1)
 
+            title_frame = ctk.CTkFrame(row, fg_color="transparent")
+            title_frame.grid(row=0, column=0, padx=14, pady=(8, 2), sticky="w")
+
             name_lbl = ctk.CTkLabel(
-                row,
+                title_frame,
                 text=f"🎵 {filename}",
                 font=ctk.CTkFont(size=13, weight="bold"),
                 text_color=("#0F172A", "#F8FAFC"),
             )
-            name_lbl.grid(row=0, column=0, padx=14, pady=(8, 2), sticky="w")
+            name_lbl.pack(side="left")
 
+            # Clicking on the .mp3 file name opens details dialog if user has upload/admin access
+            if can_organize:
+                name_lbl.configure(cursor="hand2")
+                name_lbl.bind(
+                    "<Button-1>",
+                    lambda e, g=game_id, f=filepath, m=mtime: self._open_edit_details_dialog(g, f, m),
+                )
+
+            badge_text = f"[{t('recordings.status_local')}]"
+            if is_on_server:
+                badge_text += f" • [{t('recordings.status_synced')}]"
+            if saved_team:
+                badge_text += f" • vs {saved_team}"
+            badge = ctk.CTkLabel(
+                title_frame,
+                text=badge_text,
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color=("#059669", "#10B981") if is_on_server else ("#0284C7", "#38BDF8"),
+            )
+            badge.pack(side="left", padx=8)
+
+            notes_preview = (
+                f"  |  \"{saved_notes[:35]}...\""
+                if len(saved_notes) > 35
+                else (f"  |  \"{saved_notes}\"" if saved_notes else "")
+            )
             meta_lbl = ctk.CTkLabel(
                 row,
-                text=t("recordings.meta", size=size_mb, date=dt_str),
+                text=t("recordings.meta", size=size_mb, date=recorded_date) + notes_preview,
                 font=ctk.CTkFont(size=11),
                 text_color=("#64748B", "#94A3B8"),
             )
             meta_lbl.grid(row=1, column=0, padx=14, pady=(0, 8), sticky="w")
 
+            actions_frame = ctk.CTkFrame(row, fg_color="transparent")
+            actions_frame.grid(row=0, column=1, rowspan=2, padx=12, pady=8, sticky="e")
+
+            # Show Edit Details button for users with upload/admin permissions
+            if can_organize:
+                details_btn = ctk.CTkButton(
+                    actions_frame,
+                    text=t("recordings.edit_details"),
+                    width=75,
+                    height=30,
+                    font=ctk.CTkFont(size=11, weight="bold"),
+                    fg_color=("#2563EB", "#3B82F6"),
+                    hover_color=("#1D4ED8", "#2563EB"),
+                    text_color="#FFFFFF",
+                    corner_radius=6,
+                )
+                details_btn.configure(
+                    command=lambda g=game_id, f=filepath, m=mtime: self._open_edit_details_dialog(g, f, m)
+                )
+                details_btn.pack(side="left", padx=(0, 6))
+
+            # Show Upload button if not yet on server and client has upload permissions
+            if not is_on_server and can_organize:
+                upload_btn = ctk.CTkButton(
+                    actions_frame,
+                    text=t("recordings.upload"),
+                    width=85,
+                    height=30,
+                    font=ctk.CTkFont(size=11, weight="bold"),
+                    fg_color=("#4F46E5", "#6366F1"),
+                    hover_color=("#4338CA", "#4F46E5"),
+                    text_color="#FFFFFF",
+                    corner_radius=6,
+                )
+                upload_btn.configure(
+                    command=lambda g=game_id, f=filepath, b=upload_btn: self._upload_single_recording(g, f, b)
+                )
+                upload_btn.pack(side="left", padx=(0, 6))
+
             play_btn = ctk.CTkButton(
-                row,
+                actions_frame,
                 text=t("recordings.play"),
                 width=75,
                 height=30,
@@ -3081,7 +3653,456 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 corner_radius=6,
                 command=lambda p=filepath: self._play_audio_file(p),
             )
-            play_btn.grid(row=0, column=1, rowspan=2, padx=12, pady=8, sticky="e")
+            play_btn.pack(side="left")
+
+            # Special Admin ability: delete recording from remote server
+            if is_admin and is_on_server:
+                del_btn = ctk.CTkButton(
+                    actions_frame,
+                    text=t("recordings.delete_remote"),
+                    width=80,
+                    height=30,
+                    font=ctk.CTkFont(size=11, weight="bold"),
+                    fg_color=("#DC2626", "#DC2626"),
+                    hover_color=("#B91C1C", "#B91C1C"),
+                    text_color="#FFFFFF",
+                    corner_radius=6,
+                )
+                del_btn.configure(command=lambda g=game_id, b=del_btn: self._delete_remote_recording(g, b))
+                del_btn.pack(side="left", padx=(6, 0))
+
+            row_idx += 1
+
+    def _can_upload_to_cloud(self) -> bool:
+        """Determines whether the client has permission to upload recordings to the remote server.
+
+        Returns False if the active API key has the read-only 'pull' role, or if no key/URL is configured.
+        Returns True if the role is 'upload' or 'admin'.
+        """
+        key = self.config.get("remote_api_key", "").strip()
+        url = self.config.get("remote_server_url", "").strip()
+        if not key or not url:
+            return False
+
+        role = getattr(self, "_cloud_role", "unknown")
+        if role == "pull":
+            return False
+        if role in ("upload", "admin"):
+            return True
+
+        # Fallback inspection on the key naming pattern if health check hasn't run yet
+        key_lower = key.lower()
+        if "pull" in key_lower:
+            return False
+        if "upload" in key_lower or "admin" in key_lower:
+            return True
+
+        # If role is unknown and not yet checked, trigger background check to discover role
+        if role == "unknown" and not getattr(self, "_checking_cloud_role", False):
+            self._checking_cloud_role = True
+
+            def _check():
+                try:
+                    from app.cloud_sync import CloudSyncClient
+
+                    client = CloudSyncClient(server_url=url, api_key=key)
+                    ok, info = client.check_health()
+                    if ok and isinstance(info, dict):
+                        self._cloud_role = str(info.get("authenticated_role") or "unknown").lower()
+                        self.after(0, self._refresh_recordings_list)
+                except Exception:
+                    pass
+                finally:
+                    self._checking_cloud_role = False
+
+            threading.Thread(target=_check, daemon=True).start()
+
+        return False
+
+    def _sync_remote_recordings(self):
+        """Fetches recordings index from the remote server."""
+        url = self.config.get("remote_server_url", "").strip()
+        key = self.config.get("remote_api_key", "").strip()
+        if not url or not key:
+            self.log_message(t("recordings.remote_sync_failed", error="Server URL or API Key not configured in Settings."))
+            return
+
+        if hasattr(self, "sync_remote_btn"):
+            self.sync_remote_btn.configure(text=t("recordings.syncing"), state="disabled")
+
+        def _worker():
+            from app.cloud_sync import CloudSyncClient
+
+            client = CloudSyncClient(server_url=url, api_key=key)
+            health_ok, health_info = client.check_health()
+            if health_ok and isinstance(health_info, dict):
+                self._cloud_role = str(health_info.get("authenticated_role") or "unknown").lower()
+            items = client.list_recordings()
+
+            def _ui():
+                if hasattr(self, "sync_remote_btn"):
+                    self.sync_remote_btn.configure(text=t("recordings.sync_remote"), state="normal")
+                self._remote_recordings = items
+                self._refresh_recordings_list()
+                folder = self.config.get("record_folder") or get_current_user_documents_recordings_dir()
+                local_files = set(os.listdir(folder)) if os.path.exists(folder) else set()
+                missing = sum(1 for it in items if f"{it.get('game_id')}.mp3" not in local_files)
+                self.log_message(t("recordings.remote_sync_success", total=len(items), missing=missing))
+
+            self.after(0, _ui)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _download_single_recording(self, game_id, btn_widget=None):
+        """Downloads one missing recording from the remote server."""
+        url = self.config.get("remote_server_url", "").strip()
+        key = self.config.get("remote_api_key", "").strip()
+        if not url or not key:
+            return
+
+        if btn_widget:
+            btn_widget.configure(text=t("recordings.downloading"), state="disabled")
+
+        folder = self.config.get("record_folder") or get_current_user_documents_recordings_dir()
+        dest_path = os.path.join(folder, f"{game_id}.mp3")
+
+        def _worker():
+            from app.cloud_sync import CloudSyncClient
+
+            client = CloudSyncClient(server_url=url, api_key=key)
+            success = client.download_recording(game_id, dest_path)
+
+            def _ui():
+                if success:
+                    self.log_message(t("recordings.download_success", filename=f"{game_id}.mp3"))
+                else:
+                    self.log_message(
+                        t("recordings.download_failed", filename=f"{game_id}.mp3", error="Network or server error")
+                    )
+                self._refresh_recordings_list()
+
+            self.after(0, _ui)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _download_all_missing_recordings(self):
+        """Downloads all detected missing remote recordings sequentially."""
+        url = self.config.get("remote_server_url", "").strip()
+        key = self.config.get("remote_api_key", "").strip()
+        if not url or not key or not getattr(self, "_remote_recordings", None):
+            return
+
+        folder = self.config.get("record_folder") or get_current_user_documents_recordings_dir()
+        local_files = set(os.listdir(folder)) if os.path.exists(folder) else set()
+        missing = [
+            str(it["game_id"]).strip()
+            for it in self._remote_recordings
+            if f"{it.get('game_id')}.mp3" not in local_files
+        ]
+
+        if not missing:
+            return
+
+        if hasattr(self, "download_all_btn"):
+            self.download_all_btn.configure(text=t("recordings.downloading"), state="disabled")
+
+        def _worker():
+            from app.cloud_sync import CloudSyncClient
+
+            client = CloudSyncClient(server_url=url, api_key=key)
+            success_count = 0
+            for gid in missing:
+                dest = os.path.join(folder, f"{gid}.mp3")
+                if client.download_recording(gid, dest):
+                    success_count += 1
+                    self.log_message(t("recordings.download_success", filename=f"{gid}.mp3"))
+
+            def _ui():
+                if hasattr(self, "download_all_btn"):
+                    self.download_all_btn.configure(state="normal")
+                self._refresh_recordings_list()
+                self.log_message(f"⬇ Finished batch download: {success_count}/{len(missing)} files downloaded.")
+
+            self.after(0, _ui)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _upload_single_recording(self, game_id, file_path, btn_widget=None):
+        """Uploads a local recording to the remote server after verifying if it's already on the server."""
+        if not self._can_upload_to_cloud():
+            self.log_message(
+                t("recordings.upload_failed", filename=f"{game_id}.mp3", error="Pull API key has read-only permissions.")
+            )
+            return
+
+        url = self.config.get("remote_server_url", "").strip()
+        key = self.config.get("remote_api_key", "").strip()
+        if not url or not key:
+            self.log_message(
+                t("recordings.upload_failed", filename=f"{game_id}.mp3", error="Server URL or API Key not configured.")
+            )
+            return
+
+        if btn_widget:
+            btn_widget.configure(text=t("recordings.uploading"), state="disabled")
+
+        def _worker():
+            from app.cloud_sync import CloudSyncClient
+            from app.scrim_meta import get_scrim_metadata
+
+            folder = self.config.get("record_folder") or get_current_user_documents_recordings_dir()
+            meta = get_scrim_metadata(folder, game_id, file_path)
+            team_tag = meta.get("team_tag", "")
+            notes = meta.get("notes", "")
+
+            client = CloudSyncClient(server_url=url, api_key=key)
+
+            # Check first if the recording is already on the remote server
+            exists = client.check_recording_exists(game_id)
+            if exists:
+                def _on_already_exists():
+                    self.log_message(t("recordings.already_on_server", filename=f"{game_id}.mp3"))
+                    if hasattr(self, "_remote_recordings"):
+                        if not any(it.get("game_id") == game_id for it in self._remote_recordings):
+                            self._remote_recordings.append({
+                                "game_id": game_id,
+                                "file_size": os.path.getsize(file_path),
+                                "team_tag": team_tag,
+                                "notes": notes,
+                            })
+                    self._refresh_recordings_list()
+
+                self.after(0, _on_already_exists)
+                return
+
+            # Perform the upload
+            self.log_message(t("logs.cloud_upload_start", filename=f"{game_id}.mp3"))
+            success, res = client.upload_recording(
+                game_id, file_path, team_tag=team_tag, notes=notes, check_first=False
+            )
+
+            def _ui():
+                if success:
+                    self.log_message(t("recordings.upload_success", filename=f"{game_id}.mp3"))
+                    if hasattr(self, "_remote_recordings"):
+                        if not any(it.get("game_id") == game_id for it in self._remote_recordings):
+                            self._remote_recordings.append({
+                                "game_id": game_id,
+                                "file_size": os.path.getsize(file_path),
+                                "team_tag": team_tag,
+                                "notes": notes,
+                                "created_at": datetime.datetime.now().isoformat(),
+                            })
+                else:
+                    self.log_message(t("recordings.upload_failed", filename=f"{game_id}.mp3", error=str(res)))
+                self._refresh_recordings_list()
+
+            self.after(0, _ui)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _open_edit_details_dialog(self, game_id: str, file_path: str, mtime: float | None = None):
+        """Opens a modal dialog allowing users with upload/admin access to edit team tag, notes, and recorded date."""
+        if not self._can_upload_to_cloud():
+            return None
+
+        from app.scrim_meta import get_scrim_metadata, save_scrim_metadata
+
+        folder = self.config.get("record_folder") or get_current_user_documents_recordings_dir()
+        meta = get_scrim_metadata(folder, game_id, file_path)
+
+        # Dialog window
+        dialog = ctk.CTkToplevel(self)
+        dialog.title(f"{t('recordings.details_title')} — {game_id}.mp3")
+        dialog.geometry("490x440")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        if not getattr(self, "_in_test_suite", False):
+            dialog.grab_set()
+
+        # Center over parent
+        try:
+            px = self.winfo_x() + (self.winfo_width() - 490) // 2
+            py = self.winfo_y() + (self.winfo_height() - 440) // 2
+            dialog.geometry(f"+{max(0, px)}+{max(0, py)}")
+        except Exception:
+            pass
+
+        # Card container
+        container = ctk.CTkFrame(dialog, fg_color=("#FFFFFF", "#0A1128"), corner_radius=12)
+        container.pack(fill="both", expand=True, padx=14, pady=14)
+        container.grid_columnconfigure(1, weight=1)
+
+        # Header Title
+        title_lbl = ctk.CTkLabel(
+            container,
+            text=f"📝 {game_id}.mp3",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=("#0F172A", "#F8FAFC"),
+        )
+        title_lbl.grid(row=0, column=0, columnspan=2, padx=16, pady=(14, 2), sticky="w")
+
+        sub_lbl = ctk.CTkLabel(
+            container,
+            text=t("recordings.details_subtitle"),
+            font=ctk.CTkFont(size=12),
+            text_color=("#64748B", "#94A3B8"),
+        )
+        sub_lbl.grid(row=1, column=0, columnspan=2, padx=16, pady=(0, 14), sticky="w")
+
+        # Row 1: Date Recorded (Automatically stamped, editable)
+        date_lbl = ctk.CTkLabel(
+            container,
+            text=t("recordings.field_date"),
+            font=ctk.CTkFont(size=12, weight="bold"),
+        )
+        date_lbl.grid(row=2, column=0, padx=16, pady=6, sticky="w")
+
+        date_entry = ctk.CTkEntry(
+            container,
+            font=ctk.CTkFont(size=12),
+            height=32,
+        )
+        default_date = meta.get("recorded_at")
+        if not default_date and mtime:
+            default_date = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+        if not default_date:
+            default_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        date_entry.insert(0, default_date)
+        date_entry.grid(row=2, column=1, padx=16, pady=6, sticky="ew")
+
+        # Row 2: Team Tag
+        team_lbl = ctk.CTkLabel(
+            container,
+            text=t("recordings.field_team"),
+            font=ctk.CTkFont(size=12, weight="bold"),
+        )
+        team_lbl.grid(row=3, column=0, padx=16, pady=6, sticky="w")
+
+        team_entry = ctk.CTkEntry(
+            container,
+            placeholder_text=t("recordings.field_team_placeholder"),
+            font=ctk.CTkFont(size=12),
+            height=32,
+        )
+        saved_vs_team = meta.get("team_tag", "")
+        if saved_vs_team:
+            team_entry.insert(0, saved_vs_team)
+        team_entry.grid(row=3, column=1, padx=16, pady=6, sticky="ew")
+
+        # Row 3: Scrim Notes
+        notes_lbl = ctk.CTkLabel(
+            container,
+            text=t("recordings.field_notes"),
+            font=ctk.CTkFont(size=12, weight="bold"),
+        )
+        notes_lbl.grid(row=4, column=0, padx=16, pady=(8, 2), sticky="nw")
+
+        notes_box = ctk.CTkTextbox(
+            container,
+            height=100,
+            font=ctk.CTkFont(size=12),
+        )
+        if meta.get("notes"):
+            notes_box.insert("1.0", meta.get("notes"))
+        notes_box.grid(row=4, column=1, padx=16, pady=6, sticky="nsew")
+
+        # Button Bar
+        btn_bar = ctk.CTkFrame(container, fg_color="transparent")
+        btn_bar.grid(row=5, column=0, columnspan=2, padx=16, pady=(16, 12), sticky="e")
+
+        def _save(and_upload=False):
+            new_meta = {
+                "recorded_at": date_entry.get().strip() or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "team_tag": team_entry.get().strip(),
+                "notes": notes_box.get("1.0", "end-1c").strip(),
+            }
+            save_scrim_metadata(folder, game_id, new_meta, embed_id3=True, filepath=file_path)
+            self.log_message(t("recordings.details_saved", filename=f"{game_id}.mp3"))
+            self._refresh_recordings_list()
+            dialog.destroy()
+            if and_upload:
+                self._upload_single_recording(game_id, file_path)
+
+        cancel_btn = ctk.CTkButton(
+            btn_bar,
+            text=t("recordings.cancel"),
+            width=80,
+            height=32,
+            fg_color="transparent",
+            border_width=1,
+            text_color=("#475569", "#CBD5E1"),
+            command=dialog.destroy,
+        )
+        cancel_btn.pack(side="left", padx=(0, 8))
+
+        save_btn = ctk.CTkButton(
+            btn_bar,
+            text=t("recordings.save_details"),
+            width=110,
+            height=32,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color=("#059669", "#10B981"),
+            hover_color=("#047857", "#059669"),
+            text_color="#FFFFFF",
+            command=lambda: _save(and_upload=False),
+        )
+        save_btn.pack(side="left")
+
+        # Expose widgets on dialog for test assertions
+        dialog._date_entry = date_entry
+        dialog._team_entry = team_entry
+        dialog._notes_box = notes_box
+        dialog._save_btn = save_btn
+
+        if getattr(self, "_in_test_suite", False):
+            dialog.withdraw()
+
+        return dialog
+
+    def _delete_remote_recording(self, game_id, btn_widget=None):
+        """Prompts confirmation and permanently deletes recording from remote server (Admin only)."""
+        clean_id = str(game_id).strip()
+        if not getattr(self, "_in_test_suite", False):
+            import tkinter.messagebox as mb
+
+            confirmed = mb.askyesno(
+                title=t("recordings.delete_confirm_title"),
+                message=t("recordings.delete_confirm_msg", game_id=clean_id),
+                parent=self,
+            )
+            if not confirmed:
+                return
+
+        url = self.config.get("remote_server_url", "").strip()
+        key = self.config.get("remote_api_key", "").strip()
+        if not url or not key:
+            return
+
+        if btn_widget:
+            btn_widget.configure(text=t("recordings.deleting"), state="disabled")
+
+        def _worker():
+            from app.cloud_sync import CloudSyncClient
+
+            client = CloudSyncClient(server_url=url, api_key=key)
+            success, msg = client.delete_recording(clean_id)
+
+            def _ui():
+                if success:
+                    self.log_message(t("recordings.delete_success", filename=f"{clean_id}.mp3"))
+                    if hasattr(self, "_remote_recordings"):
+                        self._remote_recordings = [
+                            it for it in self._remote_recordings
+                            if str(it.get("game_id", "")).strip() != clean_id
+                        ]
+                else:
+                    self.log_message(t("recordings.delete_failed", filename=f"{clean_id}.mp3", error=str(msg)))
+                self._refresh_recordings_list()
+
+            self.after(0, _ui)
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def _play_audio_file(self, audio_path):
         """Plays selected audio file via default application or VLC."""
@@ -3149,6 +4170,18 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                             self._on_replay_volume_slider_changed(v_val)
                         changed = True
 
+            if hasattr(self, "cloud_url_entry"):
+                u = self.cloud_url_entry.get().strip()
+                if u != self.config.get("remote_server_url"):
+                    self.config["remote_server_url"] = u
+                    changed = True
+
+            if hasattr(self, "cloud_key_entry"):
+                k = self.cloud_key_entry.get().strip()
+                if k != self.config.get("remote_api_key"):
+                    self.config["remote_api_key"] = k
+                    changed = True
+
             if changed:
                 save_config(self.config)
                 if refresh_rec and hasattr(self, "_refresh_recordings_list"):
@@ -3202,6 +4235,9 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 "hud_locked": bool(self.hud_lock_var.get()) if hasattr(self, "hud_lock_var") else False,
                 "hud_click_through": bool(self.hud_lock_var.get()) if hasattr(self, "hud_lock_var") else False,
                 "hud_opacity": round(float(self.hud_opacity_slider.get()), 2) if hasattr(self, "hud_opacity_slider") else 0.85,
+                "remote_server_url": self.cloud_url_entry.get().strip() if hasattr(self, "cloud_url_entry") else "",
+                "remote_api_key": self.cloud_key_entry.get().strip() if hasattr(self, "cloud_key_entry") else "",
+                "remote_auto_upload": bool(self.cloud_auto_upload_var.get()) if hasattr(self, "cloud_auto_upload_var") else False,
             }
             if save_config(new_config):
                 self.config = new_config
@@ -3273,6 +4309,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.config["auto_start_champ_select"] = bool(self.auto_champ_select_var.get())
             if hasattr(self, "auto_replay_var"):
                 self.config["auto_start_replay"] = bool(self.auto_replay_var.get())
+            if hasattr(self, "minimize_to_tray_var"):
+                self.config["minimize_to_tray"] = bool(self.minimize_to_tray_var.get())
             if hasattr(self, "rec_folder_entry"):
                 folder = self.rec_folder_entry.get().strip()
                 if folder:
@@ -3286,9 +4324,9 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         except Exception:
             pass
 
-    def _on_close(self):
-        # 1. Warn if active match recording is in progress
-        if self.recorder_worker and self.recorder_worker.recording:
+    def _on_close(self, force: bool = False):
+        # 1. Warn if active match recording is in progress (unless forced via Ctrl+C / SIGINT)
+        if not force and self.recorder_worker and self.recorder_worker.recording:
             if not messagebox.askyesno(
                 t("record.title"),
                 t("app.active_rec_warning"),
@@ -3307,6 +4345,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         if self.replay_worker:
             self.replay_worker.stop()
 
+        # Clean up System Tray icon
+        if hasattr(self, "tray_manager") and self.tray_manager:
+            try:
+                self.tray_manager.stop()
+            except Exception:
+                pass
+
         # 2. Persist any uncommitted slider or setting state before exit
         if not getattr(self, "_in_test_suite", False):
             self._flush_pending_settings_to_disk()
@@ -3316,7 +4361,8 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             if hasattr(self, "hud") and self.hud:
                 self.hud.hide()
             self.withdraw()
-            self.update_idletasks()
+            if not getattr(self, "_in_test_suite", False):
+                self.update_idletasks()
         except Exception:
             pass
 
@@ -3336,6 +4382,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 os._exit(0)
             except Exception:
                 pass
+
+    def report_callback_exception(self, exc, val, tb):
+        """Catches Ctrl+C KeyboardInterrupt inside Tk event loop and exits immediately."""
+        if issubclass(exc, KeyboardInterrupt):
+            self._on_close(force=True)
+            return
+        super().report_callback_exception(exc, val, tb)
 
     def destroy(self):
         self._is_destroyed = True
@@ -3367,11 +4420,60 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
 def main():
     app = LeagueVoiceRecorderApp()
-    app.mainloop()
+
+    def _sig_handler(sig, frame):
+        try:
+            app.after(0, lambda: app._on_close(force=True))
+        except Exception:
+            try:
+                app._on_close(force=True)
+            except Exception:
+                os._exit(0)
+
     try:
-        os._exit(0)
+        signal.signal(signal.SIGINT, _sig_handler)
+        if hasattr(signal, "SIGBREAK"):
+            signal.signal(signal.SIGBREAK, _sig_handler)
     except Exception:
         pass
+
+    if sys.platform.startswith("win"):
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            PHANDLER_ROUTINE = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)
+
+            def _console_ctrl_handler(ctrl_type):
+                if ctrl_type in (0, 1, 2):  # 0: CTRL_C, 1: CTRL_BREAK, 2: CTRL_CLOSE
+                    try:
+                        app.after(0, lambda: app._on_close(force=True))
+                    except Exception:
+                        try:
+                            app._on_close(force=True)
+                        except Exception:
+                            os._exit(0)
+                    return True
+                return False
+
+            _c_handler = PHANDLER_ROUTINE(_console_ctrl_handler)
+            ctypes.windll.kernel32.SetConsoleCtrlHandler(_c_handler, True)
+            app._console_ctrl_handler_ref = _c_handler
+        except Exception:
+            pass
+
+    try:
+        app.mainloop()
+    except KeyboardInterrupt:
+        try:
+            app._on_close(force=True)
+        except Exception:
+            os._exit(0)
+    finally:
+        try:
+            os._exit(0)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

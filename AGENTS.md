@@ -33,7 +33,8 @@ League Voice Recorder/
 │
 ├── app/                    # Core Python application package
 │   ├── __init__.py         # Package marker
-│   ├── config.py           # Configuration loader, saver, and path resolver
+│   ├── cloud_sync.py       # CloudSyncClient (direct-port remote scrim sync & downloads)
+│   ├── config.py           # Configuration loader, DPAPI secret encryption, and path resolver
 │   ├── discord_ipc.py      # Discord Local IPC client (live mute/deafen tracking)
 │   ├── i18n.py             # Internationalization and community translation loader
 │   ├── record.py           # LeagueRecorder engine (WASAPI capture & FFmpeg alignment)
@@ -41,6 +42,7 @@ League Voice Recorder/
 │   ├── overlay.py          # In-Game floating overlay (translucent live & replay overlay)
 │   ├── play_replay.py      # ReplaySynchronizer engine (process watcher & VLC sync)
 │   ├── replay_config.py    # 1-Click Replay API Auto-Configuration (game.cfg parser & backup)
+│   ├── tray.py             # System Tray Manager (background icon, tooltip & minimize to tray)
 │   └── updater.py          # Auto-updater (GitHub releases, zip extraction, in-place replace)
 │
 ├── assets/                 # Visual branding assets (icons, logos)
@@ -59,9 +61,10 @@ League Voice Recorder/
 │   ├── index.html          # Semantic showcase landing page
 │   └── README.md           # Web documentation & local preview guide
 │
-├── tests/                  # Automated test suite (119 unittests)
+├── tests/                  # Automated test suite (140 unittests)
 │   ├── __init__.py
-│   ├── test_config.py      # Config defaults, path resolution, and directory creation
+│   ├── test_cloud_sync.py  # Remote scrim sync, chunked downloads, and health diagnostics
+│   ├── test_config.py      # Config defaults, DPAPI secret encryption, and path resolution
 │   ├── test_discord_ipc.py # Discord Local IPC & mute silence injection
 │   ├── test_i18n.py        # Locale discovery, translation lookup, and key parity
 │   ├── test_overlay.py     # In-game floating HUD overlay & click-through hit-testing
@@ -69,6 +72,7 @@ League Voice Recorder/
 │   ├── test_replay_config.py # 1-Click game.cfg Replay API detection & safe backup
 │   ├── test_replay_sync.py # ROFL Game ID extraction & volume clamping
 │   ├── test_timing_accuracy.py # Zero-latency timing & sample-accurate match alignment
+│   ├── test_tray.py        # System tray icon lifecycle, dynamic status & minimize event
 │   ├── test_ui.py          # CustomTkinter headless UI & live language switching
 │   └── test_updater.py     # Release asset check, zip extraction, and in-place update
 │
@@ -299,6 +303,31 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
 - **GitHub Release Markdown Decoration**:
   - Uses the `gh` CLI (`gh release view` / `gh release edit`) to automatically append a verified security section (`### 🛡️ VirusTotal Clean Security Verification`) with engine detection ratios (e.g. `0/72 Clean`), public report URLs, and cryptographic SHA256 hashes.
 
+### 3.10 Remote Scrim Cloud Sync & Role-Based Access Control (`app/cloud_sync.py`)
+- **Direct-Port FastAPI Backend Integration**:
+  - Connects to self-hosted team backend server ([league-voice-recorder-backend](https://github.com/betterix/league-voice-recorder-backend)).
+  - Endpoints: `GET /api/v1/health`, `GET /api/v1/recordings`, `GET /api/v1/recordings/{game_id}/download`, `POST /api/v1/recordings/{game_id}`, `DELETE /api/v1/recordings/{game_id}`.
+- **Windows DPAPI API Key Encryption**:
+  - Never stores plain-text API secrets on disk in `config.json`.
+  - Automatically encrypts keys via native Windows `CryptProtectData` (`remote_api_key_encrypted`) and decrypts in memory on boot.
+- **Role-Based UI Permissions (Upload / Pull / Admin)**:
+  - **Pull Key (`pull`)**: Read-only access for analysts, players, or coaches who only download scrims. The `⬆ Upload` button is strictly hidden to prevent HTTP 403 Forbidden errors; Auto-upload is blocked.
+  - **Upload Key (`upload`)**: Enables local recording upload (`⬆ Upload` button rendered for unsynced files) and auto-upload on match end.
+  - **Admin Key (`admin`)**: Grants full capabilities, including the special red `🗑 Delete` button to permanently unlink and purge remote scrim audio from the server.
+
+### 3.11 Scrim Metadata Organizer & In-Place ID3 Tag Embedding (`app/scrim_meta.py`)
+- **Persistent Local Sidecar (`scrim_metadata.json`)**:
+  - Stores local scrim metadata (Match ID, VS Opponent Team, Scrim Notes, and Recorded Date) safely in `recordings/scrim_metadata.json`.
+  - Automatically populates the exact recorded date upon match completion without requiring a default team tag.
+- **In-Place ID3 Tag Embedding via FFmpeg Stream Copy**:
+  - Embeds standard ID3v2 tags directly into `.mp3` files (`title=Game <ID>`, `artist=<VSOpponentTeam>`, `comment=<Notes>`, `date=<RecordedAt>`) using FFmpeg `-codec copy`.
+  - Runs in ~20 milliseconds with zero audio re-encoding and preserves original file modification times (`os.utime`).
+- **Interactive UI Organizer Dialog (Upload & Admin Only)**:
+  - Only accessible to users with upload or admin roles (`self._can_upload_to_cloud()`).
+  - Accessible either by clicking the `📝 Details` button or clicking the `.mp3` title directly in the Scrim Recordings list.
+  - Allows editing the opponent team faced (e.g. `DEO`, `FNC`), match notes, and prefilled recorded date, with one-click `💾 Save Details` and `💾 Save & Upload` actions.
+  - Automatically displays `[Local] • vs <Opponent>` in the recording explorer badge.
+
 ---
 
 ## 4. League of Legends APIs Reference
@@ -403,5 +432,6 @@ The project utilizes **[GradeX](https://github.com/betterix/gradex)** for contin
 3. **Recording Safety**: When stopping the recorder (either via the UI button or on application close), if an active recording is in progress, `stop_recording_and_rename()` must be called to ensure the recording is finalized and converted to MP3.
 4. **VLC Initialization**: On 64-bit Windows, VLC requires explicit DLL directory registration before importing `vlc`. Always configure `os.add_dll_directory(VLC_DIR)` and ensure fallback audio output drivers (`--quiet`, `--quiet --aout=mmdevice`, `--quiet --aout=directsound`) are handled.
 5. **Fast Process Lookup**: Always use `psutil` before falling back to PowerShell subprocess calls for detecting `LeagueClientUx.exe` and `League of Legends.exe`. `psutil` executes in single-digit milliseconds without spawning console windows.
+
 
 

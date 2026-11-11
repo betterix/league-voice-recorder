@@ -293,7 +293,7 @@ uv run python -m app.play_replay
 
 ### Running the Automated Test Suite
 
-The project includes an automated test suite with 119 unit tests covering configuration, Discord Local IPC mute/deafen synchronization, microphone input selection, internationalization, sample-accurate recorder alignment, replay parsing and hotkey mute, in-game floating HUD game-exclusive visibility guards, zero-latency timing benchmarks, and headless UI rendering:
+The project includes an automated test suite with 140 unit tests covering configuration, DPAPI secret encryption, direct-port cloud scrim synchronization, Discord Local IPC mute/deafen synchronization, microphone input selection, internationalization, sample-accurate recorder alignment, replay parsing and hotkey mute, in-game floating HUD game-exclusive visibility guards, system tray minimization and background lifecycle, zero-latency timing benchmarks, and headless UI rendering:
 
 ```powershell
 # Run tests with the Windows launcher script
@@ -321,7 +321,7 @@ Every time a new GitHub Release is published or a tag matching `v*` (e.g., `v1.0
 
 1. Spins up a clean `windows-latest` virtual environment.
 2. Installs Python 3.14.10 and dependencies via `uv`.
-3. Provisions VLC Media Player and runs the complete 119-test suite via `uv run pytest`.
+3. Provisions VLC Media Player and runs the complete 140-test suite via `uv run pytest`.
 4. Compiles the standalone distribution with Nuitka using parallel multi-core compilation (`--jobs`) and compiler caching.
 5. Packages both the **Windows Setup Installer** (`LeagueVoiceRecorder-Setup-*.exe`) and the portable **ZIP archive** (`LeagueVoiceRecorder-Windows-x64.zip`).
 6. Attaches both release assets directly to the GitHub Release.
@@ -384,7 +384,7 @@ League Voice Recorder/
 │   ├── build_exe.bat       # Standalone Windows .exe compiler batch script
 │   └── virustotal_scan.py  # Automated VirusTotal scanner & release verification reporter
 │
-├── tests/                  # Automated test suite (119 unit tests)
+├── tests/                  # Automated test suite (140 unit tests)
 │   ├── __init__.py
 │   ├── test_config.py      # Config defaults, path resolution, and directory creation
 │   ├── test_discord_ipc.py # Discord Local IPC & mute silence injection
