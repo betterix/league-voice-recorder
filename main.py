@@ -3445,7 +3445,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             game_id = str(item.get("game_id")).strip()
             size_mb = (item.get("file_size") or 0) / (1024 * 1024)
             date_raw = str(item.get("created_at") or item.get("upload_timestamp") or "")
-            date_str = date_raw[:19].replace("T", " ") if date_raw else "Recent"
+            date_str = date_raw[:10] if date_raw else "Recent"
             team = item.get("team_tag")
 
             row = ctk.CTkFrame(
@@ -3539,7 +3539,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         for filename in files:
             filepath = os.path.join(folder, filename)
             mtime = os.path.getmtime(filepath)
-            dt_str = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+            dt_str = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
             size_mb = os.path.getsize(filepath) / (1024 * 1024)
             game_id = filename[:-4] if filename.lower().endswith(".mp3") else filename
 
@@ -3547,7 +3547,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             meta = all_local_meta.get(game_id, {})
             saved_team = meta.get("team_tag", "")
             saved_notes = meta.get("notes", "")
-            recorded_date = meta.get("recorded_at") or dt_str
+            recorded_date = str(meta.get("recorded_at") or dt_str)[:10]
 
             row = ctk.CTkFrame(
                 self.rec_scroll_frame,
@@ -3827,7 +3827,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                                 "team_tag": item.get("team_tag") or "",
                                 "notes": item.get("notes") or "",
                                 "game_patch": item.get("patch") or item.get("game_patch") or "",
-                                "recorded_at": item.get("created_at") or item.get("upload_timestamp") or "",
+                                "recorded_at": str(item.get("created_at") or item.get("upload_timestamp") or "")[:10],
                             },
                             embed_id3=True,
                             filepath=dest_path,
@@ -3898,7 +3898,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                                     "team_tag": item.get("team_tag") or "",
                                     "notes": item.get("notes") or "",
                                     "game_patch": item.get("patch") or item.get("game_patch") or "",
-                                    "recorded_at": item.get("created_at") or item.get("upload_timestamp") or "",
+                                    "recorded_at": str(item.get("created_at") or item.get("upload_timestamp") or "")[:10],
                                 },
                                 embed_id3=True,
                                 filepath=dest,
@@ -3984,7 +3984,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                                 "team_tag": team_tag,
                                 "notes": notes,
                                 "patch": patch,
-                                "created_at": datetime.datetime.now().isoformat(),
+                                "created_at": datetime.datetime.now().strftime("%Y-%m-%d"),
                             })
                 else:
                     self.log_message(t("recordings.upload_failed", filename=f"{game_id}.mp3", error=str(res)))
@@ -4057,10 +4057,12 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             height=32,
         )
         default_date = meta.get("recorded_at")
-        if not default_date and mtime:
-            default_date = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
-        if not default_date:
-            default_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if default_date:
+            default_date = str(default_date)[:10]
+        elif mtime:
+            default_date = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
+        else:
+            default_date = datetime.datetime.now().strftime("%Y-%m-%d")
         date_entry.insert(0, default_date)
         date_entry.grid(row=2, column=1, padx=16, pady=6, sticky="ew")
 
@@ -4128,7 +4130,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
             raw_p = patch_entry.get().strip()
             new_meta = {
-                "recorded_at": date_entry.get().strip() or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "recorded_at": (date_entry.get().strip() or datetime.datetime.now().strftime("%Y-%m-%d"))[:10],
                 "game_patch": format_patch_version(raw_p),
                 "team_tag": team_entry.get().strip(),
                 "notes": notes_box.get("1.0", "end-1c").strip(),

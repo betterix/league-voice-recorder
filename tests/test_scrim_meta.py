@@ -58,7 +58,7 @@ class TestScrimMeta(unittest.TestCase):
         self.assertEqual(loaded["team_tag"], "T1")
         self.assertEqual(loaded["notes"], "Game 1 vs Fnatic - Mid lane draft test")
         self.assertEqual(loaded["game_patch"], "14.22")
-        self.assertEqual(loaded["recorded_at"], "2026-11-10 19:00:00")
+        self.assertEqual(loaded["recorded_at"], "2026-11-10")
         self.assertIn("updated_at", loaded)
 
     def test_ffmpeg_id3_tag_embedding_and_mtime_preservation(self):

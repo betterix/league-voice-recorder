@@ -50,6 +50,8 @@ def get_scrim_metadata(
         item = dict(all_meta[clean_id])
         if not item.get("game_id"):
             item["game_id"] = clean_id
+        if item.get("recorded_at"):
+            item["recorded_at"] = str(item["recorded_at"])[:10]
         return item
 
     # Fallback to automatic date extraction
@@ -57,12 +59,12 @@ def get_scrim_metadata(
     if filepath and os.path.exists(filepath):
         try:
             mtime = os.path.getmtime(filepath)
-            recorded_at = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+            recorded_at = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
         except Exception:
             pass
 
     if not recorded_at:
-        recorded_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        recorded_at = datetime.datetime.now().strftime("%Y-%m-%d")
 
     return {
         "game_id": clean_id,
@@ -91,7 +93,9 @@ def save_scrim_metadata(
     current.update(meta)
     current["game_id"] = clean_id
     if "recorded_at" not in current or not current["recorded_at"]:
-        current["recorded_at"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        current["recorded_at"] = datetime.datetime.now().strftime("%Y-%m-%d")
+    else:
+        current["recorded_at"] = str(current["recorded_at"])[:10]
     current["updated_at"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     all_meta[clean_id] = current

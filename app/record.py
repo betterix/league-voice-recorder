@@ -604,7 +604,7 @@ class LeagueRecorder:
 
                 from app.scrim_meta import save_scrim_metadata
 
-                recorded_dt = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                recorded_dt = datetime.datetime.now().strftime("%Y-%m-%d")
                 save_scrim_metadata(
                     self.record_folder,
                     base_name,
