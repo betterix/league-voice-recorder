@@ -3778,19 +3778,26 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                         None,
                     )
                     if item:
-                        save_scrim_metadata(
-                            folder,
-                            game_id,
-                            {
-                                "game_id": str(game_id).strip(),
-                                "team_tag": item.get("team_tag") or "",
-                                "notes": item.get("notes") or "",
-                                "game_patch": item.get("patch") or item.get("game_patch") or "",
-                                "recorded_at": str(item.get("created_at") or item.get("upload_timestamp") or "")[:10],
-                            },
-                            embed_id3=True,
-                            filepath=dest_path,
-                        )
+                        update_meta = {}
+                        if item.get("team_tag"):
+                            update_meta["team_tag"] = item.get("team_tag")
+                        if item.get("notes"):
+                            update_meta["notes"] = item.get("notes")
+                        patch_val = item.get("patch") or item.get("game_patch")
+                        if patch_val:
+                            update_meta["game_patch"] = patch_val
+                        date_val = item.get("created_at") or item.get("upload_timestamp")
+                        if date_val:
+                            update_meta["recorded_at"] = str(date_val)[:10]
+
+                        if update_meta:
+                            save_scrim_metadata(
+                                folder,
+                                game_id,
+                                update_meta,
+                                embed_id3=True,
+                                filepath=dest_path,
+                            )
                 except Exception:
                     pass
 
@@ -3849,19 +3856,26 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                             None,
                         )
                         if item:
-                            save_scrim_metadata(
-                                folder,
-                                gid,
-                                {
-                                    "game_id": str(gid).strip(),
-                                    "team_tag": item.get("team_tag") or "",
-                                    "notes": item.get("notes") or "",
-                                    "game_patch": item.get("patch") or item.get("game_patch") or "",
-                                    "recorded_at": str(item.get("created_at") or item.get("upload_timestamp") or "")[:10],
-                                },
-                                embed_id3=True,
-                                filepath=dest,
-                            )
+                            update_meta = {}
+                            if item.get("team_tag"):
+                                update_meta["team_tag"] = item.get("team_tag")
+                            if item.get("notes"):
+                                update_meta["notes"] = item.get("notes")
+                            patch_val = item.get("patch") or item.get("game_patch")
+                            if patch_val:
+                                update_meta["game_patch"] = patch_val
+                            date_val = item.get("created_at") or item.get("upload_timestamp")
+                            if date_val:
+                                update_meta["recorded_at"] = str(date_val)[:10]
+
+                            if update_meta:
+                                save_scrim_metadata(
+                                    folder,
+                                    gid,
+                                    update_meta,
+                                    embed_id3=True,
+                                    filepath=dest,
+                                )
                     except Exception:
                         pass
                     self.log_message(t("recordings.download_success", filename=f"{gid}.mp3"))

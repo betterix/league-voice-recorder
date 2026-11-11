@@ -159,9 +159,14 @@ def read_mp3_metadata(mp3_path: str | Path) -> dict:
                     if alb.lower().startswith("patch"):
                         alb = alb[5:].strip()
                     result["game_patch"] = alb
-                if "TDRC" in frames:
+                if "TDRC" in frames and len(frames["TDRC"]) >= 10:
                     result["recorded_at"] = frames["TDRC"][:10]
-                elif "TYER" in frames:
+                elif "TYER" in frames and "TDAT" in frames and len(frames["TYER"]) >= 4 and len(frames["TDAT"]) >= 4:
+                    y = frames["TYER"][:4]
+                    d = frames["TDAT"][:2]
+                    m = frames["TDAT"][2:4]
+                    result["recorded_at"] = f"{y}-{m}-{d}"
+                elif "TYER" in frames and len(frames["TYER"]) >= 10:
                     result["recorded_at"] = frames["TYER"][:10]
                 if "TXXX" in frames:
                     result["notes"] = frames["TXXX"]
@@ -221,7 +226,10 @@ def embed_mp3_metadata(
     recorded_at: str = "",
     game_patch: str = "",
 ) -> bool:
-    """Embeds standard ID3v2.4 tags directly into an MP3 file preserving original file modification time."""
+    """Embeds standard ID3v2.3 tags directly into an MP3 file via FFmpeg (with pure Python fallback).
+
+    Uses ID3v2.3 for 100% native Windows Explorer, Groove, and VLC Album/Artist tag compatibility.
+    """
     target = Path(mp3_path)
     if not target.exists():
         return False
@@ -231,6 +239,59 @@ def embed_mp3_metadata(
     except Exception:
         mtime_orig = None
 
+    ffmpeg_cmd = get_ffmpeg_path()
+    temp_out = target.with_suffix(".tmp_tag.mp3")
+
+    date_str = (recorded_at or "")[:10]
+    album_val = f"Patch {game_patch}" if game_patch else ""
+
+    cmd = [
+        ffmpeg_cmd,
+        "-y",
+        "-i",
+        str(target),
+        "-codec",
+        "copy",
+        "-id3v2_version",
+        "3",
+        "-metadata",
+        f"title=Game {game_id}",
+    ]
+    if team_tag:
+        cmd.extend(["-metadata", f"artist={team_tag}"])
+    if notes:
+        cmd.extend(["-metadata", f"comment={notes}"])
+    if date_str:
+        cmd.extend(["-metadata", f"date={date_str}"])
+    if album_val:
+        cmd.extend(["-metadata", f"album={album_val}"])
+
+    cmd.append(str(temp_out))
+
+    try:
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+        if res.returncode == 0 and temp_out.exists() and temp_out.stat().st_size > 0:
+            temp_out.replace(target)
+            if mtime_orig is not None:
+                try:
+                    os.utime(target, (mtime_orig, mtime_orig))
+                except Exception:
+                    pass
+            return True
+    except Exception as exc:
+        logger.debug("FFmpeg metadata tag embedding failed: %s", exc)
+    finally:
+        if temp_out.exists():
+            try:
+                temp_out.unlink()
+            except OSError:
+                pass
+
+    # Fallback to direct byte writing if FFmpeg fails or file is a mock/test stub
     tag_bytes = build_id3_tag(
         game_id=game_id,
         team_tag=team_tag,
@@ -238,7 +299,6 @@ def embed_mp3_metadata(
         recorded_at=recorded_at,
         game_patch=game_patch,
     )
-
     try:
         data = target.read_bytes()
         if data.startswith(b"ID3") and len(data) >= 10:
@@ -358,7 +418,9 @@ def save_scrim_metadata(
         return False
 
     current = read_mp3_metadata(target_file)
-    current.update(meta)
+    for k, v in meta.items():
+        if v or k not in current:
+            current[k] = v
     current["game_id"] = clean_id
     if not current.get("recorded_at"):
         current["recorded_at"] = datetime.datetime.now().strftime("%Y-%m-%d")
