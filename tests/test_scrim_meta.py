@@ -8,6 +8,7 @@ import unittest
 
 from app.config import get_ffmpeg_path
 from app.scrim_meta import (
+    build_id3_tag,
     embed_mp3_metadata,
     get_metadata_path,
     get_scrim_metadata,
@@ -43,16 +44,44 @@ class TestScrimMeta(unittest.TestCase):
         self.assertEqual(meta["notes"], "")
         self.assertTrue(len(meta["recorded_at"]) >= 10)
 
-    def test_save_and_load_scrim_metadata(self):
+    def test_build_and_parse_id3_tag(self):
+        tag = build_id3_tag(
+            game_id="12345",
+            team_tag="DEO",
+            notes="Nice match draft",
+            recorded_at="2026-11-11",
+            game_patch="26.12",
+        )
+        self.assertTrue(tag.startswith(b"ID3\x04\x00\x00"))
+        
+        mp3_file = self.folder / "12345.mp3"
+        mp3_file.write_bytes(tag + b"fake_audio_bytes")
+        
+        parsed = read_mp3_metadata(mp3_file)
+        self.assertEqual(parsed["game_id"], "12345")
+        self.assertEqual(parsed["team_tag"], "DEO")
+        self.assertEqual(parsed["game_patch"], "26.12")
+        self.assertEqual(parsed["recorded_at"], "2026-11-11")
+        self.assertEqual(parsed["notes"], "Nice match draft")
+
+    def test_save_and_load_scrim_metadata_directly_in_mp3(self):
+        mp3_file = self.folder / "8018190134.mp3"
+        mp3_file.write_bytes(b"dummy_audio")
+
         data = {
             "team_tag": "T1",
             "notes": "Game 1 vs Fnatic - Mid lane draft test",
             "game_patch": "14.22",
             "recorded_at": "2026-11-10 19:00:00",
         }
-        success = save_scrim_metadata(self.folder, "8018190134", data, embed_id3=False)
+        success = save_scrim_metadata(self.folder, "8018190134", data, filepath=mp3_file)
         self.assertTrue(success)
 
+        # Ensure NO scrim_metadata.json was created
+        meta_json = get_metadata_path(self.folder)
+        self.assertFalse(meta_json.exists(), "No JSON file should be created; MP3 is the single source of truth!")
+
+        # All metadata is loaded directly from the MP3 file
         all_meta = load_all_scrim_metadata(self.folder)
         self.assertIn("8018190134", all_meta)
         loaded = all_meta["8018190134"]
@@ -60,7 +89,6 @@ class TestScrimMeta(unittest.TestCase):
         self.assertEqual(loaded["notes"], "Game 1 vs Fnatic - Mid lane draft test")
         self.assertEqual(loaded["game_patch"], "14.22")
         self.assertEqual(loaded["recorded_at"], "2026-11-10")
-        self.assertIn("updated_at", loaded)
 
     def test_ffmpeg_id3_tag_embedding_and_mtime_preservation(self):
         ffmpeg_cmd = get_ffmpeg_path()
@@ -102,59 +130,32 @@ class TestScrimMeta(unittest.TestCase):
         self.assertEqual(read_data["recorded_at"], "2026-11-10")
         self.assertEqual(read_data["game_patch"], "14.22")
 
-    def test_metadata_recovery_when_json_deleted(self):
-        ffmpeg_cmd = get_ffmpeg_path()
+    def test_legacy_json_migration_and_cleanup(self):
         mp3_file = self.folder / "99887766.mp3"
+        mp3_file.write_bytes(b"audio_bytes")
 
-        subprocess.run(
-            [ffmpeg_cmd, "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-t", "0.2", str(mp3_file)],
-            capture_output=True,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-        )
-
-        # Save metadata and embed into MP3
-        save_scrim_metadata(
-            self.folder,
-            "99887766",
-            {
-                "team_tag": "DEO",
-                "notes": "Patch 26.12 match",
-                "game_patch": "26.12",
-                "recorded_at": "2026-11-11",
-            },
-            embed_id3=True,
-            filepath=mp3_file,
-        )
-
+        # Create a legacy scrim_metadata.json
         meta_json = get_metadata_path(self.folder)
+        meta_json.write_text(
+            '{"99887766": {"team_tag": "LEGACY-TEAM", "game_patch": "26.12", "notes": "From JSON"}}',
+            encoding="utf-8",
+        )
         self.assertTrue(meta_json.exists())
 
-        # Simulate user deleting scrim_metadata.json
-        meta_json.unlink()
-        self.assertFalse(meta_json.exists())
-
-        # Calling load_all_scrim_metadata should read ID3 tags from MP3 and reconstruct the metadata!
+        # Loading all metadata migrates legacy JSON data into the MP3 and deletes the obsolete JSON!
         recovered = load_all_scrim_metadata(self.folder)
         self.assertIn("99887766", recovered)
-        self.assertEqual(recovered["99887766"]["team_tag"], "DEO")
+        self.assertEqual(recovered["99887766"]["team_tag"], "LEGACY-TEAM")
         self.assertEqual(recovered["99887766"]["game_patch"], "26.12")
-        self.assertEqual(recovered["99887766"]["notes"], "Patch 26.12 match")
+        self.assertEqual(recovered["99887766"]["notes"], "From JSON")
 
-        # The JSON file should also be re-persisted automatically
-        self.assertTrue(meta_json.exists())
+        # Legacy JSON is automatically cleaned up
+        self.assertFalse(meta_json.exists(), "Legacy JSON must be deleted once migrated to MP3 ID3 tags!")
 
-    def test_corrupted_json_handling(self):
-        meta_file = get_metadata_path(self.folder)
-        meta_file.write_text("invalid json content {{{", encoding="utf-8")
-
-        all_meta = load_all_scrim_metadata(self.folder)
-        self.assertEqual(all_meta, {})
-
-        # Saving over corrupted file should recover cleanly
-        ok = save_scrim_metadata(self.folder, "999", {"team_tag": "RECOVERED"}, embed_id3=False)
-        self.assertTrue(ok)
-        recovered = load_all_scrim_metadata(self.folder)
-        self.assertEqual(recovered["999"]["team_tag"], "RECOVERED")
+        # Verify MP3 itself now has the tags embedded directly
+        mp3_tags = read_mp3_metadata(mp3_file)
+        self.assertEqual(mp3_tags["team_tag"], "LEGACY-TEAM")
+        self.assertEqual(mp3_tags["game_patch"], "26.12")
 
 
 if __name__ == "__main__":

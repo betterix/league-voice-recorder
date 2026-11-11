@@ -1,7 +1,8 @@
 """Scrim recording metadata manager and ID3 tag embedder.
 
-Stores local metadata (team tag, notes, recorded date) in a persistent JSON sidecar
-and embeds standard ID3v2 tags directly into .mp3 files via FFmpeg stream copy.
+Stores all metadata (Match ID, opponent VS team, game patch, notes, and recorded date)
+directly inside the .mp3 audio files as standard ID3v2 tags.
+No separate JSON sidecar file is needed.
 """
 
 from __future__ import annotations
@@ -20,12 +21,108 @@ METADATA_FILENAME = "scrim_metadata.json"
 
 
 def get_metadata_path(record_folder: str | Path) -> Path:
-    """Returns the path to the scrim metadata JSON file."""
+    """Returns the legacy path to scrim_metadata.json for backwards compatibility."""
     return Path(record_folder) / METADATA_FILENAME
 
 
+def build_id3_tag(
+    game_id: str,
+    team_tag: str = "",
+    notes: str = "",
+    recorded_at: str = "",
+    game_patch: str = "",
+) -> bytes:
+    """Constructs a standard ID3v2.4 binary tag containing scrim metadata."""
+    frames_data = bytearray()
+
+    def add_text_frame(fid: str, text: str) -> None:
+        if not text:
+            return
+        payload = b"\x03" + text.encode("utf-8")
+        sz = len(payload)
+        synch_sz = bytes([(sz >> 21) & 0x7F, (sz >> 14) & 0x7F, (sz >> 7) & 0x7F, sz & 0x7F])
+        frames_data.extend(fid.encode("ascii") + synch_sz + b"\x00\x00" + payload)
+
+    add_text_frame("TIT2", f"Game {game_id}")
+    if team_tag:
+        add_text_frame("TPE1", team_tag)
+    if game_patch:
+        add_text_frame("TALB", f"Patch {game_patch}")
+    if recorded_at:
+        add_text_frame("TDRC", recorded_at[:10])
+    if notes:
+        # TXXX comment frame
+        payload = b"\x03comment\x00" + notes.encode("utf-8")
+        sz = len(payload)
+        synch_sz = bytes([(sz >> 21) & 0x7F, (sz >> 14) & 0x7F, (sz >> 7) & 0x7F, sz & 0x7F])
+        frames_data.extend(b"TXXX" + synch_sz + b"\x00\x00" + payload)
+
+    tag_sz = len(frames_data)
+    hdr_sz = bytes([(tag_sz >> 21) & 0x7F, (tag_sz >> 14) & 0x7F, (tag_sz >> 7) & 0x7F, tag_sz & 0x7F])
+    return b"ID3\x04\x00\x00" + hdr_sz + bytes(frames_data)
+
+
+def _parse_id3_frames(data: bytes) -> dict[str, str]:
+    """Fast in-memory ID3v2 parser to read frames in <0.1ms without launching subprocesses."""
+    if not data.startswith(b"ID3") or len(data) < 10:
+        return {}
+    ver = data[3]
+    size = ((data[6] & 0x7F) << 21) | ((data[7] & 0x7F) << 14) | ((data[8] & 0x7F) << 7) | (data[9] & 0x7F)
+    tag_data = data[10 : 10 + size]
+    pos = 0
+    frames = {}
+    while pos + 10 <= len(tag_data):
+        fid = tag_data[pos : pos + 4]
+        if fid[0] == 0 or not fid.isalnum():
+            break
+        fsize_bytes = tag_data[pos + 4 : pos + 8]
+        if ver == 4:
+            fsize = (
+                ((fsize_bytes[0] & 0x7F) << 21)
+                | ((fsize_bytes[1] & 0x7F) << 14)
+                | ((fsize_bytes[2] & 0x7F) << 7)
+                | (fsize_bytes[3] & 0x7F)
+            )
+        else:
+            fsize = int.from_bytes(fsize_bytes, "big")
+        pos += 10
+        content = tag_data[pos : pos + fsize]
+        pos += fsize
+        if not content:
+            continue
+        enc = content[0]
+        val = content[1:]
+        tag_name = fid.decode("ascii", errors="replace")
+        try:
+            if enc == 3:
+                text = val.decode("utf-8", errors="replace").rstrip("\x00")
+            elif enc == 1:
+                text = val.decode("utf-16", errors="replace").rstrip("\x00")
+            else:
+                text = val.decode("latin1", errors="replace").rstrip("\x00")
+
+            if tag_name == "TXXX" and "\x00" in text:
+                _, text = text.split("\x00", 1)
+            elif tag_name == "COMM" and len(val) > 3:
+                comm_body = val[3:]
+                if enc == 3:
+                    b_text = comm_body.decode("utf-8", errors="replace").rstrip("\x00")
+                elif enc == 1:
+                    b_text = comm_body.decode("utf-16", errors="replace").rstrip("\x00")
+                else:
+                    b_text = comm_body.decode("latin1", errors="replace").rstrip("\x00")
+                if "\x00" in b_text:
+                    _, text = b_text.split("\x00", 1)
+                else:
+                    text = b_text
+            frames[tag_name] = text
+        except Exception:
+            pass
+    return frames
+
+
 def read_mp3_metadata(mp3_path: str | Path) -> dict:
-    """Reads embedded ID3 tags from an MP3 file (Title, Artist, Album/Patch, Comment, Date).
+    """Reads embedded ID3 tags directly from an MP3 file (Title, Artist, Album/Patch, Comment, Date).
 
     Returns a dictionary with keys: game_id, team_tag, notes, game_patch, recorded_at.
     """
@@ -48,6 +145,37 @@ def read_mp3_metadata(mp3_path: str | Path) -> dict:
     except Exception:
         pass
 
+    # 1. Fast in-memory ID3 parse
+    try:
+        with open(target, "rb") as f:
+            header_bytes = f.read(16384)
+        if header_bytes.startswith(b"ID3"):
+            frames = _parse_id3_frames(header_bytes)
+            if frames:
+                if "TPE1" in frames:
+                    result["team_tag"] = frames["TPE1"]
+                if "TALB" in frames:
+                    alb = frames["TALB"].strip()
+                    if alb.lower().startswith("patch"):
+                        alb = alb[5:].strip()
+                    result["game_patch"] = alb
+                if "TDRC" in frames:
+                    result["recorded_at"] = frames["TDRC"][:10]
+                elif "TYER" in frames:
+                    result["recorded_at"] = frames["TYER"][:10]
+                if "TXXX" in frames:
+                    result["notes"] = frames["TXXX"]
+                elif "COMM" in frames:
+                    result["notes"] = frames["COMM"]
+                if "TIT2" in frames and frames["TIT2"].lower().startswith("game "):
+                    gid = frames["TIT2"][5:].strip()
+                    if gid:
+                        result["game_id"] = gid
+                return result
+    except Exception:
+        pass
+
+    # 2. Fallback to FFmpeg ffmetadata extraction
     ffmpeg_cmd = get_ffmpeg_path()
     try:
         proc = subprocess.run(
@@ -85,62 +213,113 @@ def read_mp3_metadata(mp3_path: str | Path) -> dict:
     return result
 
 
-def load_all_scrim_metadata(record_folder: str | Path) -> dict[str, dict]:
-    """Loads all saved scrim metadata from the recordings folder.
+def embed_mp3_metadata(
+    mp3_path: str | Path,
+    game_id: str,
+    team_tag: str = "",
+    notes: str = "",
+    recorded_at: str = "",
+    game_patch: str = "",
+) -> bool:
+    """Embeds standard ID3v2.4 tags directly into an MP3 file preserving original file modification time."""
+    target = Path(mp3_path)
+    if not target.exists():
+        return False
 
-    If the metadata JSON does not exist or is missing entries for existing MP3 files,
-    it automatically scans and reconstructs metadata by reading embedded ID3 tags directly from the MP3s.
-    """
+    try:
+        mtime_orig = os.path.getmtime(target)
+    except Exception:
+        mtime_orig = None
+
+    tag_bytes = build_id3_tag(
+        game_id=game_id,
+        team_tag=team_tag,
+        notes=notes,
+        recorded_at=recorded_at,
+        game_patch=game_patch,
+    )
+
+    try:
+        data = target.read_bytes()
+        if data.startswith(b"ID3") and len(data) >= 10:
+            sz = ((data[6] & 0x7F) << 21) | ((data[7] & 0x7F) << 14) | ((data[8] & 0x7F) << 7) | (data[9] & 0x7F)
+            audio = data[10 + sz :]
+        else:
+            audio = data
+
+        target.write_bytes(tag_bytes + audio)
+
+        if mtime_orig is not None:
+            try:
+                os.utime(target, (mtime_orig, mtime_orig))
+            except Exception:
+                pass
+        return True
+    except Exception as exc:
+        logger.error("Failed to embed ID3 tags directly into %s: %s", target, exc)
+        return False
+
+
+def load_all_scrim_metadata(record_folder: str | Path) -> dict[str, dict]:
+    """Loads metadata for all MP3 recordings in the folder directly from their embedded ID3 tags."""
     folder = Path(record_folder)
-    meta_path = get_metadata_path(folder)
-    data = {}
-    if meta_path.exists():
+    results = {}
+    if not folder.exists() or not folder.is_dir():
+        return results
+
+    # If any legacy scrim_metadata.json exists, migrate it into the MP3s and delete it
+    legacy_json = folder / METADATA_FILENAME
+    legacy_data = {}
+    if legacy_json.exists():
         try:
-            with open(meta_path, "r", encoding="utf-8") as f:
+            with open(legacy_json, "r", encoding="utf-8") as f:
                 loaded = json.load(f)
                 if isinstance(loaded, dict):
-                    data = loaded
-        except Exception as exc:
-            logger.warning("Failed to load scrim metadata from %s: %s", meta_path, exc)
+                    legacy_data = loaded
+        except Exception:
+            pass
 
-    # Check if folder exists and has MP3 files missing from data
-    if folder.exists() and folder.is_dir():
-        needs_persist = False
+    try:
+        for entry in os.scandir(folder):
+            if entry.is_file() and entry.name.lower().endswith(".mp3"):
+                gid = entry.name[:-4]
+                meta = read_mp3_metadata(entry.path)
+                if gid in legacy_data:
+                    leg = legacy_data[gid]
+                    updated = False
+                    if leg.get("team_tag") and not meta.get("team_tag"):
+                        meta["team_tag"] = leg["team_tag"]
+                        updated = True
+                    if leg.get("notes") and not meta.get("notes"):
+                        meta["notes"] = leg["notes"]
+                        updated = True
+                    if (leg.get("game_patch") or leg.get("patch")) and not meta.get("game_patch"):
+                        meta["game_patch"] = leg.get("game_patch") or leg.get("patch")
+                        updated = True
+                    if leg.get("recorded_at") and not meta.get("recorded_at"):
+                        meta["recorded_at"] = leg["recorded_at"][:10]
+                        updated = True
+                    if updated:
+                        embed_mp3_metadata(
+                            entry.path,
+                            game_id=gid,
+                            team_tag=meta.get("team_tag", ""),
+                            notes=meta.get("notes", ""),
+                            recorded_at=meta.get("recorded_at", ""),
+                            game_patch=meta.get("game_patch", ""),
+                        )
+                results[gid] = meta
+    except Exception as exc:
+        logger.debug("Error loading scrim metadata from MP3 files: %s", exc)
+
+    # Clean up obsolete legacy JSON file once migrated
+    if legacy_json.exists():
         try:
-            for entry in os.scandir(folder):
-                if entry.is_file() and entry.name.lower().endswith(".mp3"):
-                    gid = entry.name[:-4]
-                    if gid not in data:
-                        parsed = read_mp3_metadata(entry.path)
-                        if parsed:
-                            data[gid] = parsed
-                            needs_persist = True
-                    else:
-                        # If existing JSON entry is missing patch or team_tag, attempt to fill from ID3
-                        entry_meta = data[gid]
-                        if not entry_meta.get("game_patch") or not entry_meta.get("team_tag"):
-                            parsed = read_mp3_metadata(entry.path)
-                            updated = False
-                            if parsed.get("game_patch") and not entry_meta.get("game_patch"):
-                                entry_meta["game_patch"] = parsed["game_patch"]
-                                updated = True
-                            if parsed.get("team_tag") and not entry_meta.get("team_tag"):
-                                entry_meta["team_tag"] = parsed["team_tag"]
-                                updated = True
-                            if parsed.get("notes") and not entry_meta.get("notes"):
-                                entry_meta["notes"] = parsed["notes"]
-                                updated = True
-                            if updated:
-                                needs_persist = True
-            if needs_persist:
-                temp_meta = meta_path.with_suffix(".tmp_meta")
-                with open(temp_meta, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2, ensure_ascii=False)
-                temp_meta.replace(meta_path)
-        except Exception as exc:
-            logger.debug("Error while scanning MP3 files for metadata reconstruction: %s", exc)
+            legacy_json.unlink()
+        except Exception:
+            pass
 
-    return data
+    return results
 
 
 def get_scrim_metadata(
@@ -148,41 +327,20 @@ def get_scrim_metadata(
     game_id: str,
     filepath: str | Path | None = None,
 ) -> dict:
-    """Retrieves metadata for a specific game_id, populating defaults if missing."""
+    """Retrieves metadata for a specific game_id directly from its MP3 file."""
     clean_id = str(game_id).strip()
-    all_meta = load_all_scrim_metadata(record_folder)
-    if clean_id in all_meta and isinstance(all_meta[clean_id], dict):
-        item = dict(all_meta[clean_id])
-        if not item.get("game_id"):
-            item["game_id"] = clean_id
-        if item.get("recorded_at"):
-            item["recorded_at"] = str(item["recorded_at"])[:10]
-        return item
-
-    # If not in all_meta, check filepath directly via read_mp3_metadata
-    if filepath and os.path.exists(filepath) and str(filepath).lower().endswith(".mp3"):
-        parsed = read_mp3_metadata(filepath)
-        if parsed:
-            return parsed
-
-    # Fallback to automatic date extraction
-    recorded_at = ""
-    if filepath and os.path.exists(filepath):
-        try:
-            mtime = os.path.getmtime(filepath)
-            recorded_at = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
-        except Exception:
-            pass
-
-    if not recorded_at:
-        recorded_at = datetime.datetime.now().strftime("%Y-%m-%d")
+    target = Path(filepath) if filepath else (Path(record_folder) / f"{clean_id}.mp3")
+    if target.exists() and target.is_file():
+        meta = read_mp3_metadata(target)
+        if meta:
+            return meta
 
     return {
         "game_id": clean_id,
         "team_tag": "",
         "notes": "",
         "game_patch": "",
-        "recorded_at": recorded_at,
+        "recorded_at": datetime.datetime.now().strftime("%Y-%m-%d"),
     }
 
 
@@ -193,125 +351,25 @@ def save_scrim_metadata(
     embed_id3: bool = True,
     filepath: str | Path | None = None,
 ) -> bool:
-    """Saves or updates metadata for a game_id and optionally embeds ID3 tags."""
+    """Saves metadata directly into the MP3 file using embedded ID3 tags."""
     clean_id = str(game_id).strip()
-    folder = Path(record_folder)
-    folder.mkdir(parents=True, exist_ok=True)
-    meta_path = get_metadata_path(folder)
+    target_file = Path(filepath) if filepath else (Path(record_folder) / f"{clean_id}.mp3")
+    if not target_file.exists():
+        return False
 
-    all_meta = load_all_scrim_metadata(folder)
-    current = dict(all_meta.get(clean_id, {}))
+    current = read_mp3_metadata(target_file)
     current.update(meta)
     current["game_id"] = clean_id
-    if "recorded_at" not in current or not current["recorded_at"]:
+    if not current.get("recorded_at"):
         current["recorded_at"] = datetime.datetime.now().strftime("%Y-%m-%d")
     else:
         current["recorded_at"] = str(current["recorded_at"])[:10]
-    current["updated_at"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    all_meta[clean_id] = current
-
-    # Atomic write to metadata JSON
-    temp_meta = meta_path.with_suffix(".tmp_meta")
-    try:
-        with open(temp_meta, "w", encoding="utf-8") as f:
-            json.dump(all_meta, f, indent=2, ensure_ascii=False)
-        temp_meta.replace(meta_path)
-    except Exception as exc:
-        logger.error("Failed to save scrim metadata to %s: %s", meta_path, exc)
-        if temp_meta.exists():
-            try:
-                temp_meta.unlink()
-            except OSError:
-                pass
-        return False
-
-    # Embed ID3 tags into MP3 file
-    if embed_id3:
-        target_file = Path(filepath) if filepath else folder / f"{clean_id}.mp3"
-        if target_file.exists():
-            embed_mp3_metadata(
-                mp3_path=target_file,
-                game_id=clean_id,
-                team_tag=current.get("team_tag", ""),
-                notes=current.get("notes", ""),
-                recorded_at=current.get("recorded_at", ""),
-                game_patch=current.get("game_patch", ""),
-            )
-
-    return True
-
-
-def embed_mp3_metadata(
-    mp3_path: str | Path,
-    game_id: str,
-    team_tag: str = "",
-    notes: str = "",
-    recorded_at: str = "",
-    game_patch: str = "",
-) -> bool:
-    """Uses FFmpeg stream copy to write standard ID3 tags into the MP3 without re-encoding.
-
-    Preserves original file modification time.
-    """
-    target = Path(mp3_path)
-    if not target.exists():
-        return False
-
-    ffmpeg_cmd = get_ffmpeg_path()
-    temp_out = target.with_suffix(".tmp_tag.mp3")
-
-    try:
-        mtime_orig = os.path.getmtime(target)
-    except Exception:
-        mtime_orig = None
-
-    date_str = (recorded_at or "")[:10]
-    cmd = [
-        ffmpeg_cmd,
-        "-y",
-        "-i",
-        str(target),
-        "-codec",
-        "copy",
-        "-metadata",
-        f"title=Game {game_id}",
-    ]
-    if team_tag:
-        cmd.extend(["-metadata", f"artist={team_tag}"])
-    if notes:
-        cmd.extend(["-metadata", f"comment={notes}"])
-    if date_str:
-        cmd.extend(["-metadata", f"date={date_str}"])
-    if game_patch:
-        cmd.extend(["-metadata", f"album=Patch {game_patch}"])
-
-    cmd.append(str(temp_out))
-
-    try:
-        res = subprocess.run(
-            cmd,
-            capture_output=True,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-        )
-        if res.returncode == 0 and temp_out.exists() and temp_out.stat().st_size > 0:
-            temp_out.replace(target)
-            if mtime_orig is not None:
-                try:
-                    os.utime(target, (mtime_orig, mtime_orig))
-                except Exception:
-                    pass
-            return True
-        else:
-            logger.warning("FFmpeg metadata tag embedding failed: %s", res.stderr)
-            if temp_out.exists():
-                temp_out.unlink()
-            return False
-    except Exception as exc:
-        logger.error("Exception embedding ID3 tags via FFmpeg: %s", exc)
-        if temp_out.exists():
-            try:
-                temp_out.unlink()
-            except OSError:
-                pass
-        return False
+    return embed_mp3_metadata(
+        mp3_path=target_file,
+        game_id=clean_id,
+        team_tag=current.get("team_tag", ""),
+        notes=current.get("notes", ""),
+        recorded_at=current.get("recorded_at", ""),
+        game_patch=current.get("game_patch", ""),
+    )

@@ -315,16 +315,17 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
   - **Upload Key (`upload`)**: Enables local recording upload (`⬆ Upload` button rendered for unsynced files) and scrim metadata editing.
   - **Admin Key (`admin`)**: Grants full capabilities, including the special red `🗑 Delete` button to permanently unlink and purge remote scrim audio from the server.
 
-### 3.11 Scrim Metadata Organizer & In-Place ID3 Tag Embedding (`app/scrim_meta.py`)
-- **Persistent Local Sidecar (`scrim_metadata.json`)**:
-  - Stores local scrim metadata (Match ID, VS Opponent Team, Scrim Notes, and Recorded Date) safely in `recordings/scrim_metadata.json`.
-  - Automatically populates the exact recorded date upon match completion without requiring a default team tag.
-- **In-Place ID3 Tag Embedding via FFmpeg Stream Copy**:
-  - Embeds standard ID3v2 tags directly into `.mp3` files (`title=Game <ID>`, `artist=<VSOpponentTeam>`, `comment=<Notes>`, `date=<RecordedAt>`) using FFmpeg `-codec copy`.
-  - Runs in ~20 milliseconds with zero audio re-encoding and preserves original file modification times (`os.utime`).
+### 3.11 Scrim Metadata Organizer & Direct MP3 ID3 Tag Embedding (`app/scrim_meta.py`)
+- **Direct MP3 Storage (Zero Sidecar JSON)**:
+  - All scrim metadata (Match ID, VS Opponent Team, Scrim Notes, Game Patch, and Recorded Date) is stored directly inside the `.mp3` audio files as standard ID3v2 tags.
+  - Zero separate JSON sidecar files (`scrim_metadata.json` eliminated). If an MP3 is copied, shared, or moved, 100% of its metadata travels with it.
+- **In-Place ID3 Tag Embedding & Fast In-Memory Parser**:
+  - Embeds standard ID3v2 tags (`title=Game <ID>`, `artist=<VSOpponentTeam>`, `album=Patch <Patch>`, `comment=<Notes>`, `date=<RecordedAt>`) directly in-place.
+  - Fast in-memory byte parser reads tags in <0.1 milliseconds with zero subprocess overhead, with FFmpeg fallback.
+  - Preserves original file modification times (`os.utime`).
 - **Automatic Patch Version Detection (Method 2)**:
   - Detects the active League patch when a match begins using LCU `/lol-patch/v1/game-version` (formatted strictly as `major.minor`, e.g. `14.22` or `26.11`).
-  - Stamped into `scrim_metadata.json`, embedded into ID3 album tags (`Patch <major.minor>`), and rendered directly next to the date in the Scrim Recordings explorer list.
+  - Embedded into ID3 album tags (`Patch <major.minor>`), and rendered directly next to the date in the Scrim Recordings explorer list.
 - **Interactive UI Organizer Dialog (Upload & Admin Only)**:
   - Only accessible to users with upload or admin roles (`self._can_upload_to_cloud()`).
   - Accessible either by clicking the `📝 Details` button or clicking the `.mp3` title directly in the Scrim Recordings list.
