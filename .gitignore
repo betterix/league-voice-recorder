@@ -41,6 +41,13 @@ share/python-wheels/
 MANIFEST
 
 # ==========================================
+# Rust / Cargo Build Artifacts
+# ==========================================
+target/
+**/*.rs.bk
+Cargo.lock.dist
+
+# ==========================================
 # Virtual Environments
 # ==========================================
 .venv/
