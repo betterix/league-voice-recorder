@@ -521,14 +521,8 @@ class TestUIApp(unittest.TestCase):
         self.assertTrue(hasattr(self.app, "cloud_url_entry"))
         self.assertTrue(hasattr(self.app, "cloud_key_entry"))
         self.assertTrue(hasattr(self.app, "cloud_test_btn"))
-        self.assertTrue(hasattr(self.app, "cloud_key_reveal_btn"))
-
-        # Verify default masking is show="*"
+        # Verify permanent masking is show="*" (streamer / scrim safe - cannot be unmasked)
         self.assertEqual(self.app.cloud_key_entry.cget("show"), "*")
-
-        # Test eye toggle button reveals and hides key
-        self.app._toggle_cloud_key_visibility()
-        self.assertEqual(self.app.cloud_key_entry.cget("show"), "")
         self.app._toggle_cloud_key_visibility()
         self.assertEqual(self.app.cloud_key_entry.cget("show"), "*")
 

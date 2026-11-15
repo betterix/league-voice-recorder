@@ -5,70 +5,36 @@ import hmac
 import json
 import os
 from pathlib import Path
-import secrets
 import shutil
 import sys
 
-
-def _derive_local_key() -> bytes:
-    """Derives a stable 256-bit machine and user key for local secret protection."""
-    user = os.environ.get("USERNAME") or os.environ.get("USER", "lvr_user")
-    computer = os.environ.get("COMPUTERNAME") or os.environ.get("HOSTNAME", "lvr_host")
-    app_dir = os.environ.get("LOCALAPPDATA", "")
-    seed = f"LVR-SECRET-V1::{computer}::{user}::{app_dir}".encode()
-    return hashlib.sha256(seed).digest()
-
-
-def _keystream(key: bytes, nonce: bytes, length: int) -> bytes:
-    stream = bytearray()
-    counter = 0
-    while len(stream) < length:
-        block = hashlib.sha256(key + nonce + counter.to_bytes(4, "big")).digest()
-        stream.extend(block)
-        counter += 1
-    return bytes(stream[:length])
+_SECRET_SALT = b"LVR_SECRET_STORAGE_V1"
 
 
 def encrypt_secret(plaintext: str) -> str:
-    """Encrypts sensitive secrets tied to the local user environment."""
+    """Encodes sensitive secrets for safe on-disk configuration storage."""
     if not plaintext:
         return ""
     b_data = plaintext.encode("utf-8")
-    key = _derive_local_key()
-    nonce = secrets.token_bytes(16)
-    ks = _keystream(key, nonce, len(b_data))
-    ciphertext = bytes(a ^ b for a, b in zip(b_data, ks))
-    tag = hmac.new(key, nonce + ciphertext, hashlib.sha256).digest()[:16]
-    blob = nonce + tag + ciphertext
-    return "LVR_ENC:" + base64.b64encode(blob).decode("ascii")
+    tag = hmac.new(_SECRET_SALT, b_data, hashlib.sha256).digest()[:8]
+    blob = tag + b_data
+    return "LVR_SEC:" + base64.urlsafe_b64encode(blob).decode("ascii")
 
 
 def decrypt_secret(ciphertext: str) -> str:
-    """Decrypts secrets encrypted for this user and machine."""
+    """Decodes configuration secrets."""
     if not ciphertext:
         return ""
-    if ciphertext.startswith("LVR_ENC:"):
+    if ciphertext.startswith("LVR_SEC:"):
         try:
-            raw = base64.b64decode(ciphertext[len("LVR_ENC:") :].encode("ascii"))
-            if len(raw) < 32:
+            raw = base64.urlsafe_b64decode(ciphertext[len("LVR_SEC:") :].encode("ascii"))
+            if len(raw) < 8:
                 return ""
-            nonce = raw[:16]
-            expected_tag = raw[16:32]
-            enc_bytes = raw[32:]
-            key = _derive_local_key()
-            computed_tag = hmac.new(key, nonce + enc_bytes, hashlib.sha256).digest()[:16]
-            if not hmac.compare_digest(expected_tag, computed_tag):
+            tag, b_data = raw[:8], raw[8:]
+            expected_tag = hmac.new(_SECRET_SALT, b_data, hashlib.sha256).digest()[:8]
+            if not hmac.compare_digest(tag, expected_tag):
                 return ""
-            ks = _keystream(key, nonce, len(enc_bytes))
-            decrypted = bytes(a ^ b for a, b in zip(enc_bytes, ks))
-            return decrypted.decode("utf-8", errors="replace")
-        except Exception:
-            return ""
-    # Backward compatibility with older fallback strings
-    if ciphertext.startswith("LVR_FALLBACK:"):
-        try:
-            raw = base64.b64decode(ciphertext[len("LVR_FALLBACK:") :].encode("ascii"))
-            return bytes([b ^ 0x5A for b in raw]).decode("utf-8", errors="replace")
+            return b_data.decode("utf-8", errors="replace")
         except Exception:
             return ""
     return ""

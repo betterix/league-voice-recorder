@@ -1,5 +1,4 @@
 import base64
-import json
 import os
 from pathlib import Path
 import subprocess
@@ -87,43 +86,7 @@ def find_league_install_dir():
     except Exception:
         pass
 
-    # 3. PowerShell fallback for running League processes
-    try:
-        cmd = [
-            "powershell",
-            "-NoProfile",
-            "-Command",
-            "Get-Process -Name 'League*' -ErrorAction SilentlyContinue | Select-Object Name,Path | ConvertTo-Json -Compress",
-        ]
-        out = (
-            subprocess.check_output(cmd, creationflags=subprocess.CREATE_NO_WINDOW, timeout=5)
-            .decode("utf-8", errors="ignore")
-            .strip()
-        )
-        if out:
-            parsed = json.loads(out)
-            if not isinstance(parsed, list):
-                parsed = [parsed]
-
-            parsed.sort(
-                key=lambda x: 0 if x.get("Name") and "LeagueClientUx" in x.get("Name") else 1
-            )
-
-            for proc in parsed:
-                p_path = proc.get("Path")
-                if p_path:
-                    d = os.path.dirname(p_path)
-                    if _is_valid_league_dir(d):
-                        _CACHED_LEAGUE_INSTALL_DIR = d
-                        return d
-                    parent = os.path.dirname(d)
-                    if _is_valid_league_dir(parent):
-                        _CACHED_LEAGUE_INSTALL_DIR = parent
-                        return parent
-    except Exception:
-        pass
-
-    # 4. Known drive search fallback
+    # 3. Known drive search fallback
     drives = list("CDEFGHIJ")
     subpaths = [
         r"Riot Games\League of Legends",

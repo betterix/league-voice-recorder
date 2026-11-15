@@ -1822,26 +1822,10 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             corner_radius=6,
         )
         self.cloud_key_entry.insert(0, str(self.config.get("remote_api_key") or ""))
-        self.cloud_key_entry.grid(row=2, column=1, padx=(6, 4), pady=6, sticky="ew")
+        self.cloud_key_entry.grid(row=2, column=1, columnspan=2, padx=(6, 14), pady=6, sticky="ew")
         self.cloud_key_entry.bind("<FocusOut>", self._on_settings_entry_changed)
         self.cloud_key_entry.bind("<Return>", self._on_settings_entry_changed)
         self.cloud_key_entry.bind("<KeyRelease>", self._on_settings_entry_debounced)
-
-        self._cloud_key_revealed = False
-        self.cloud_key_reveal_btn = ctk.CTkButton(
-            card_cloud,
-            text="👁️",
-            width=40,
-            height=32,
-            font=ctk.CTkFont(size=13),
-            fg_color=("#F1F5F9", "#0F1A36"),
-            hover_color=("#E2E8F0", "#1E2A4A"),
-            border_width=1,
-            border_color=("#CBD5E1", "#1E2A4A"),
-            corner_radius=6,
-            command=self._toggle_cloud_key_visibility,
-        )
-        self.cloud_key_reveal_btn.grid(row=2, column=2, padx=(0, 14), pady=6, sticky="w")
 
         # Test Connection button & status label
         cloud_actions_frame = ctk.CTkFrame(card_cloud, fg_color="transparent")
@@ -1986,11 +1970,9 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             self.tray_manager.hide()
 
     def _toggle_cloud_key_visibility(self):
-        self._cloud_key_revealed = not getattr(self, "_cloud_key_revealed", False)
+        """Permanent security mask: API keys are never revealed in plain text."""
         if hasattr(self, "cloud_key_entry"):
-            self.cloud_key_entry.configure(show="" if self._cloud_key_revealed else "*")
-        if hasattr(self, "cloud_key_reveal_btn"):
-            self.cloud_key_reveal_btn.configure(text="🔒" if self._cloud_key_revealed else "👁️")
+            self.cloud_key_entry.configure(show="*")
 
     def _test_cloud_connection(self):
         url = self.cloud_url_entry.get().strip() if hasattr(self, "cloud_url_entry") else ""
@@ -3681,16 +3663,16 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         Returns False if the active API key has the read-only 'pull' role, or if no key/URL is configured.
         Returns True if the role is 'upload' or 'admin'.
         """
-        key = self.config.get("remote_api_key", "").strip()
-        url = self.config.get("remote_server_url", "").strip()
-        if not key or not url:
-            return False
-
         role = getattr(self, "_cloud_role", "unknown")
         if role == "pull":
             return False
         if role in ("upload", "admin"):
             return True
+
+        key = self.config.get("remote_api_key", "").strip()
+        url = self.config.get("remote_server_url", "").strip()
+        if not key or not url:
+            return False
 
         # Fallback inspection on the key naming pattern if health check hasn't run yet
         key_lower = key.lower()
@@ -4580,31 +4562,6 @@ def main():
             signal.signal(signal.SIGBREAK, _sig_handler)
     except Exception:
         pass
-
-    if sys.platform.startswith("win"):
-        try:
-            import ctypes
-            from ctypes import wintypes
-
-            PHANDLER_ROUTINE = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)
-
-            def _console_ctrl_handler(ctrl_type):
-                if ctrl_type in (0, 1, 2):  # 0: CTRL_C, 1: CTRL_BREAK, 2: CTRL_CLOSE
-                    try:
-                        app.after(0, lambda: app._on_close(force=True))
-                    except Exception:
-                        try:
-                            app._on_close(force=True)
-                        except Exception:
-                            os._exit(0)
-                    return True
-                return False
-
-            _c_handler = PHANDLER_ROUTINE(_console_ctrl_handler)
-            ctypes.windll.kernel32.SetConsoleCtrlHandler(_c_handler, True)
-            app._console_ctrl_handler_ref = _c_handler
-        except Exception:
-            pass
 
     try:
         app.mainloop()

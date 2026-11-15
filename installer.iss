@@ -3,7 +3,7 @@
 
 #define MyAppName "League Voice Recorder"
 #ifndef MyAppVersion
-#define MyAppVersion "0.5.0"
+#define MyAppVersion "0.5.1"
 #endif
 #define MyAppPublisher "betterix"
 #define MyAppURL "https://github.com/betterix/league-voice-recorder"
@@ -27,11 +27,14 @@ OutputBaseFilename=LeagueVoiceRecorder-Setup-v{#MyAppVersion}
 SetupIconFile=assets\icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/max
-SolidCompression=no
+SolidCompression=yes
 WizardStyle=modern
 CloseApplications=yes
 RestartApplications=no
+ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed=x64compatible
 MinVersion=10.0
+PrivilegesRequiredOverridesAllowed=dialog
 VersionInfoVersion={#MyAppVersion}.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} Setup Wizard
