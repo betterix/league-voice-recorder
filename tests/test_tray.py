@@ -193,21 +193,22 @@ class TestTrayConfigAndUI(unittest.TestCase):
             mock_event = MagicMock()
             mock_event.widget = app
 
+            # Case 1: Minimized from down bar (taskbar click) -> do NOT withdraw to tray
             with (
                 patch.object(app, "state", return_value="iconic"),
-                patch.object(app, "_is_cursor_on_titlebar_minimize", return_value=False),
+                patch.object(app, "_is_minimized_from_down_bar", return_value=True),
                 patch.dict("os.environ", {"LVR_TEST_MODE": "", "PYTEST_CURRENT_TEST": ""}, clear=False),
                 patch.object(app, "withdraw") as mock_withdraw,
                 patch.object(app.tray_manager, "show") as mock_show,
             ):
                 app._on_window_unmap(mock_event)
-                # When cursor was on down bar (not titlebar minimize), it stays on taskbar
                 mock_withdraw.assert_not_called()
                 mock_show.assert_not_called()
 
+            # Case 2: Minimized from titlebar minimize button -> withdraws to tray & announces
             with (
                 patch.object(app, "state", return_value="iconic"),
-                patch.object(app, "_is_cursor_on_titlebar_minimize", return_value=True),
+                patch.object(app, "_is_minimized_from_down_bar", return_value=False),
                 patch.dict("os.environ", {"LVR_TEST_MODE": "", "PYTEST_CURRENT_TEST": ""}, clear=False),
                 patch.object(app, "withdraw") as mock_withdraw,
                 patch.object(app.tray_manager, "show") as mock_show,
@@ -215,7 +216,6 @@ class TestTrayConfigAndUI(unittest.TestCase):
                 patch.object(app, "_announce_minimized_to_tray") as mock_announce,
             ):
                 app._on_window_unmap(mock_event)
-                # When cursor was on titlebar minimize, it withdraws to tray
                 mock_withdraw.assert_called_once()
                 mock_show.assert_called_once()
                 mock_update.assert_called_once()

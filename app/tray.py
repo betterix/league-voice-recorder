@@ -5,6 +5,7 @@ context menu (Open / Status / Exit), and single/double-click window restoration.
 """
 
 import os
+import sys
 import threading
 from typing import Optional
 from collections.abc import Callable
@@ -161,6 +162,32 @@ class TrayManager:
                     self._icon.notify(message, title)
                 except Exception:
                     pass
+
+        # Windows 10 & 11 native Toast Notification banner
+        if sys.platform.startswith("win"):
+            try:
+                import subprocess
+
+                safe_title = title.replace("'", "''").replace('"', '`"')
+                safe_msg = message.replace("'", "''").replace('"', '`"')
+                ps_cmd = (
+                    "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null; "
+                    "$template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02); "
+                    "$texts = $template.GetElementsByTagName('text'); "
+                    f"$texts[0].AppendChild($template.CreateTextNode('{safe_title}')) | Out-Null; "
+                    f"$texts[1].AppendChild($template.CreateTextNode('{safe_msg}')) | Out-Null; "
+                    "$toast = [Windows.UI.Notifications.ToastNotification]::new($template); "
+                    f"[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{safe_title}').Show($toast);"
+                )
+                CREATE_NO_WINDOW = 0x08000000
+                subprocess.Popen(
+                    ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
+                    creationflags=CREATE_NO_WINDOW,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except Exception:
+                pass
 
     def stop(self) -> None:
         """Permanently stops and removes the system tray icon."""

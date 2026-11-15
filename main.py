@@ -238,54 +238,38 @@ class LeagueVoiceRecorderApp(ctk.CTk):
     # ==========================================
     # SYSTEM TRAY & WINDOW MINIMIZE HANDLING
     # ==========================================
-    def _is_cursor_on_titlebar_minimize(self) -> bool:
-        """Determines if the window minimize was triggered by clicking the titlebar minimize button.
+    def _is_minimized_from_down_bar(self) -> bool:
+        """Determines if the window was minimized via clicking the taskbar on the bottom/down bar.
 
-        Returns False if minimized via the Windows taskbar ('down bar'), Win+D, or Win+M.
+        Returns True if cursor is down on the taskbar. Returns False if minimized via titlebar minimize button.
         """
         if not sys.platform.startswith("win"):
-            return True
+            return False
 
         try:
             import ctypes
             from ctypes import wintypes
 
-            class WINDOWPLACEMENT(ctypes.Structure):
-                _fields_ = [
-                    ("length", wintypes.UINT),
-                    ("flags", wintypes.UINT),
-                    ("showCmd", wintypes.UINT),
-                    ("ptMinPosition", wintypes.POINT),
-                    ("ptMaxPosition", wintypes.POINT),
-                    ("rcNormalPosition", wintypes.RECT),
-                ]
-
-            wid = self.winfo_id()
-            hwnd = ctypes.windll.user32.GetParent(wid) or wid
-            if not hwnd:
-                return True
-
             pt = wintypes.POINT()
             if not ctypes.windll.user32.GetCursorPos(ctypes.byref(pt)):
                 return False
 
-            wp = WINDOWPLACEMENT()
-            wp.length = ctypes.sizeof(WINDOWPLACEMENT)
-            if not ctypes.windll.user32.GetWindowPlacement(hwnd, ctypes.byref(wp)):
+            # If cursor is at (0, 0), it's not a real mouse click on the down bar
+            if pt.x == 0 and pt.y == 0:
                 return False
 
-            nr = wp.rcNormalPosition
-            caption_h = ctypes.windll.user32.GetSystemMetrics(4)  # SM_CYCAPTION
-            frame_h = ctypes.windll.user32.GetSystemMetrics(33)  # SM_CYSIZEFRAME
+            screen_h = ctypes.windll.user32.GetSystemMetrics(1)  # SM_CYSCREEN
+            work_rect = wintypes.RECT()
+            SPI_GETWORKAREA = 0x0030
+            ctypes.windll.user32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(work_rect), 0)
 
-            title_top = nr.top - 10
-            title_bottom = nr.top + caption_h + frame_h + 15
-
-            # Caption minimize button is located in the top-right corner of the window frame
-            is_caption_y = title_top <= pt.y <= title_bottom
-            is_min_x = (nr.right - 180) <= pt.x <= (nr.right + 15)
-
-            return bool(is_caption_y and is_min_x)
+            # Taskbar at the bottom of the screen (standard Windows 10 & 11)
+            taskbar_top = (
+                work_rect.bottom
+                if (work_rect.bottom and work_rect.bottom < screen_h)
+                else (screen_h - 75)
+            )
+            return bool(pt.y >= (taskbar_top - 5))
         except Exception:
             return False
 
@@ -309,7 +293,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             try:
                 title = t("app.window_title")
                 msg = t("tray.minimized_notification")
-                self.after(100, lambda: self.tray_manager.notify(msg, title))
+                self.after(50, lambda: self.tray_manager.notify(msg, title))
             except Exception:
                 pass
 
@@ -319,13 +303,15 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             try:
                 if self.state() == "iconic" and self.config.get("minimize_to_tray", True):
                     is_test = bool(os.environ.get("LVR_TEST_MODE") or os.environ.get("PYTEST_CURRENT_TEST"))
-                    # In test mode or when cursor is verified on titlebar minimize button:
-                    if is_test or self._is_cursor_on_titlebar_minimize():
-                        self.withdraw()
-                        if hasattr(self, "tray_manager") and self.tray_manager:
-                            self.tray_manager.show()
-                            self._update_tray_status()
-                            self._announce_minimized_to_tray()
+                    # If clicked on the down bar (taskbar), do NOT minimize to tray
+                    if not is_test and self._is_minimized_from_down_bar():
+                        return
+
+                    self.withdraw()
+                    if hasattr(self, "tray_manager") and self.tray_manager:
+                        self.tray_manager.show()
+                        self._update_tray_status()
+                        self._announce_minimized_to_tray()
             except Exception:
                 pass
 
@@ -4624,6 +4610,16 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
 
 def main():
+    if sys.platform.startswith("win"):
+        try:
+            import ctypes
+
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "Betterix.LeagueVoiceRecorder.App"
+            )
+        except Exception:
+            pass
+
     app = LeagueVoiceRecorderApp()
 
     def _sig_handler(sig, frame):
