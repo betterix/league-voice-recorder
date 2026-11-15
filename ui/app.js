@@ -150,6 +150,7 @@ async function toggleRecordingWatcher() {
     text.innerText = t("btn_start_rec");
     updateStatus(t("status_standby"));
     await invokeTauri("stop_recording_watcher");
+    setTimeout(loadRecordings, 600);
   }
 }
 
@@ -278,6 +279,16 @@ async function loadConfig() {
       autoRep.checked = cfg.auto_start_replay;
     }
 
+    const minTray = document.getElementById("cfg-minimize-tray");
+    if (minTray && cfg.minimize_to_tray !== undefined) {
+      minTray.checked = cfg.minimize_to_tray;
+    }
+
+    const cloudUrl = document.getElementById("cfg-cloud-url");
+    if (cloudUrl && cfg.remote_server_url) {
+      cloudUrl.value = cfg.remote_server_url;
+    }
+
     const langSelect = document.getElementById("cfg-lang");
     if (langSelect && cfg.language) {
       langSelect.value = cfg.language;
@@ -342,6 +353,14 @@ async function saveSettings() {
   currentConfig.replay_volume = parseInt(document.getElementById("cfg-volume").value, 10);
   currentConfig.auto_start_champ_select = document.getElementById("cfg-auto-champ").checked;
   currentConfig.auto_start_replay = document.getElementById("cfg-auto-replay").checked;
+  currentConfig.minimize_to_tray = document.getElementById("cfg-minimize-tray").checked;
+  currentConfig.remote_server_url = document.getElementById("cfg-cloud-url").value.trim();
+  
+  const cloudKey = document.getElementById("cfg-cloud-key").value.trim();
+  if (cloudKey && !cloudKey.startsWith("••••")) {
+    currentConfig.remote_api_key = cloudKey;
+  }
+  
   currentConfig.language = document.getElementById("cfg-lang").value;
 
   const micSelect = document.getElementById("cfg-mic");

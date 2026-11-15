@@ -97,3 +97,42 @@ impl AudioFinalizer {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_finalize_creates_valid_mp3() {
+        let temp_dir = std::env::temp_dir();
+        let out_path = temp_dir.join("test_output.mp3");
+
+        // 1 second of 48kHz stereo 16-bit PCM (48000 * 2 channels * 2 bytes = 192000 bytes)
+        let mut pcm = vec![0u8; 48000 * 4];
+        // Generate a 440Hz sine wave tone
+        for i in 0..48000 {
+            let t = i as f64 / 48000.0;
+            let sample = (f64::sin(2.0 * std::f64::consts::PI * 440.0 * t) * 10000.0) as i16;
+            let bytes = sample.to_le_bytes();
+            pcm[i * 4] = bytes[0];
+            pcm[i * 4 + 1] = bytes[1];
+            pcm[i * 4 + 2] = bytes[0];
+            pcm[i * 4 + 3] = bytes[1];
+        }
+
+        let res = AudioFinalizer::finalize_to_mp3(
+            &pcm,
+            &pcm,
+            48000,
+            2,
+            0.0,
+            &out_path,
+        );
+
+        assert!(res.is_ok(), "Encoding failed: {:?}", res.err());
+        assert!(out_path.exists(), "MP3 file was not created");
+        let size = std::fs::metadata(&out_path).unwrap().len();
+        assert!(size > 5000, "MP3 file is too small: {} bytes", size);
+        let _ = std::fs::remove_file(out_path);
+    }
+}

@@ -352,32 +352,81 @@ body {
 }
 
 /* Settings Tab */
-.settings-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  max-width: 600px;
+#tab-settings {
+  overflow-y: auto;
+  max-height: calc(100vh - 280px);
+  padding-right: 6px;
 }
 
-.setting-item {
+.settings-scroll-container {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 16px;
+  max-width: 720px;
 }
 
-.setting-item label {
+.settings-card {
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--teal-accent);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 6px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.setting-label-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.setting-label {
   font-size: 12px;
-  color: var(--gold-primary);
   font-weight: 600;
+  color: var(--gold-light);
 }
 
-.setting-item input[type="text"] {
+.setting-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.setting-input-col {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.setting-input-col input[type="text"],
+.setting-input-col input[type="password"] {
   background: var(--bg-terminal);
   border: 1px solid var(--border-color);
   color: var(--text-main);
   padding: 8px 10px;
   border-radius: 4px;
   font-size: 12px;
+  flex: 1;
 }
 
 .styled-select {
@@ -388,16 +437,25 @@ body {
   border-radius: 4px;
   font-size: 12px;
   outline: none;
+  flex: 1;
 }
 
-.styled-select:focus {
+.styled-select:focus,
+.setting-input-col input:focus {
   border-color: var(--gold-primary);
 }
 
 .engine-info {
   background: rgba(10, 200, 185, 0.08);
   border: 1px solid rgba(10, 200, 185, 0.3);
-  padding: 10px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--teal-accent);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
   border-radius: 6px;
   font-size: 12px;
   color: var(--teal-accent);

@@ -57,16 +57,20 @@ impl AudioCaptureManager {
 
         // 1. Microphone setup
         let mic_device = if let Some(target) = chosen_mic {
-            host.input_devices()
-                .ok()
-                .and_then(|mut devs| {
-                    devs.find(|d| {
-                        d.description()
-                            .map(|desc| desc.name() == target)
-                            .unwrap_or(false)
+            if target == "default" || target.is_empty() {
+                host.default_input_device()
+            } else {
+                host.input_devices()
+                    .ok()
+                    .and_then(|mut devs| {
+                        devs.find(|d| {
+                            d.description()
+                                .map(|desc| desc.name() == target)
+                                .unwrap_or(false)
+                        })
                     })
-                })
-                .or_else(|| host.default_input_device())
+                    .or_else(|| host.default_input_device())
+            }
         } else {
             host.default_input_device()
         };
@@ -78,10 +82,11 @@ impl AudioCaptureManager {
 
             if let Ok(config) = device.default_input_config() {
                 let channels = config.channels() as usize;
+                let sample_rate = config.sample_rate();
                 let sample_format = config.sample_format();
-
                 let err_fn = |err| warn!("Microphone stream error: {}", err);
 
+                let mut acc = 0.0f64;
                 let stream_res: Option<Stream> = match sample_format {
                     SampleFormat::F32 => {
                         device.build_input_stream(
@@ -90,24 +95,28 @@ impl AudioCaptureManager {
                                 if pause_clone.load(Ordering::Relaxed) {
                                     return;
                                 }
-                                let mut max_abs: f32 = 0.0;
-                                let mut local_samples = Vec::with_capacity(data.len() / channels * 2);
+                                let mut local = Vec::new();
+                                let mut local_peak = 0.0f32;
+                                let step = sample_rate as f64 / 48000.0;
                                 for frame in data.chunks(channels) {
-                                    let sample_f32 = frame[0];
-                                    let abs_val = sample_f32.abs();
-                                    if abs_val > max_abs {
-                                        max_abs = abs_val;
+                                    acc += 1.0;
+                                    if acc >= step {
+                                        acc -= step;
+                                        let left = frame[0];
+                                        let right = if channels > 1 { frame[1] } else { frame[0] };
+                                        let max_v = left.abs().max(right.abs());
+                                        if max_v > local_peak {
+                                            local_peak = max_v;
+                                        }
+                                        local.push((left.clamp(-1.0, 1.0) * 32767.0) as i16);
+                                        local.push((right.clamp(-1.0, 1.0) * 32767.0) as i16);
                                     }
-                                    let sample_i16 = (sample_f32.clamp(-1.0, 1.0) * 32767.0) as i16;
-                                    // Stereo interleaved
-                                    local_samples.push(sample_i16);
-                                    local_samples.push(sample_i16);
                                 }
                                 if let Ok(mut pk) = peak_clone.lock() {
-                                    *pk = max_abs;
+                                    *pk = local_peak;
                                 }
                                 if let Ok(mut buf) = buf_clone.lock() {
-                                    buf.extend(local_samples);
+                                    buf.extend(local);
                                 }
                             },
                             err_fn,
@@ -121,22 +130,28 @@ impl AudioCaptureManager {
                                 if pause_clone.load(Ordering::Relaxed) {
                                     return;
                                 }
-                                let mut max_abs: f32 = 0.0;
-                                let mut local_samples = Vec::with_capacity(data.len() / channels * 2);
+                                let mut local = Vec::new();
+                                let mut local_peak = 0.0f32;
+                                let step = sample_rate as f64 / 48000.0;
                                 for frame in data.chunks(channels) {
-                                    let sample_i16 = frame[0];
-                                    let abs_val = (sample_i16 as f32).abs() / 32768.0;
-                                    if abs_val > max_abs {
-                                        max_abs = abs_val;
+                                    acc += 1.0;
+                                    if acc >= step {
+                                        acc -= step;
+                                        let left = frame[0];
+                                        let right = if channels > 1 { frame[1] } else { frame[0] };
+                                        let max_v = (left as f32).abs().max((right as f32).abs()) / 32768.0;
+                                        if max_v > local_peak {
+                                            local_peak = max_v;
+                                        }
+                                        local.push(left);
+                                        local.push(right);
                                     }
-                                    local_samples.push(sample_i16);
-                                    local_samples.push(sample_i16);
                                 }
                                 if let Ok(mut pk) = peak_clone.lock() {
-                                    *pk = max_abs;
+                                    *pk = local_peak;
                                 }
                                 if let Ok(mut buf) = buf_clone.lock() {
-                                    buf.extend(local_samples);
+                                    buf.extend(local);
                                 }
                             },
                             err_fn,
@@ -157,17 +172,19 @@ impl AudioCaptureManager {
             }
         }
 
-        // 2. Loopback setup (Windows default output device as input)
+        // 2. Loopback setup (Windows default output device as input via WASAPI loopback)
         if let Some(out_dev) = host.default_output_device() {
             let buf_clone = self.loopback_buffer.clone();
             let pause_clone = self.is_paused.clone();
             let peak_clone = self.loopback_peak.clone();
 
-            if let Ok(config) = out_dev.default_input_config() {
+            if let Ok(config) = out_dev.default_output_config() {
                 let channels = config.channels() as usize;
+                let sample_rate = config.sample_rate();
                 let sample_format = config.sample_format();
                 let err_fn = |err| warn!("Loopback stream error: {}", err);
 
+                let mut acc = 0.0f64;
                 let stream_res: Option<Stream> = match sample_format {
                     SampleFormat::F32 => {
                         out_dev.build_input_stream(
@@ -176,23 +193,28 @@ impl AudioCaptureManager {
                                 if pause_clone.load(Ordering::Relaxed) {
                                     return;
                                 }
-                                let mut max_abs: f32 = 0.0;
-                                let mut local_samples = Vec::with_capacity(data.len() / channels * 2);
+                                let mut local = Vec::new();
+                                let mut local_peak = 0.0f32;
+                                let step = sample_rate as f64 / 48000.0;
                                 for frame in data.chunks(channels) {
-                                    let left = frame[0];
-                                    let right = if channels > 1 { frame[1] } else { frame[0] };
-                                    let abs_val = left.abs().max(right.abs());
-                                    if abs_val > max_abs {
-                                        max_abs = abs_val;
+                                    acc += 1.0;
+                                    if acc >= step {
+                                        acc -= step;
+                                        let left = frame[0];
+                                        let right = if channels > 1 { frame[1] } else { frame[0] };
+                                        let max_v = left.abs().max(right.abs());
+                                        if max_v > local_peak {
+                                            local_peak = max_v;
+                                        }
+                                        local.push((left.clamp(-1.0, 1.0) * 32767.0) as i16);
+                                        local.push((right.clamp(-1.0, 1.0) * 32767.0) as i16);
                                     }
-                                    local_samples.push((left.clamp(-1.0, 1.0) * 32767.0) as i16);
-                                    local_samples.push((right.clamp(-1.0, 1.0) * 32767.0) as i16);
                                 }
                                 if let Ok(mut pk) = peak_clone.lock() {
-                                    *pk = max_abs;
+                                    *pk = local_peak;
                                 }
                                 if let Ok(mut buf) = buf_clone.lock() {
-                                    buf.extend(local_samples);
+                                    buf.extend(local);
                                 }
                             },
                             err_fn,
@@ -206,23 +228,28 @@ impl AudioCaptureManager {
                                 if pause_clone.load(Ordering::Relaxed) {
                                     return;
                                 }
-                                let mut max_abs: f32 = 0.0;
-                                let mut local_samples = Vec::with_capacity(data.len() / channels * 2);
+                                let mut local = Vec::new();
+                                let mut local_peak = 0.0f32;
+                                let step = sample_rate as f64 / 48000.0;
                                 for frame in data.chunks(channels) {
-                                    let left = frame[0];
-                                    let right = if channels > 1 { frame[1] } else { frame[0] };
-                                    let abs_val = (left as f32).abs().max((right as f32).abs()) / 32768.0;
-                                    if abs_val > max_abs {
-                                        max_abs = abs_val;
+                                    acc += 1.0;
+                                    if acc >= step {
+                                        acc -= step;
+                                        let left = frame[0];
+                                        let right = if channels > 1 { frame[1] } else { frame[0] };
+                                        let max_v = (left as f32).abs().max((right as f32).abs()) / 32768.0;
+                                        if max_v > local_peak {
+                                            local_peak = max_v;
+                                        }
+                                        local.push(left);
+                                        local.push(right);
                                     }
-                                    local_samples.push(left);
-                                    local_samples.push(right);
                                 }
                                 if let Ok(mut pk) = peak_clone.lock() {
-                                    *pk = max_abs;
+                                    *pk = local_peak;
                                 }
                                 if let Ok(mut buf) = buf_clone.lock() {
-                                    buf.extend(local_samples);
+                                    buf.extend(local);
                                 }
                             },
                             err_fn,
@@ -309,5 +336,36 @@ impl AudioCaptureManager {
         let m = self.mic_peak.lock().map(|p| *p).unwrap_or(0.0);
         let l = self.loopback_peak.lock().map(|p| *p).unwrap_or(0.0);
         (m, l)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_device_enumeration() {
+        let mics = AudioCaptureManager::get_available_microphones();
+        println!("Available mics: {:?}", mics);
+        assert!(!mics.is_empty());
+    }
+
+    #[test]
+    fn test_loopback_config() {
+        let host = cpal::default_host();
+        if let Some(out_dev) = host.default_output_device() {
+            let name = out_dev.description().unwrap().name().to_string();
+            println!("Default output: {}", name);
+            let config = out_dev.default_output_config().unwrap();
+            println!("Default output config: {:?}", config);
+
+            let stream = out_dev.build_input_stream(
+                config.into(),
+                move |_data: &[f32], _| {},
+                |err| eprintln!("Error: {}", err),
+                None,
+            );
+            assert!(stream.is_ok(), "Loopback stream creation failed: {:?}", stream.err());
+        }
     }
 }

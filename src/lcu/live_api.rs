@@ -1,19 +1,5 @@
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LiveGameData {
-    #[serde(rename = "gameData")]
-    pub game_data: Option<GameData>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GameData {
-    #[serde(rename = "gameTime")]
-    pub game_time: f64,
-    #[serde(rename = "gameId")]
-    pub game_id: Option<i64>,
-}
+use serde_json::Value;
 
 pub struct LiveApiClient {
     client: Client,
@@ -24,6 +10,7 @@ impl Default for LiveApiClient {
     fn default() -> Self {
         let client = Client::builder()
             .danger_accept_invalid_certs(true)
+            .timeout(std::time::Duration::from_millis(350))
             .build()
             .unwrap_or_default();
 
@@ -35,8 +22,17 @@ impl Default for LiveApiClient {
 }
 
 impl LiveApiClient {
-    pub async fn poll_all_game_data(&self) -> Result<LiveGameData, reqwest::Error> {
+    /// Polls Riot's Live Client Data API (:2999/liveclientdata/allgamedata)
+    /// and extracts gameTime as an f64 without failing on schema variations.
+    pub async fn poll_game_time(&self) -> Result<Option<f64>, reqwest::Error> {
         let resp = self.client.get(&self.endpoint).send().await?;
-        resp.json::<LiveGameData>().await
+        if resp.status().is_success() {
+            if let Ok(json) = resp.json::<Value>().await {
+                if let Some(gt) = json.pointer("/gameData/gameTime").and_then(|v| v.as_f64()) {
+                    return Ok(Some(gt));
+                }
+            }
+        }
+        Ok(None)
     }
 }

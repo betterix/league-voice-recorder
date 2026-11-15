@@ -89,61 +89,127 @@
       </div>
     </main>
 
-    <!-- Tab 3: Settings -->
+    <!-- Tab 3: Settings (Scrollable) -->
     <main class="tab-content" id="tab-settings">
-      <div class="settings-grid">
-        <div class="setting-item">
-          <label for="cfg-folder">Recordings Directory</label>
-          <div style="display: flex; gap: 8px;">
-            <input type="text" id="cfg-folder" style="flex: 1;" placeholder="Loading folder...">
-            <button class="btn-small" onclick="openRecordingsFolder()">Open</button>
+      <div class="settings-scroll-container">
+        
+        <!-- CARD 1: DIRECTORIES & STORAGE -->
+        <div class="settings-card">
+          <div class="card-title">📁 DIRECTORIES & STORAGE</div>
+          
+          <div class="setting-row">
+            <div class="setting-label-col">
+              <span class="setting-label">Recordings Folder</span>
+              <span class="setting-desc">Where scrim audio (.mp3) files are saved.</span>
+            </div>
+            <div class="setting-input-col">
+              <input type="text" id="cfg-folder" placeholder="C:\Users\...\Documents\League Voice Recorder\recordings">
+              <button class="btn-small" onclick="openRecordingsFolder()">Open</button>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-label-col">
+              <span class="setting-label">Replay Audio Volume</span>
+              <span class="setting-desc">Playback volume during replay sync (Press M to mute).</span>
+            </div>
+            <div class="setting-input-col" style="align-items: center;">
+              <input type="range" id="cfg-volume" min="0" max="100" value="100" oninput="updateVolume(this.value)" style="flex: 1;">
+              <span id="vol-display" style="width: 45px; text-align: right; font-weight: 600; font-size: 12px;">100%</span>
+            </div>
           </div>
         </div>
 
-        <div class="setting-item">
-          <label for="cfg-mic">Microphone Input Device</label>
-          <select id="cfg-mic" class="styled-select" onchange="markSettingsChanged()">
-            <option value="default">Default Microphone (WASAPI)</option>
-          </select>
-        </div>
+        <!-- CARD 2: INTERFACE & AUDIO INPUT -->
+        <div class="settings-card">
+          <div class="card-title">🌐 INTERFACE & AUDIO INPUT</div>
 
-        <div class="setting-item">
-          <label for="cfg-volume">Replay Audio Volume (<span id="vol-display">100%</span>)</label>
-          <input type="range" id="cfg-volume" min="0" max="100" value="100" oninput="updateVolume(this.value)">
-        </div>
+          <div class="setting-row">
+            <div class="setting-label-col">
+              <span class="setting-label">Interface Language</span>
+              <span class="setting-desc">Select display language for buttons, tabs, and status pills.</span>
+            </div>
+            <div class="setting-input-col">
+              <select id="cfg-lang" class="styled-select" onchange="changeLanguage(this.value)">
+                <option value="en">English</option>
+                <option value="hu">Magyar (Hungarian)</option>
+              </select>
+            </div>
+          </div>
 
-        <div class="setting-item">
-          <label>Automation & Startup</label>
-          <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
-            <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; color: var(--text-main); cursor: pointer;">
-              <input type="checkbox" id="cfg-auto-champ" checked onchange="markSettingsChanged()">
-              Auto-Start Recording during Champ Select / Match
-            </label>
-            <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; color: var(--text-main); cursor: pointer;">
-              <input type="checkbox" id="cfg-auto-replay" checked onchange="markSettingsChanged()">
-              Auto-Start Replay Sync when .rofl replay opens
-            </label>
+          <div class="setting-row">
+            <div class="setting-label-col">
+              <span class="setting-label">Microphone Input Device</span>
+              <span class="setting-desc">Windows WASAPI audio input device to record voice.</span>
+            </div>
+            <div class="setting-input-col">
+              <select id="cfg-mic" class="styled-select" onchange="markSettingsChanged()">
+                <option value="default">Default Microphone (WASAPI)</option>
+              </select>
+            </div>
           </div>
         </div>
 
-        <div class="setting-item">
-          <label>League Replay API 1-Click Configuration</label>
-          <div style="display: flex; align-items: center; gap: 10px;">
+        <!-- CARD 3: MATCH AUTOMATION & WORKFLOW -->
+        <div class="settings-card">
+          <div class="card-title">⚡ MATCH AUTOMATION & WORKFLOW</div>
+
+          <label style="display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer;">
+            <input type="checkbox" id="cfg-auto-champ" checked onchange="markSettingsChanged()">
+            <span>Auto-Start Recording during Champ Select / Match</span>
+          </label>
+
+          <label style="display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer;">
+            <input type="checkbox" id="cfg-auto-replay" checked onchange="markSettingsChanged()">
+            <span>Auto-Start Replay Sync when .rofl replay opens</span>
+          </label>
+
+          <label style="display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer;">
+            <input type="checkbox" id="cfg-minimize-tray" checked onchange="markSettingsChanged()">
+            <span>Minimize to System Tray</span>
+          </label>
+        </div>
+
+        <!-- CARD 4: LEAGUE REPLAY API CONFIGURATION -->
+        <div class="settings-card">
+          <div class="card-title">🎮 LEAGUE REPLAY API AUTO-CONFIGURATION</div>
+          <p style="font-size: 12px; color: var(--text-muted); line-height: 1.4;">
+            Automatically detects your League installation and safely injects <code>EnableReplayApi=1</code> under <code>[General]</code> in <code>Config/game.cfg</code> with automatic backup.
+          </p>
+          <div style="display: flex; align-items: center; gap: 14px; margin-top: 4px;">
             <button class="btn-small" id="btn-enable-api" onclick="triggerEnableReplayApi()">⚡ Enable Replay API in game.cfg</button>
             <span id="api-status-badge" style="font-size: 12px; color: var(--text-muted);">Status: Checking...</span>
           </div>
         </div>
 
-        <div class="setting-item">
-          <label for="cfg-lang">Interface Language</label>
-          <select id="cfg-lang" class="styled-select" onchange="changeLanguage(this.value)">
-            <option value="en">English</option>
-            <option value="hu">Magyar (Hungarian)</option>
-          </select>
+        <!-- CARD 5: REMOTE SCRIM CLOUD SYNC -->
+        <div class="settings-card">
+          <div class="card-title">☁️ REMOTE SCRIM CLOUD SYNC</div>
+          
+          <div class="setting-row">
+            <div class="setting-label-col">
+              <span class="setting-label">Server Endpoint</span>
+              <span class="setting-desc">Direct team scrim backend server URL.</span>
+            </div>
+            <div class="setting-input-col">
+              <input type="text" id="cfg-cloud-url" placeholder="https://scrims.example.com">
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-label-col">
+              <span class="setting-label">API Key (Windows DPAPI Encrypted)</span>
+              <span class="setting-desc">Your team API authorization token.</span>
+            </div>
+            <div class="setting-input-col">
+              <input type="password" id="cfg-cloud-key" placeholder="••••••••••••••••">
+            </div>
+          </div>
         </div>
 
-        <div class="setting-item">
-          <label>Pure Rust Native Audio Architecture</label>
+        <!-- CARD 6: PURE RUST AUDIO ENGINE -->
+        <div class="settings-card">
+          <div class="card-title">🛠️ PURE RUST NATIVE AUDIO ARCHITECTURE</div>
           <div class="engine-info">
             <div>✓ Native WASAPI Loopback Capture (0 Lag & 0 Drift)</div>
             <div>✓ Built-in Pure Rust MP3 Encoding (Zero FFmpeg Process Spawning)</div>
@@ -151,9 +217,11 @@
           </div>
         </div>
 
-        <div class="setting-actions">
-          <button class="btn-primary" onclick="saveSettings()">Save Configuration</button>
+        <!-- Save Button -->
+        <div style="margin-top: 4px; margin-bottom: 24px;">
+          <button class="btn-primary" style="width: 100%;" onclick="saveSettings()">Save Configuration</button>
         </div>
+
       </div>
     </main>
 
