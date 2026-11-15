@@ -129,19 +129,108 @@ body {
 
 /* Controls Card */
 .controls-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-gold);
-  border-radius: 8px;
-  padding: 14px 18px;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.button-grid {
+.action-cards-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
+}
+
+.action-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-gold);
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.action-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.action-card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gold-light);
+}
+
+.action-card-status {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.action-card-status.active {
+  color: var(--teal-accent);
+}
+
+.action-card-status.rec {
+  color: var(--red-rec);
+}
+
+.action-row {
+  display: flex;
+  gap: 8px;
+}
+
+.meter-box {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.meter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.meter-label {
+  width: 65px;
+  font-weight: 600;
+}
+
+.meter-track {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  width: 0%;
+  transition: width 0.06s ease;
+}
+
+.meter-fill.app {
+  background: var(--teal-accent);
+}
+
+.meter-fill.mic {
+  background: var(--green-ok);
+}
+
+.rep-hint-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 4px 0;
 }
 
 .btn-primary {
@@ -154,7 +243,7 @@ body {
   color: var(--gold-light);
   font-size: 15px;
   font-weight: 600;
-  padding: 14px;
+  padding: 12px;
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;

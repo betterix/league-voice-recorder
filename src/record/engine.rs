@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::time::{sleep, Duration};
 use tracing::{info, warn};
@@ -48,7 +48,7 @@ impl LeagueRecorder {
         false
     }
 
-    pub async fn run_watcher_loop(&self, stop_signal: Arc<AtomicBool>) {
+    pub async fn run_watcher_loop(&self, stop_signal: Arc<AtomicBool>, levels: Option<Arc<Mutex<(f32, f32)>>>) {
         info!("Starting LeagueRecorder watcher loop...");
 
         let mut first_game_time: f64 = 0.0;
@@ -75,6 +75,11 @@ impl LeagueRecorder {
         }
 
         while !stop_signal.load(Ordering::Relaxed) {
+            if let Some(ref lv) = levels {
+                if let Ok(mut lk) = lv.lock() {
+                    *lk = audio_capture.get_peaks();
+                }
+            }
             // Guard: Never record active ROFL replays
             if self.is_replay_active().await {
                 if in_match {
@@ -147,6 +152,11 @@ impl LeagueRecorder {
         // Finalize and save MP3 (whether triggered by match end or user clicking Stop)
         self.is_recording.store(false, Ordering::SeqCst);
         self.is_paused.store(false, Ordering::SeqCst);
+        if let Some(ref lv) = levels {
+            if let Ok(mut lk) = lv.lock() {
+                *lk = (0.0, 0.0);
+            }
+        }
 
         let (loopback_pcm, mic_pcm) = audio_capture.stop_and_take_buffers();
 
@@ -228,7 +238,7 @@ mod tests {
 
         let stop_clone = stop_sig.clone();
         let handle = tokio::spawn(async move {
-            recorder.run_watcher_loop(stop_clone).await;
+            recorder.run_watcher_loop(stop_clone, None).await;
         });
 
         // Let it record for 350ms

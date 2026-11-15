@@ -36,21 +36,58 @@
       </div>
     </header>
 
-    <!-- Primary Action Controls -->
+    <!-- Primary Action Controls (2-Card Architecture matching Python) -->
     <section class="controls-card">
-      <div class="button-grid">
-        <button id="btn-rec" class="btn-primary rec-btn" onclick="toggleRecordingWatcher()">
-          <span class="icon">🔴</span>
-          <span class="btn-text" id="btn-rec-text">Start Recording Watcher</span>
-        </button>
-        <button id="btn-rep" class="btn-primary rep-btn" onclick="toggleReplayWatcher()">
-          <span class="icon">▶</span>
-          <span class="btn-text" id="btn-rep-text">Start Replay Auto-Sync</span>
-        </button>
-      </div>
-      <div class="status-banner" id="status-banner">
-        <span class="status-indicator"></span>
-        <span id="status-text">Standby. Click 'Start Recording Watcher' before your match or 'Start Replay Auto-Sync' for ROFL replays.</span>
+      <div class="action-cards-grid">
+        <!-- Card 1: Scrim Recorder -->
+        <div class="action-card rec-card">
+          <div class="action-card-header">
+            <span class="action-card-title">🎙️ SCRIM RECORDER</span>
+            <span class="action-card-status" id="rec-status-pill">● IDLE</span>
+          </div>
+          <button id="btn-rec" class="btn-primary rec-btn" onclick="toggleRecordingWatcher()">
+            <span class="icon">🔴</span>
+            <span class="btn-text" id="btn-rec-text">Start Recording Watcher</span>
+          </button>
+          <div class="action-row">
+            <select id="quick-mic" class="styled-select" onchange="onQuickMicChange(this.value)">
+              <option value="default">Default Microphone</option>
+            </select>
+            <button class="btn-small" onclick="loadAudioDevices()" title="Refresh Mics">🔄</button>
+          </div>
+          <!-- Live Audio VU Meters -->
+          <div class="meter-box">
+            <div class="meter-row">
+              <span class="meter-label">🔊 Discord:</span>
+              <div class="meter-track"><div class="meter-fill app" id="meter-app"></div></div>
+            </div>
+            <div class="meter-row">
+              <span class="meter-label">🎤 Mic:</span>
+              <div class="meter-track"><div class="meter-fill mic" id="meter-mic"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: Replay Auto-Sync -->
+        <div class="action-card rep-card">
+          <div class="action-card-header">
+            <span class="action-card-title">🎬 REPLAY AUTO-SYNC</span>
+            <span class="action-card-status" id="rep-status-pill">● IDLE</span>
+          </div>
+          <button id="btn-rep" class="btn-primary rep-btn" onclick="toggleReplayWatcher()">
+            <span class="icon">▶</span>
+            <span class="btn-text" id="btn-rep-text">Start Replay Auto-Sync</span>
+          </button>
+          <div class="action-row" style="align-items: center; justify-content: space-between;">
+            <span style="font-size: 12px; color: var(--gold-light);">Volume:</span>
+            <input type="range" id="quick-vol" min="0" max="100" value="100" oninput="updateVolume(this.value)" style="flex: 1; margin: 0 8px;">
+            <span id="quick-vol-display" style="font-size: 12px; font-weight: 600; width: 40px; text-align: right;">100%</span>
+          </div>
+          <div class="rep-hint-row">
+            <span class="rep-hint">💡 Press <b>M</b> to Mute/Unmute replay voice</span>
+            <span class="rep-info">• Pure Rust Rodio Engine</span>
+          </div>
+        </div>
       </div>
     </section>
 

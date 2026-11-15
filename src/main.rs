@@ -67,18 +67,26 @@ pub struct AppState {
     pub log_queue: Arc<Mutex<Vec<String>>>,
     pub current_player: Arc<Mutex<Option<RodioPlayer>>>,
     pub replay_volume: Arc<Mutex<f32>>,
+    pub audio_levels: Arc<Mutex<(f32, f32)>>,
 }
 
 impl Default for AppState {
     fn default() -> Self {
+        let initial_logs = vec![
+            format!("[{}] 🎮 League Voice Recorder v0.5.1 initialized.", get_timestamp()),
+            format!("[{}] 🎙️ WASAPI Audio Engine ready: High-resolution hardware loopback active.", get_timestamp()),
+            format!("[{}] 🎬 Replay Synchronizer ready: Watching for League replay API (:2999).", get_timestamp()),
+            format!("[{}] ⚡ Auto-Detect Monitor active: Monitoring LCU gameflow phases.", get_timestamp()),
+        ];
         Self {
             rec_stop: Arc::new(AtomicBool::new(false)),
             rep_stop: Arc::new(AtomicBool::new(false)),
             rec_active: Arc::new(AtomicBool::new(false)),
             rep_active: Arc::new(AtomicBool::new(false)),
-            log_queue: Arc::new(Mutex::new(Vec::new())),
+            log_queue: Arc::new(Mutex::new(initial_logs)),
             current_player: Arc::new(Mutex::new(None)),
             replay_volume: Arc::new(Mutex::new(1.0)),
+            audio_levels: Arc::new(Mutex::new((0.0, 0.0))),
         }
     }
 }
@@ -98,12 +106,13 @@ impl AppState {
 
         let stop_sig = self.rec_stop.clone();
         let active_sig = self.rec_active.clone();
+        let levels_sig = self.audio_levels.clone();
 
         let cfg_opt = AppConfig::load().ok();
         if let Some(cfg) = cfg_opt {
             tokio::spawn(async move {
                 let recorder = LeagueRecorder::new(cfg);
-                recorder.run_watcher_loop(stop_sig).await;
+                recorder.run_watcher_loop(stop_sig, Some(levels_sig)).await;
                 active_sig.store(false, Ordering::SeqCst);
                 info!("⏹ Recording Watcher stopped.");
             });
@@ -343,6 +352,21 @@ fn enable_replay_api(state: tauri::State<'_, Arc<AppState>>) -> Result<String, S
     res
 }
 
+#[derive(Serialize, Deserialize)]
+struct AudioLevelsDto {
+    app_level: f32,
+    mic_level: f32,
+}
+
+#[tauri::command]
+fn get_audio_levels(state: tauri::State<'_, Arc<AppState>>) -> AudioLevelsDto {
+    let (mic, app) = *state.audio_levels.lock().unwrap();
+    AudioLevelsDto {
+        app_level: app,
+        mic_level: mic,
+    }
+}
+
 #[tauri::command]
 fn check_replay_api_status() -> bool {
     ReplayConfigManager::check_replay_api_status().0
@@ -390,7 +414,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let rep_stop = stop_signal.clone();
 
         let rec_handle = tokio::spawn(async move {
-            recorder.run_watcher_loop(rec_stop).await;
+            recorder.run_watcher_loop(rec_stop, None).await;
         });
 
         let rep_handle = tokio::spawn(async move {
@@ -461,6 +485,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             set_replay_volume,
             enable_replay_api,
             check_replay_api_status,
+            get_audio_levels,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

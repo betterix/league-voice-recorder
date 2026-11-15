@@ -4,6 +4,8 @@ let currentConfig = null;
 let currentLanguage = "en";
 let isMuted = false;
 let previousVolume = 100;
+let smoothApp = 0.0;
+let smoothMic = 0.0;
 
 // Embedded i18n dictionary for instant client-side localization
 const I18N = {
@@ -70,13 +72,18 @@ function applyLanguage(lang) {
   if (btnRepText) btnRepText.innerText = isReplaySync ? t("btn_stop_rep") : t("btn_start_rep");
 }
 
-// Tauri IPC helper
+// Universal Tauri IPC helper compatible with Tauri v2
 async function invokeTauri(cmd, args = {}) {
-  if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
+  const invoker =
+    (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) ||
+    (window.__TAURI__ && window.__TAURI__.invoke) ||
+    (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke);
+
+  if (invoker) {
     try {
-      return await window.__TAURI__.core.invoke(cmd, args);
+      return await invoker(cmd, args);
     } catch (err) {
-      appendLog(`[IPC Error] ${cmd}: ${err}`, "warn");
+      console.error(`[IPC Error] ${cmd}:`, err);
       return null;
     }
   }
@@ -137,17 +144,26 @@ function switchTab(tabId) {
 async function toggleRecordingWatcher() {
   const btn = document.getElementById("btn-rec");
   const text = document.getElementById("btn-rec-text");
+  const pill = document.getElementById("rec-status-pill");
 
   if (!isRecording) {
     isRecording = true;
     btn.classList.add("active");
     text.innerText = t("btn_stop_rec");
+    if (pill) {
+      pill.innerText = "● RECORDING";
+      pill.className = "action-card-status rec";
+    }
     updateStatus(t("status_rec_active"));
     await invokeTauri("start_recording_watcher");
   } else {
     isRecording = false;
     btn.classList.remove("active");
     text.innerText = t("btn_start_rec");
+    if (pill) {
+      pill.innerText = "● IDLE";
+      pill.className = "action-card-status";
+    }
     updateStatus(t("status_standby"));
     await invokeTauri("stop_recording_watcher");
     setTimeout(loadRecordings, 600);
@@ -157,17 +173,26 @@ async function toggleRecordingWatcher() {
 async function toggleReplayWatcher() {
   const btn = document.getElementById("btn-rep");
   const text = document.getElementById("btn-rep-text");
+  const pill = document.getElementById("rep-status-pill");
 
   if (!isReplaySync) {
     isReplaySync = true;
     btn.classList.add("active");
     text.innerText = t("btn_stop_rep");
+    if (pill) {
+      pill.innerText = "● SYNCING";
+      pill.className = "action-card-status active";
+    }
     updateStatus(t("status_rep_active"));
     await invokeTauri("start_replay_watcher");
   } else {
     isReplaySync = false;
     btn.classList.remove("active");
     text.innerText = t("btn_start_rep");
+    if (pill) {
+      pill.innerText = "● IDLE";
+      pill.className = "action-card-status";
+    }
     updateStatus(t("status_standby"));
     await invokeTauri("stop_replay_watcher");
   }
@@ -179,23 +204,44 @@ function updateStatus(msg) {
 }
 
 function updateVolume(val) {
-  document.getElementById("vol-display").innerText = `${val}%`;
-  invokeTauri("set_replay_volume", { volume: parseInt(val, 10) });
+  const volInt = parseInt(val, 10);
+  const disp = `${volInt}%`;
+  
+  const v1 = document.getElementById("vol-display");
+  if (v1) v1.innerText = disp;
+
+  const v2 = document.getElementById("quick-vol-display");
+  if (v2) v2.innerText = disp;
+
+  const sl1 = document.getElementById("cfg-volume");
+  if (sl1) sl1.value = volInt;
+
+  const sl2 = document.getElementById("quick-vol");
+  if (sl2) sl2.value = volInt;
+
+  invokeTauri("set_replay_volume", { volume: volInt });
   if (currentConfig) {
-    currentConfig.replay_volume = parseInt(val, 10);
+    currentConfig.replay_volume = volInt;
+  }
+}
+
+function onQuickMicChange(val) {
+  const cfgMic = document.getElementById("cfg-mic");
+  if (cfgMic) cfgMic.value = val;
+  if (currentConfig) {
+    currentConfig.mic_device_name = val;
+    invokeTauri("save_config", { config: currentConfig });
   }
 }
 
 function toggleMute() {
-  const slider = document.getElementById("cfg-volume");
+  const slider = document.getElementById("quick-vol") || document.getElementById("cfg-volume");
   if (!isMuted) {
-    previousVolume = parseInt(slider.value, 10);
-    slider.value = 0;
+    previousVolume = parseInt(slider.value, 10) || 100;
     updateVolume(0);
     isMuted = true;
     appendLog("Replay voice muted (M)", "info");
   } else {
-    slider.value = previousVolume || 100;
     updateVolume(previousVolume || 100);
     isMuted = false;
     appendLog("Replay voice unmuted (M)", "info");
@@ -263,10 +309,8 @@ async function loadConfig() {
       folderInput.value = cfg.record_folder;
     }
 
-    const volSlider = document.getElementById("cfg-volume");
-    if (volSlider && cfg.replay_volume !== undefined) {
-      volSlider.value = cfg.replay_volume;
-      document.getElementById("vol-display").innerText = `${cfg.replay_volume}%`;
+    if (cfg.replay_volume !== undefined) {
+      updateVolume(cfg.replay_volume);
     }
 
     const autoChamp = document.getElementById("cfg-auto-champ");
@@ -299,16 +343,25 @@ async function loadConfig() {
 
 async function loadAudioDevices() {
   const devices = await invokeTauri("get_audio_devices");
-  const micSelect = document.getElementById("cfg-mic");
-  if (devices && micSelect && devices.length > 0) {
-    micSelect.innerHTML = "";
-    devices.forEach((dev, idx) => {
-      const opt = document.createElement("option");
-      opt.value = dev;
-      opt.innerText = dev;
-      micSelect.appendChild(opt);
-    });
-  }
+  const selects = [document.getElementById("cfg-mic"), document.getElementById("quick-mic")];
+  
+  selects.forEach(select => {
+    if (devices && select && devices.length > 0) {
+      const currentVal = select.value;
+      select.innerHTML = "";
+      devices.forEach((dev) => {
+        const opt = document.createElement("option");
+        opt.value = dev;
+        opt.innerText = dev;
+        select.appendChild(opt);
+      });
+      if (currentVal && devices.includes(currentVal)) {
+        select.value = currentVal;
+      } else if (currentConfig && currentConfig.mic_device_name && devices.includes(currentConfig.mic_device_name)) {
+        select.value = currentConfig.mic_device_name;
+      }
+    }
+  });
 }
 
 async function checkReplayApi() {
@@ -334,7 +387,7 @@ async function triggerEnableReplayApi() {
 }
 
 function markSettingsChanged() {
-  // Can provide visual cue
+  // Visual feedback
 }
 
 function changeLanguage(lang) {
@@ -379,13 +432,41 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
-// Periodic log streamer (every 250ms)
+// Periodic log streamer (every 200ms)
 setInterval(async () => {
   const logs = await invokeTauri("get_logs");
   if (logs && logs.length > 0) {
     logs.forEach(msg => appendLog(msg));
   }
-}, 250);
+}, 200);
+
+// Live VU Audio Meter loop (every 50ms)
+setInterval(async () => {
+  const lv = await invokeTauri("get_audio_levels");
+  if (lv) {
+    // Smooth ballistic interpolation (mimicking Python main.py)
+    if (lv.app_level > smoothApp) {
+      smoothApp = smoothApp * 0.35 + lv.app_level * 0.65;
+    } else {
+      smoothApp = Math.max(0.0, smoothApp * 0.84);
+    }
+
+    if (lv.mic_level > smoothMic) {
+      smoothMic = smoothMic * 0.35 + lv.mic_level * 0.65;
+    } else {
+      smoothMic = Math.max(0.0, smoothMic * 0.84);
+    }
+
+    const appPct = Math.min(100, Math.round(smoothApp * 100));
+    const micPct = Math.min(100, Math.round(smoothMic * 100));
+
+    const mApp = document.getElementById("meter-app");
+    if (mApp) mApp.style.width = `${appPct}%`;
+
+    const mMic = document.getElementById("meter-mic");
+    if (mMic) mMic.style.width = `${micPct}%`;
+  }
+}, 50);
 
 // Status polling (every 1000ms)
 setInterval(async () => {
@@ -407,29 +488,47 @@ setInterval(async () => {
     // Sync button state if auto-started
     const btnRec = document.getElementById("btn-rec");
     const txtRec = document.getElementById("btn-rec-text");
+    const recPill = document.getElementById("rec-status-pill");
     if (state.is_recording_watcher && !isRecording) {
       isRecording = true;
       btnRec.classList.add("active");
       txtRec.innerText = t("btn_stop_rec");
+      if (recPill) {
+        recPill.innerText = "● RECORDING";
+        recPill.className = "action-card-status rec";
+      }
       updateStatus(t("status_rec_active"));
     } else if (!state.is_recording_watcher && isRecording) {
       isRecording = false;
       btnRec.classList.remove("active");
       txtRec.innerText = t("btn_start_rec");
+      if (recPill) {
+        recPill.innerText = "● IDLE";
+        recPill.className = "action-card-status";
+      }
       updateStatus(t("status_standby"));
     }
 
     const btnRep = document.getElementById("btn-rep");
     const txtRep = document.getElementById("btn-rep-text");
+    const repPill = document.getElementById("rep-status-pill");
     if (state.is_replay_watcher && !isReplaySync) {
       isReplaySync = true;
       btnRep.classList.add("active");
       txtRep.innerText = t("btn_stop_rep");
+      if (repPill) {
+        repPill.innerText = "● SYNCING";
+        repPill.className = "action-card-status active";
+      }
       updateStatus(t("status_rep_active"));
     } else if (!state.is_replay_watcher && isReplaySync) {
       isReplaySync = false;
       btnRep.classList.remove("active");
       txtRep.innerText = t("btn_start_rep");
+      if (repPill) {
+        repPill.innerText = "● IDLE";
+        repPill.className = "action-card-status";
+      }
       updateStatus(t("status_standby"));
     }
 
@@ -440,7 +539,12 @@ setInterval(async () => {
 }, 1000);
 
 // On page load
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContentLoaded", async () => {
+  // Immediately poll initial logs so live event log is populated at startup
+  const initLogs = await invokeTauri("get_logs");
+  if (initLogs && initLogs.length > 0) {
+    initLogs.forEach(msg => appendLog(msg));
+  }
   loadConfig();
   loadAudioDevices();
   checkReplayApi();
