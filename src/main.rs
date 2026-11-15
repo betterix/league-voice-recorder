@@ -1,7 +1,11 @@
+#![windows_subsystem = "windows"]
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use tracing::info;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 use league_voice_recorder::{
     audio::AudioCaptureManager,
@@ -11,14 +15,48 @@ use league_voice_recorder::{
     replay::{ReplayConfigManager, ReplaySynchronizer, RodioPlayer, RoflProcessDetector},
 };
 
+#[cfg(windows)]
+extern "system" {
+    fn AttachConsole(dwProcessId: u32) -> i32;
+}
+
 fn get_timestamp() -> String {
     use std::time::SystemTime;
     let dur = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
     let secs = dur.as_secs() % 86400;
-    let hours = (secs / 3600 + 1) % 24; // Local/CET offset approx or UTC
+    let hours = (secs / 3600 + 1) % 24; // Local CET offset approx
     let mins = (secs % 3600) / 60;
     let s = secs % 60;
     format!("{:02}:{:02}:{:02}", hours, mins, s)
+}
+
+/// Custom Tracing Layer that pipes EVERY info!, warn!, and error! event
+/// directly into the thread-safe UI log queue in real time.
+struct AppLogLayer {
+    queue: Arc<Mutex<Vec<String>>>,
+}
+
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for AppLogLayer {
+    fn on_event(&self, event: &tracing::Event<'_>, _ctx: tracing_subscriber::layer::Context<'_, S>) {
+        struct MessageVisitor(String);
+        impl tracing::field::Visit for MessageVisitor {
+            fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+                if field.name() == "message" {
+                    let s = format!("{:?}", value);
+                    self.0 = s.trim_matches('"').to_string();
+                }
+            }
+        }
+        let mut visitor = MessageVisitor(String::new());
+        event.record(&mut visitor);
+        if !visitor.0.is_empty() {
+            let timestamp = get_timestamp();
+            let entry = format!("[{}] {}", timestamp, visitor.0);
+            if let Ok(mut q) = self.queue.lock() {
+                q.push(entry);
+            }
+        }
+    }
 }
 
 pub struct AppState {
@@ -47,10 +85,6 @@ impl Default for AppState {
 
 impl AppState {
     pub fn log(&self, msg: &str) {
-        let entry = format!("[{}] {}", get_timestamp(), msg);
-        if let Ok(mut q) = self.log_queue.lock() {
-            q.push(entry);
-        }
         info!("{}", msg);
     }
 
@@ -64,7 +98,6 @@ impl AppState {
 
         let stop_sig = self.rec_stop.clone();
         let active_sig = self.rec_active.clone();
-        let log_q = self.log_queue.clone();
 
         let cfg_opt = AppConfig::load().ok();
         if let Some(cfg) = cfg_opt {
@@ -72,10 +105,7 @@ impl AppState {
                 let recorder = LeagueRecorder::new(cfg);
                 recorder.run_watcher_loop(stop_sig).await;
                 active_sig.store(false, Ordering::SeqCst);
-                let entry = format!("[{}] ⏹ Recording Watcher stopped.", get_timestamp());
-                if let Ok(mut q) = log_q.lock() {
-                    q.push(entry);
-                }
+                info!("⏹ Recording Watcher stopped.");
             });
         }
     }
@@ -96,7 +126,6 @@ impl AppState {
 
         let stop_sig = self.rep_stop.clone();
         let active_sig = self.rep_active.clone();
-        let log_q = self.log_queue.clone();
 
         let cfg_opt = AppConfig::load().ok();
         if let Some(cfg) = cfg_opt {
@@ -104,10 +133,7 @@ impl AppState {
                 let synchronizer = ReplaySynchronizer::new(cfg);
                 synchronizer.run_sync_watcher(stop_sig).await;
                 active_sig.store(false, Ordering::SeqCst);
-                let entry = format!("[{}] ⏹ Replay Auto-Sync stopped.", get_timestamp());
-                if let Ok(mut q) = log_q.lock() {
-                    q.push(entry);
-                }
+                info!("⏹ Replay Auto-Sync stopped.");
             });
         }
     }
@@ -324,11 +350,27 @@ fn check_replay_api_status() -> bool {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+    let state = Arc::new(AppState::default());
+
+    // Register custom AppLogLayer so EVERY info!, warn!, and error! in the entire
+    // codebase is automatically fed into the UI log queue and terminal.
+    let log_layer = AppLogLayer {
+        queue: state.log_queue.clone(),
+    };
+    let _ = tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(log_layer)
+        .try_init();
+
     info!("🎮 League Voice Recorder (Rust v0.5.1 Desktop UI)");
 
     let args: Vec<String> = std::env::args().collect();
-    if args.iter().any(|arg| arg == "--headless") {
+    if args.iter().any(|arg| arg == "--headless" || arg == "--cli") {
+        #[cfg(windows)]
+        unsafe {
+            AttachConsole(0xFFFFFFFF);
+        }
+
         info!("Running in headless watcher CLI mode...");
         let config = AppConfig::load()?;
         let stop_signal = Arc::new(AtomicBool::new(false));
@@ -358,8 +400,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let _ = tokio::join!(rec_handle, rep_handle);
         return Ok(());
     }
-
-    let state = Arc::new(AppState::default());
 
     // Background Auto-Detection Thread (mimicking Python main.py _auto_detect_monitor_loop)
     let auto_state = state.clone();
