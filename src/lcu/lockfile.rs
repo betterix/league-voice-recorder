@@ -46,4 +46,9 @@ impl LcuCredentials {
         }
         None
     }
+
+    pub fn find_active() -> Option<Self> {
+        let dir = Self::find_install_dir()?;
+        Self::parse_from_file(dir.join("lockfile")).ok()
+    }
 }

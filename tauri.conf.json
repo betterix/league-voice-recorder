@@ -1,0 +1,25 @@
+{
+  "$schema": "https://schema.tauri.app/v2.json",
+  "productName": "LeagueVoiceRecorder",
+  "version": "0.5.1",
+  "identifier": "com.betterix.leaguevoicerecorder",
+  "build": {
+    "frontendDist": "ui"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "League Voice Recorder",
+        "width": 940,
+        "height": 660,
+        "minWidth": 780,
+        "minHeight": 540,
+        "resizable": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

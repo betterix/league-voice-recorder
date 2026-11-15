@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>League Voice Recorder</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo-badge">🎙️</div>
+        <div>
+          <div class="title-row">
+            <h1>LEAGUE VOICE RECORDER</h1>
+            <span class="badge-rust">RUST CORE v0.5.1</span>
+          </div>
+          <p class="subtitle">Automated Scrim Voice Recording & Sample-Accurate Replay Audio Sync</p>
+        </div>
+      </div>
+      <div class="health-ribbon">
+        <div class="health-pill" id="pill-discord">
+          <span class="dot"></span>
+          <span class="text">Discord: Ready</span>
+        </div>
+        <div class="health-pill" id="pill-league">
+          <span class="dot"></span>
+          <span class="text">League: Watching</span>
+        </div>
+        <div class="health-pill online" id="pill-engine">
+          <span class="dot"></span>
+          <span class="text">Engine: Pure Rust (No VLC/FFmpeg)</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Primary Action Controls -->
+    <section class="controls-card">
+      <div class="button-grid">
+        <button id="btn-rec" class="btn-primary rec-btn" onclick="toggleRecordingWatcher()">
+          <span class="icon">🔴</span>
+          <span class="btn-text" id="btn-rec-text">Start Recording Watcher</span>
+        </button>
+        <button id="btn-rep" class="btn-primary rep-btn" onclick="toggleReplayWatcher()">
+          <span class="icon">▶</span>
+          <span class="btn-text" id="btn-rep-text">Start Replay Auto-Sync</span>
+        </button>
+      </div>
+      <div class="status-banner" id="status-banner">
+        <span class="status-indicator"></span>
+        <span id="status-text">Standby. Click 'Start Recording Watcher' before your match or 'Start Replay Auto-Sync' for ROFL replays.</span>
+      </div>
+    </section>
+
+    <!-- Tabbed Navigation -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" onclick="switchTab('log')">📋 Activity Log</button>
+      <button class="tab-btn" onclick="switchTab('recordings')">🎙️ Scrim Recordings</button>
+      <button class="tab-btn" onclick="switchTab('settings')">⚙️ Settings</button>
+    </nav>
+
+    <!-- Tab 1: Activity Log -->
+    <main class="tab-content active" id="tab-log">
+      <div class="terminal-toolbar">
+        <span class="terminal-title">LIVE EVENT LOG</span>
+        <button class="btn-small" onclick="clearLog()">Clear Log</button>
+      </div>
+      <div class="terminal-box" id="terminal">
+        <div class="log-line info"><span class="log-time">[00:00:00]</span> Engine initialized. Zero-latency WASAPI loopback & Replay Sync active.</div>
+      </div>
+    </main>
+
+    <!-- Tab 2: Scrim Recordings -->
+    <main class="tab-content" id="tab-recordings">
+      <div class="recordings-toolbar">
+        <span>Recorded Match Files</span>
+        <button class="btn-small" onclick="loadRecordings()">🔄 Refresh</button>
+        <button class="btn-small" onclick="openRecordingsFolder()">📁 Open Folder</button>
+      </div>
+      <div class="recordings-list" id="recordings-list">
+        <div class="empty-state">No recordings found in recordings folder.</div>
+      </div>
+    </main>
+
+    <!-- Tab 3: Settings -->
+    <main class="tab-content" id="tab-settings">
+      <div class="settings-grid">
+        <div class="setting-item">
+          <label for="cfg-folder">Recordings Directory</label>
+          <input type="text" id="cfg-folder" placeholder="Loading folder...">
+        </div>
+        <div class="setting-item">
+          <label for="cfg-volume">Replay Audio Volume (<span id="vol-display">100%</span>)</label>
+          <input type="range" id="cfg-volume" min="0" max="100" value="100" oninput="updateVolume(this.value)">
+        </div>
+        <div class="setting-item">
+          <label>Audio Engine Architecture</label>
+          <div class="engine-info">
+            <div>✓ WASAPI Loopback Capture (Native)</div>
+            <div>✓ Pure Rust MP3 Encoding (Zero FFmpeg Process Spawning)</div>
+            <div>✓ Pure Rust Replay Audio Playback (Zero VLC Process / Lag)</div>
+          </div>
+        </div>
+        <div class="setting-actions">
+          <button class="btn-primary" onclick="saveSettings()">Save Configuration</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <span>League Voice Recorder &bull; High-Performance Pure Rust Architecture</span>
+      <span id="match-clock">Match Time: --:--</span>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
