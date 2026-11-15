@@ -266,12 +266,89 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             # Taskbar at the bottom of the screen (standard Windows 10 & 11)
             taskbar_top = (
                 work_rect.bottom
-                if (work_rect.bottom and work_rect.bottom < screen_h)
-                else (screen_h - 75)
+                if (work_rect.bottom and 0 < work_rect.bottom < screen_h)
+                else (screen_h - 65)
             )
             return bool(pt.y >= (taskbar_top - 5))
         except Exception:
             return False
+
+    def _show_desktop_toast(self, title: str, message: str):
+        """Displays a floating dark-mode desktop notification pill above the system tray."""
+        try:
+            if getattr(self, "_in_test_suite", False) or os.environ.get("LVR_TEST_MODE") or os.environ.get("PYTEST_CURRENT_TEST"):
+                return
+
+            if hasattr(self, "_active_toast") and self._active_toast:
+                try:
+                    if self._active_toast.winfo_exists():
+                        self._active_toast.destroy()
+                except Exception:
+                    pass
+                self._active_toast = None
+
+            toast = ctk.CTkToplevel()
+            toast.overrideredirect(True)
+            toast.attributes("-topmost", True)
+            toast.attributes("-alpha", 0.95)
+
+            screen_w = toast.winfo_screenwidth()
+            screen_h = toast.winfo_screenheight()
+            w, h = 380, 80
+            x = max(10, screen_w - w - 24)
+            y = max(10, screen_h - h - 55)
+            toast.geometry(f"{w}x{h}+{x}+{y}")
+
+            frame = ctk.CTkFrame(
+                toast,
+                fg_color=("#1E293B", "#0B1329"),
+                border_color=("#0284C7", "#0AC8B9"),
+                border_width=2,
+                corner_radius=12,
+            )
+            frame.pack(fill="both", expand=True, padx=2, pady=2)
+
+            lbl_title = ctk.CTkLabel(
+                frame,
+                text=f"🎮  {title}",
+                font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+                text_color=("#0284C7", "#0AC8B9"),
+            )
+            lbl_title.pack(anchor="w", padx=16, pady=(10, 2))
+
+            lbl_msg = ctk.CTkLabel(
+                frame,
+                text=message,
+                font=ctk.CTkFont(family="Segoe UI", size=11),
+                text_color=("#F1F5F9", "#E2E8F0"),
+                wraplength=340,
+                justify="left",
+            )
+            lbl_msg.pack(anchor="w", padx=16, pady=(0, 10))
+
+            def _dismiss(e=None):
+                try:
+                    if toast.winfo_exists():
+                        toast.destroy()
+                except Exception:
+                    pass
+
+            toast.bind("<Button-1>", _dismiss)
+            frame.bind("<Button-1>", _dismiss)
+            lbl_title.bind("<Button-1>", _dismiss)
+            lbl_msg.bind("<Button-1>", _dismiss)
+
+            toast.after(4000, _dismiss)
+            self._active_toast = toast
+
+            try:
+                import winsound
+
+                winsound.MessageBeep(winsound.MB_ICONASTERISK)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def _minimize_to_tray_with_announcement(self):
         """Minimizes window to tray and announces with toast notification."""
@@ -288,11 +365,16 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             pass
 
     def _announce_minimized_to_tray(self):
-        """Displays balloon / toast notification that app is minimized in tray."""
+        """Displays visual desktop toast and native tray announcement that app is minimized in tray."""
+        title = t("app.window_title")
+        msg = t("tray.minimized_notification")
+
+        # 1. Guaranteed visual desktop notification floating above system tray
+        self._show_desktop_toast(title, msg)
+
+        # 2. Windows native Action Center / Tray notification
         if hasattr(self, "tray_manager") and self.tray_manager:
             try:
-                title = t("app.window_title")
-                msg = t("tray.minimized_notification")
                 self.after(50, lambda: self.tray_manager.notify(msg, title))
             except Exception:
                 pass
@@ -4549,6 +4631,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
         # 3. Instant visual responsiveness: hide window and taskbar icon immediately (< 1ms)
         try:
+            if hasattr(self, "_active_toast") and self._active_toast:
+                try:
+                    if self._active_toast.winfo_exists():
+                        self._active_toast.destroy()
+                except Exception:
+                    pass
+                self._active_toast = None
             if hasattr(self, "hud") and self.hud:
                 self.hud.hide()
             self.withdraw()
