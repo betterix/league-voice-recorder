@@ -20,6 +20,11 @@ import numpy as np
 import psutil
 import pyaudiowpatch as pyaudio
 
+try:
+    from proctap import ProcessAudioCapture
+except ImportError:
+    ProcessAudioCapture = None
+
 from app.config import get_ffmpeg_path
 from app.discord_ipc import get_shared_discord_mute_watcher
 
@@ -975,9 +980,11 @@ class NativeAudioRecorder:
         Writes sequentially to TimelineWavWriter with exact match clock synchronization.
         """
         try:
-            from proctap import ProcessAudioCapture
+            pac_cls = ProcessAudioCapture
+            if pac_cls is None:
+                from proctap import ProcessAudioCapture as pac_cls
 
-            tap = ProcessAudioCapture(pid, resample_quality="best")
+            tap = pac_cls(pid, resample_quality="best")
             tap.start()
 
             # Strict isolation check: ensure capture is strictly process-specific to Discord.

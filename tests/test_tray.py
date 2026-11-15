@@ -163,7 +163,6 @@ class TestTrayConfigAndUI(unittest.TestCase):
                 mock_show.assert_called_once()
                 mock_update.assert_called_once()
                 mock_announce.assert_called_once()
-                self.assertFalse(app._pending_tray_minimize)
         finally:
             app.destroy()
 
@@ -191,20 +190,36 @@ class TestTrayConfigAndUI(unittest.TestCase):
         app = LeagueVoiceRecorderApp()
         try:
             app.config["minimize_to_tray"] = True
-            app._pending_tray_minimize = False
-            app._subclassed_hwnd = 123456  # Simulates active Win32 hook
             mock_event = MagicMock()
             mock_event.widget = app
 
             with (
                 patch.object(app, "state", return_value="iconic"),
+                patch.object(app, "_is_cursor_on_titlebar_minimize", return_value=False),
+                patch.dict("os.environ", {"LVR_TEST_MODE": "", "PYTEST_CURRENT_TEST": ""}, clear=False),
                 patch.object(app, "withdraw") as mock_withdraw,
                 patch.object(app.tray_manager, "show") as mock_show,
             ):
                 app._on_window_unmap(mock_event)
-                # Should NOT withdraw or show tray because it was a down-bar taskbar minimize
+                # When cursor was on down bar (not titlebar minimize), it stays on taskbar
                 mock_withdraw.assert_not_called()
                 mock_show.assert_not_called()
+
+            with (
+                patch.object(app, "state", return_value="iconic"),
+                patch.object(app, "_is_cursor_on_titlebar_minimize", return_value=True),
+                patch.dict("os.environ", {"LVR_TEST_MODE": "", "PYTEST_CURRENT_TEST": ""}, clear=False),
+                patch.object(app, "withdraw") as mock_withdraw,
+                patch.object(app.tray_manager, "show") as mock_show,
+                patch.object(app, "_update_tray_status") as mock_update,
+                patch.object(app, "_announce_minimized_to_tray") as mock_announce,
+            ):
+                app._on_window_unmap(mock_event)
+                # When cursor was on titlebar minimize, it withdraws to tray
+                mock_withdraw.assert_called_once()
+                mock_show.assert_called_once()
+                mock_update.assert_called_once()
+                mock_announce.assert_called_once()
         finally:
             app.destroy()
 
