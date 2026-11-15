@@ -7,7 +7,7 @@ use tracing::{info, warn};
 use crate::config::AppConfig;
 use crate::lcu::{LiveApiClient, LcuCredentials};
 use crate::replay::{ReplayApiClient, RoflProcessDetector};
-use crate::audio::AudioFinalizer;
+use crate::audio::{AudioCaptureManager, AudioFinalizer};
 use crate::scrim_meta::ScrimMetadata;
 
 pub struct LeagueRecorder {
@@ -56,6 +56,7 @@ impl LeagueRecorder {
         let mut last_advance_time = Instant::now();
         let mut pause_tick_count: usize = 0;
         let mut consecutive_misses: usize = 0;
+        let mut audio_capture = AudioCaptureManager::new();
 
         while !stop_signal.load(Ordering::Relaxed) {
             // Guard: Never record active ROFL replays
@@ -64,6 +65,7 @@ impl LeagueRecorder {
                     warn!("Replay detected during recording! Aborting live match capture.");
                     self.is_recording.store(false, Ordering::SeqCst);
                     self.is_paused.store(false, Ordering::SeqCst);
+                    let _ = audio_capture.stop_and_take_buffers();
                 }
                 sleep(Duration::from_millis(500)).await;
                 continue;
@@ -84,6 +86,10 @@ impl LeagueRecorder {
                                 last_game_time = game_time;
                                 last_advance_time = Instant::now();
                                 pause_tick_count = 0;
+
+                                if let Err(e) = audio_capture.start(None) {
+                                    warn!("Audio capture failed to initialize: {}", e);
+                                }
                             }
                         } else {
                             // Pause detection state machine:
@@ -95,6 +101,7 @@ impl LeagueRecorder {
                                 if (pause_tick_count >= 15 || elapsed >= Duration::from_millis(450)) && !self.is_paused() {
                                     info!("⏸ MATCH PAUSED at game_time = {:.2}. Audio recording paused (detection lag truncated).", last_game_time);
                                     self.is_paused.store(true, Ordering::SeqCst);
+                                    audio_capture.pause_and_truncate_lag(450, 48000);
                                 }
                             } else if game_time > last_game_time {
                                 pause_tick_count = 0;
@@ -102,6 +109,7 @@ impl LeagueRecorder {
                                 if self.is_paused() {
                                     info!("▶ MATCH RESUMED at game_time = {:.2}.", game_time);
                                     self.is_paused.store(false, Ordering::SeqCst);
+                                    audio_capture.resume();
                                 }
                             }
                             last_game_time = game_time;
@@ -116,21 +124,26 @@ impl LeagueRecorder {
                             self.is_recording.store(false, Ordering::SeqCst);
                             self.is_paused.store(false, Ordering::SeqCst);
 
-                            // Extract official Game ID from LCU lockfile if available
-                            let game_id = if let Some(creds) = LcuCredentials::find_active() {
-                                format!("{}", creds.port)
-                            } else {
-                                format!("{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs())
-                            };
+                            let (loopback_pcm, mic_pcm) = audio_capture.stop_and_take_buffers();
+
+                            // Extract official Game ID from LCU session if available
+                            let mut game_id = format!("{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs());
+                            if let Some(creds) = LcuCredentials::find_active() {
+                                if let Ok(gid) = creds.get_game_id().await {
+                                    game_id = gid;
+                                }
+                            }
 
                             let out_path = self.config.record_folder.join(format!("{}.mp3", game_id));
                             info!("Finalizing scrim audio to {:?}", out_path);
 
                             // Finalize MP3 using pure-Rust encoder (0 FFmpeg required)
-                            let dummy_pcm = vec![0u8; 48000 * 4]; // Sample audio block
+                            let final_loopback = if loopback_pcm.is_empty() { vec![0u8; 48000 * 4] } else { loopback_pcm };
+                            let final_mic = if mic_pcm.is_empty() { vec![0u8; 48000 * 4] } else { mic_pcm };
+
                             let _ = AudioFinalizer::finalize_to_mp3(
-                                &dummy_pcm,
-                                &dummy_pcm,
+                                &final_loopback,
+                                &final_mic,
                                 48000,
                                 2,
                                 first_game_time,

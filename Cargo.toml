@@ -20,6 +20,7 @@ base64 = "0.22"
 sha2 = "0.10"
 hmac = "0.12"
 rodio = "0.23"
+cpal = "0.18"
 rusty_mp3 = "1.0"
 tauri = "2.0"
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>League Voice Recorder</title>
+  <title>League Voice Recorder & Replay Synchronizer</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -14,24 +14,24 @@
         <div class="logo-badge">🎙️</div>
         <div>
           <div class="title-row">
-            <h1>LEAGUE VOICE RECORDER</h1>
+            <h1 id="txt-app-title">LEAGUE VOICE RECORDER</h1>
             <span class="badge-rust">RUST CORE v0.5.1</span>
           </div>
-          <p class="subtitle">Automated Scrim Voice Recording & Sample-Accurate Replay Audio Sync</p>
+          <p class="subtitle" id="txt-app-subtitle">Automated Discord Voice Capture & In-Game Replay Audio Sync</p>
         </div>
       </div>
       <div class="health-ribbon">
         <div class="health-pill" id="pill-discord">
           <span class="dot"></span>
-          <span class="text">Discord: Ready</span>
+          <span class="text" id="pill-discord-text">Audio: Standby</span>
         </div>
         <div class="health-pill" id="pill-league">
           <span class="dot"></span>
-          <span class="text">League: Watching</span>
+          <span class="text" id="pill-league-text">League: Watching</span>
         </div>
         <div class="health-pill online" id="pill-engine">
           <span class="dot"></span>
-          <span class="text">Engine: Pure Rust (No VLC/FFmpeg)</span>
+          <span class="text" id="pill-engine-text">Player: Ready</span>
         </div>
       </div>
     </header>
@@ -56,16 +56,19 @@
 
     <!-- Tabbed Navigation -->
     <nav class="tab-nav">
-      <button class="tab-btn active" onclick="switchTab('log')">📋 Activity Log</button>
-      <button class="tab-btn" onclick="switchTab('recordings')">🎙️ Scrim Recordings</button>
-      <button class="tab-btn" onclick="switchTab('settings')">⚙️ Settings</button>
+      <button class="tab-btn active" id="tab-btn-log" onclick="switchTab('log')">📋 Activity Log</button>
+      <button class="tab-btn" id="tab-btn-recordings" onclick="switchTab('recordings')">📁 Scrim Recordings</button>
+      <button class="tab-btn" id="tab-btn-settings" onclick="switchTab('settings')">⚙️ Settings</button>
     </nav>
 
     <!-- Tab 1: Activity Log -->
     <main class="tab-content active" id="tab-log">
       <div class="terminal-toolbar">
-        <span class="terminal-title">LIVE EVENT LOG</span>
-        <button class="btn-small" onclick="clearLog()">Clear Log</button>
+        <span class="terminal-title" id="txt-live-log">LIVE EVENT LOG</span>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-small" onclick="copyLog()">📋 Copy</button>
+          <button class="btn-small" onclick="clearLog()">🗑 Clear</button>
+        </div>
       </div>
       <div class="terminal-box" id="terminal">
         <div class="log-line info"><span class="log-time">[00:00:00]</span> Engine initialized. Zero-latency WASAPI loopback & Replay Sync active.</div>
@@ -75,9 +78,11 @@
     <!-- Tab 2: Scrim Recordings -->
     <main class="tab-content" id="tab-recordings">
       <div class="recordings-toolbar">
-        <span>Recorded Match Files</span>
-        <button class="btn-small" onclick="loadRecordings()">🔄 Refresh</button>
-        <button class="btn-small" onclick="openRecordingsFolder()">📁 Open Folder</button>
+        <span id="recordings-count-text">Recordings: 0 files (0.0 MB)</span>
+        <div style="margin-left: auto; display: flex; gap: 8px;">
+          <button class="btn-small" onclick="loadRecordings()">🔄 Refresh</button>
+          <button class="btn-small" onclick="openRecordingsFolder()">📂 Open Folder</button>
+        </div>
       </div>
       <div class="recordings-list" id="recordings-list">
         <div class="empty-state">No recordings found in recordings folder.</div>
@@ -89,20 +94,63 @@
       <div class="settings-grid">
         <div class="setting-item">
           <label for="cfg-folder">Recordings Directory</label>
-          <input type="text" id="cfg-folder" placeholder="Loading folder...">
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="cfg-folder" style="flex: 1;" placeholder="Loading folder...">
+            <button class="btn-small" onclick="openRecordingsFolder()">Open</button>
+          </div>
         </div>
+
+        <div class="setting-item">
+          <label for="cfg-mic">Microphone Input Device</label>
+          <select id="cfg-mic" class="styled-select" onchange="markSettingsChanged()">
+            <option value="default">Default Microphone (WASAPI)</option>
+          </select>
+        </div>
+
         <div class="setting-item">
           <label for="cfg-volume">Replay Audio Volume (<span id="vol-display">100%</span>)</label>
           <input type="range" id="cfg-volume" min="0" max="100" value="100" oninput="updateVolume(this.value)">
         </div>
+
         <div class="setting-item">
-          <label>Audio Engine Architecture</label>
-          <div class="engine-info">
-            <div>✓ WASAPI Loopback Capture (Native)</div>
-            <div>✓ Pure Rust MP3 Encoding (Zero FFmpeg Process Spawning)</div>
-            <div>✓ Pure Rust Replay Audio Playback (Zero VLC Process / Lag)</div>
+          <label>Automation & Startup</label>
+          <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
+            <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; color: var(--text-main); cursor: pointer;">
+              <input type="checkbox" id="cfg-auto-champ" checked onchange="markSettingsChanged()">
+              Auto-Start Recording during Champ Select / Match
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; color: var(--text-main); cursor: pointer;">
+              <input type="checkbox" id="cfg-auto-replay" checked onchange="markSettingsChanged()">
+              Auto-Start Replay Sync when .rofl replay opens
+            </label>
           </div>
         </div>
+
+        <div class="setting-item">
+          <label>League Replay API 1-Click Configuration</label>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <button class="btn-small" id="btn-enable-api" onclick="triggerEnableReplayApi()">⚡ Enable Replay API in game.cfg</button>
+            <span id="api-status-badge" style="font-size: 12px; color: var(--text-muted);">Status: Checking...</span>
+          </div>
+        </div>
+
+        <div class="setting-item">
+          <label for="cfg-lang">Interface Language</label>
+          <select id="cfg-lang" class="styled-select" onchange="changeLanguage(this.value)">
+            <option value="en">English</option>
+            <option value="hu">Magyar (Hungarian)</option>
+          </select>
+        </div>
+
+        <div class="setting-item">
+          <label>Pure Rust Native Audio Architecture</label>
+          <div class="engine-info">
+            <div>✓ Native WASAPI Loopback Capture (0 Lag & 0 Drift)</div>
+            <div>✓ Built-in Pure Rust MP3 Encoding (Zero FFmpeg Process Spawning)</div>
+            <div>✓ Built-in Pure Rust Audio Playback Engine (Zero VLC Dependency)</div>
+          </div>
+        </div>
+
         <div class="setting-actions">
           <button class="btn-primary" onclick="saveSettings()">Save Configuration</button>
         </div>

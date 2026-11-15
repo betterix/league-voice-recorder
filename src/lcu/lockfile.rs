@@ -124,6 +124,39 @@ impl LcuCredentials {
         Ok(clean)
     }
 
+    /// Queries the LCU session API (/lol-gameflow/v1/session) to extract the official Game ID.
+    pub async fn get_game_id(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        use base64::engine::general_purpose::STANDARD as BASE64;
+        use base64::Engine;
+
+        let auth = BASE64.encode(format!("riot:{}", self.password));
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()?;
+
+        let url = format!("https://127.0.0.1:{}/lol-gameflow/v1/session", self.port);
+        let resp = client
+            .get(&url)
+            .header("Authorization", format!("Basic {}", auth))
+            .send()
+            .await?;
+
+        let json: serde_json::Value = resp.json().await?;
+        if let Some(game_id) = json.pointer("/gameData/gameId") {
+            if let Some(num) = game_id.as_u64() {
+                if num > 0 {
+                    return Ok(num.to_string());
+                }
+            } else if let Some(s) = game_id.as_str() {
+                if !s.is_empty() && s != "0" {
+                    return Ok(s.to_string());
+                }
+            }
+        }
+
+        Err("No valid gameData.gameId in session".into())
+    }
+
     /// Checks if any LeagueClient process is active.
     pub fn is_client_running() -> bool {
         let mut sys = System::new_all();

@@ -1938,6 +1938,7 @@ name = "league-voice-recorder"
 version = "0.5.1"
 dependencies = [
  "base64 0.22.1",
+ "cpal",
  "directories",
  "hmac",
  "id3",

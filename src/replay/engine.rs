@@ -26,6 +26,8 @@ impl ReplaySynchronizer {
         let mut player: Option<RodioPlayer> = None;
         let mut consecutive_failures: usize = 0;
         let mut last_seek_time = std::time::Instant::now();
+        let mut last_synced_game_time: f64 = 0.0;
+        let mut last_sync_instant = std::time::Instant::now();
 
         while !stop_signal.load(Ordering::Relaxed) {
             if let Some((game_id, rofl_path)) = RoflProcessDetector::detect_running_rofl() {
@@ -73,11 +75,17 @@ impl ReplaySynchronizer {
                                 // Synchronize playback speed
                                 p.set_speed(state.speed as f32);
 
-                                // Check for timeline scrub / large drift (> 1.0s)
-                                if last_seek_time.elapsed() >= Duration::from_millis(500) {
+                                // Check for timeline scrub or large drift (> 1.0s)
+                                let expected_time = last_synced_game_time + (last_sync_instant.elapsed().as_secs_f64() * state.speed);
+                                let drift = (state.time - expected_time).abs();
+
+                                if drift > 1.0 && last_seek_time.elapsed() >= Duration::from_millis(800) {
+                                    info!("Drift detected ({:.2}s). Seeking audio to {:.2}s...", drift, state.time);
                                     let _ = p.seek(Duration::from_secs_f64(state.time.max(0.0)));
                                     last_seek_time = std::time::Instant::now();
                                 }
+                                last_synced_game_time = state.time;
+                                last_sync_instant = std::time::Instant::now();
                             }
                         }
                         Err(_) => {

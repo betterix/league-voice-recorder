@@ -380,6 +380,20 @@ body {
   font-size: 12px;
 }
 
+.styled-select {
+  background: var(--bg-terminal);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  outline: none;
+}
+
+.styled-select:focus {
+  border-color: var(--gold-primary);
+}
+
 .engine-info {
   background: rgba(10, 200, 185, 0.08);
   border: 1px solid rgba(10, 200, 185, 0.3);
