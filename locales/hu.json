@@ -253,6 +253,7 @@
         "status_recording": "🔴 Állapot: Felvétel folyamatban",
         "status_syncing": "▶ Állapot: Replay szinkron",
         "status_watching_rec": "⏳ Állapot: Meccs figyelése",
-        "status_watching_replay": "⏳ Állapot: Replay figyelése"
+        "status_watching_replay": "⏳ Állapot: Replay figyelése",
+        "minimized_notification": "A League Voice Recorder a tálcán fut a háttérben."
     }
 }

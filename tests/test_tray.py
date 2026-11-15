@@ -130,6 +130,84 @@ class TestTrayConfigAndUI(unittest.TestCase):
         finally:
             app.destroy()
 
+    def test_tray_minimized_notification_strings(self):
+        from app.i18n import set_language
+
+        set_language("en")
+        self.assertEqual(
+            t("tray.minimized_notification"),
+            "League Voice Recorder is running in the background in the system tray.",
+        )
+
+        set_language("hu")
+        self.assertEqual(
+            t("tray.minimized_notification"),
+            "A League Voice Recorder a tálcán fut a háttérben.",
+        )
+        set_language("en")
+
+    def test_minimize_to_tray_with_announcement_enabled(self):
+        from main import LeagueVoiceRecorderApp
+
+        app = LeagueVoiceRecorderApp()
+        try:
+            app.config["minimize_to_tray"] = True
+            with (
+                patch.object(app, "withdraw") as mock_withdraw,
+                patch.object(app.tray_manager, "show") as mock_show,
+                patch.object(app, "_update_tray_status") as mock_update,
+                patch.object(app, "_announce_minimized_to_tray") as mock_announce,
+            ):
+                app._minimize_to_tray_with_announcement()
+                mock_withdraw.assert_called_once()
+                mock_show.assert_called_once()
+                mock_update.assert_called_once()
+                mock_announce.assert_called_once()
+                self.assertFalse(app._pending_tray_minimize)
+        finally:
+            app.destroy()
+
+    def test_minimize_to_tray_with_announcement_disabled(self):
+        from main import LeagueVoiceRecorderApp
+
+        app = LeagueVoiceRecorderApp()
+        try:
+            app.config["minimize_to_tray"] = False
+            with (
+                patch.object(app, "withdraw") as mock_withdraw,
+                patch.object(app, "iconify") as mock_iconify,
+                patch.object(app.tray_manager, "show") as mock_show,
+            ):
+                app._minimize_to_tray_with_announcement()
+                mock_iconify.assert_called_once()
+                mock_withdraw.assert_not_called()
+                mock_show.assert_not_called()
+        finally:
+            app.destroy()
+
+    def test_down_bar_taskbar_minimize_does_not_withdraw_to_tray(self):
+        from main import LeagueVoiceRecorderApp
+
+        app = LeagueVoiceRecorderApp()
+        try:
+            app.config["minimize_to_tray"] = True
+            app._pending_tray_minimize = False
+            app._subclassed_hwnd = 123456  # Simulates active Win32 hook
+            mock_event = MagicMock()
+            mock_event.widget = app
+
+            with (
+                patch.object(app, "state", return_value="iconic"),
+                patch.object(app, "withdraw") as mock_withdraw,
+                patch.object(app.tray_manager, "show") as mock_show,
+            ):
+                app._on_window_unmap(mock_event)
+                # Should NOT withdraw or show tray because it was a down-bar taskbar minimize
+                mock_withdraw.assert_not_called()
+                mock_show.assert_not_called()
+        finally:
+            app.destroy()
+
 
 if __name__ == "__main__":
     unittest.main()

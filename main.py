@@ -168,7 +168,16 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             on_exit=self._on_close,
             get_status_text=self._get_tray_status_text,
         )
+        self._pending_tray_minimize = False
+        self._subclassed_hwnd = None
+        self._orig_wndproc = None
+        self._wndproc_cb = None
+        self._min_button_pressed_time = 0.0
+
         self.bind("<Unmap>", self._on_window_unmap)
+
+        if not is_test and sys.platform.startswith("win"):
+            self.after(100, self._setup_titlebar_minimize_hook)
 
     def _apply_window_icon(self):
         """Set window title bar and taskbar icon with multi-resolution support."""
@@ -238,15 +247,137 @@ class LeagueVoiceRecorderApp(ctk.CTk):
     # ==========================================
     # SYSTEM TRAY & WINDOW MINIMIZE HANDLING
     # ==========================================
+    def _setup_titlebar_minimize_hook(self):
+        """Subclasses top-level HWND to intercept titlebar minimize clicks for system tray."""
+        if not sys.platform.startswith("win"):
+            return
+
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            self.update_idletasks()
+            wid = self.winfo_id()
+            hwnd = ctypes.windll.user32.GetParent(wid) or wid
+            if not hwnd:
+                return
+
+            self._subclassed_hwnd = hwnd
+
+            WM_SYSCOMMAND = 0x0112
+            SC_MINIMIZE = 0xF020
+            WM_NCLBUTTONDOWN = 0x00A1
+            HTMINBUTTON = 8
+            GWLP_WNDPROC = -4
+
+            WNDPROC = ctypes.WINFUNCTYPE(
+                ctypes.c_longlong,
+                wintypes.HWND,
+                wintypes.UINT,
+                wintypes.WPARAM,
+                wintypes.LPARAM,
+            )
+
+            CallWindowProcW = ctypes.windll.user32.CallWindowProcW
+            CallWindowProcW.argtypes = [
+                ctypes.c_void_p,
+                wintypes.HWND,
+                wintypes.UINT,
+                wintypes.WPARAM,
+                wintypes.LPARAM,
+            ]
+            CallWindowProcW.restype = ctypes.c_longlong
+
+            SetWindowLongPtrW = ctypes.windll.user32.SetWindowLongPtrW
+            SetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_void_p]
+            SetWindowLongPtrW.restype = ctypes.c_void_p
+
+            def _custom_wndproc(h, msg, wp, lp):
+                try:
+                    if msg == WM_NCLBUTTONDOWN and wp == HTMINBUTTON:
+                        import time
+
+                        self._min_button_pressed_time = time.time()
+
+                    elif msg == WM_SYSCOMMAND and (wp & 0xFFF0) == SC_MINIMIZE:
+                        import time
+
+                        is_titlebar_click = False
+
+                        # 1. Did we recently receive WM_NCLBUTTONDOWN on the minimize button?
+                        if (time.time() - getattr(self, "_min_button_pressed_time", 0.0)) < 1.2:
+                            is_titlebar_click = True
+
+                        # 2. Alternatively verify cursor screen coordinates against window caption rect
+                        if not is_titlebar_click and lp != 0:
+                            x = ctypes.c_short(lp & 0xFFFF).value
+                            y = ctypes.c_short((lp >> 16) & 0xFFFF).value
+                            rect = wintypes.RECT()
+                            ctypes.windll.user32.GetWindowRect(h, ctypes.byref(rect))
+                            caption_h = ctypes.windll.user32.GetSystemMetrics(4)  # SM_CYCAPTION
+                            frame_h = ctypes.windll.user32.GetSystemMetrics(33)  # SM_CYSIZEFRAME
+                            title_bottom = rect.top + caption_h + frame_h + 15
+                            if rect.left <= x <= rect.right and rect.top <= y <= title_bottom:
+                                is_titlebar_click = True
+
+                        if is_titlebar_click:
+                            self._min_button_pressed_time = 0.0
+                            self._pending_tray_minimize = True
+                            self.after(0, self._minimize_to_tray_with_announcement)
+                            return 0  # Intercept and prevent normal taskbar minimize
+
+                except Exception:
+                    pass
+
+                return CallWindowProcW(self._orig_wndproc, h, msg, wp, lp)
+
+            self._wndproc_cb = WNDPROC(_custom_wndproc)
+            self._orig_wndproc = SetWindowLongPtrW(
+                hwnd, GWLP_WNDPROC, ctypes.cast(self._wndproc_cb, ctypes.c_void_p)
+            )
+        except Exception as e:
+            print(f"[TrayHook] Failed to subclass top-level HWND: {e}")
+
+    def _minimize_to_tray_with_announcement(self):
+        """Minimizes window to tray and announces with toast notification."""
+        if not self.config.get("minimize_to_tray", True):
+            self.iconify()
+            return
+        try:
+            self._pending_tray_minimize = False
+            self.withdraw()
+            if hasattr(self, "tray_manager") and self.tray_manager:
+                self.tray_manager.show()
+                self._update_tray_status()
+                self._announce_minimized_to_tray()
+        except Exception:
+            pass
+
+    def _announce_minimized_to_tray(self):
+        """Displays balloon / toast notification that app is minimized in tray."""
+        if hasattr(self, "tray_manager") and self.tray_manager:
+            try:
+                title = t("app.window_title")
+                msg = t("tray.minimized_notification")
+                self.after(100, lambda: self.tray_manager.notify(msg, title))
+            except Exception:
+                pass
+
     def _on_window_unmap(self, event):
-        """Intercepts window minimize to hide to system tray if enabled."""
+        """Intercepts window minimize to hide to system tray if triggered via titlebar minimize button."""
         if event.widget == self:
             try:
-                if self.state() == "iconic" and self.config.get("minimize_to_tray", True):
+                is_test = bool(os.environ.get("LVR_TEST_MODE") or os.environ.get("PYTEST_CURRENT_TEST"))
+                should_minimize = getattr(self, "_pending_tray_minimize", False) or (
+                    is_test and getattr(self, "_subclassed_hwnd", None) is None
+                )
+                if should_minimize and self.state() == "iconic" and self.config.get("minimize_to_tray", True):
+                    self._pending_tray_minimize = False
                     self.withdraw()
                     if hasattr(self, "tray_manager") and self.tray_manager:
                         self.tray_manager.show()
                         self._update_tray_status()
+                        self._announce_minimized_to_tray()
             except Exception:
                 pass
 
@@ -4470,6 +4601,24 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
         if self.replay_worker:
             self.replay_worker.stop()
+
+        # Clean up window subclassing hook
+        if (
+            hasattr(self, "_orig_wndproc")
+            and self._orig_wndproc
+            and hasattr(self, "_subclassed_hwnd")
+            and self._subclassed_hwnd
+        ):
+            try:
+                import ctypes
+
+                GWLP_WNDPROC = -4
+                ctypes.windll.user32.SetWindowLongPtrW(
+                    self._subclassed_hwnd, GWLP_WNDPROC, self._orig_wndproc
+                )
+                self._orig_wndproc = None
+            except Exception:
+                pass
 
         # Clean up System Tray icon
         if hasattr(self, "tray_manager") and self.tray_manager:

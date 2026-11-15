@@ -580,6 +580,7 @@ class TestUIApp(unittest.TestCase):
 
             # Unknown role with pull key cannot upload
             self.app._cloud_role = "unknown"
+            self.app.config["remote_server_url"] = "https://scrims.example.com"
             self.app.config["remote_api_key"] = "lvr_pull_readonly_token"
             self.assertFalse(self.app._can_upload_to_cloud())
 

@@ -253,6 +253,7 @@
         "status_recording": "🔴 Status: Recording",
         "status_syncing": "▶ Status: Syncing",
         "status_watching_rec": "⏳ Status: Watching for Match",
-        "status_watching_replay": "⏳ Status: Watching for Replay"
+        "status_watching_replay": "⏳ Status: Watching for Replay",
+        "minimized_notification": "League Voice Recorder is running in the background in the system tray."
     }
 }
