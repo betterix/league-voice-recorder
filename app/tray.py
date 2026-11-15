@@ -163,21 +163,43 @@ class TrayManager:
                 except Exception:
                     pass
 
-        # Windows 10 & 11 native Toast Notification banner
+        # Windows 10 & 11 native Toast Notification banner (with WinForms balloon fallback)
         if sys.platform.startswith("win"):
             try:
                 import subprocess
 
-                safe_title = title.replace("'", "''").replace('"', '`"')
-                safe_msg = message.replace("'", "''").replace('"', '`"')
+                safe_title = (
+                    title.replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                    .replace("'", "&apos;")
+                    .replace('"', "&quot;")
+                )
+                safe_msg = (
+                    message.replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                    .replace("'", "&apos;")
+                    .replace('"', "&quot;")
+                )
+
                 ps_cmd = (
+                    "try { "
                     "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null; "
-                    "$template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02); "
-                    "$texts = $template.GetElementsByTagName('text'); "
-                    f"$texts[0].AppendChild($template.CreateTextNode('{safe_title}')) | Out-Null; "
-                    f"$texts[1].AppendChild($template.CreateTextNode('{safe_msg}')) | Out-Null; "
-                    "$toast = [Windows.UI.Notifications.ToastNotification]::new($template); "
-                    f"[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{safe_title}').Show($toast);"
+                    "[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null; "
+                    "$xml = [Windows.Data.Xml.Dom.XmlDocument]::new(); "
+                    f"$xml.LoadXml('<toast><visual><binding template=\"ToastText02\"><text id=\"1\">{safe_title}</text><text id=\"2\">{safe_msg}</text></binding></visual></toast>'); "
+                    "$toast = [Windows.UI.Notifications.ToastNotification]::new($xml); "
+                    "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('League Voice Recorder').Show($toast); "
+                    "} catch { "
+                    "Add-Type -AssemblyName System.Windows.Forms; "
+                    "$n = New-Object System.Windows.Forms.NotifyIcon; "
+                    "$n.Icon = [System.Drawing.SystemIcons]::Information; "
+                    "$n.Visible = $True; "
+                    f"$n.ShowBalloonTip(3000, '{safe_title}', '{safe_msg}', [System.Windows.Forms.ToolTipIcon]::Info); "
+                    "Start-Sleep -Seconds 2; "
+                    "$n.Dispose(); "
+                    "}"
                 )
                 CREATE_NO_WINDOW = 0x08000000
                 subprocess.Popen(
