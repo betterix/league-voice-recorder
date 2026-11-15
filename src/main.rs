@@ -5,20 +5,74 @@ use tracing::info;
 
 use league_voice_recorder::{
     config::AppConfig,
+    lcu::LcuCredentials,
     record::LeagueRecorder,
-    replay::{ReplaySynchronizer, RodioPlayer},
+    replay::{ReplaySynchronizer, RodioPlayer, RoflProcessDetector},
 };
 
 #[derive(Default)]
 struct AppState {
     rec_stop: Arc<AtomicBool>,
     rep_stop: Arc<AtomicBool>,
+    rec_active: Arc<AtomicBool>,
+    rep_active: Arc<AtomicBool>,
+}
+
+impl AppState {
+    pub fn start_recording(&self) {
+        if self.rec_active.load(Ordering::SeqCst) {
+            return;
+        }
+        self.rec_stop.store(false, Ordering::SeqCst);
+        self.rec_active.store(true, Ordering::SeqCst);
+        let stop_sig = self.rec_stop.clone();
+        let active_sig = self.rec_active.clone();
+        let cfg_opt = AppConfig::load().ok();
+        if let Some(cfg) = cfg_opt {
+            tokio::spawn(async move {
+                let recorder = LeagueRecorder::new(cfg);
+                recorder.run_watcher_loop(stop_sig).await;
+                active_sig.store(false, Ordering::SeqCst);
+            });
+        }
+    }
+
+    pub fn stop_recording(&self) {
+        self.rec_stop.store(true, Ordering::SeqCst);
+        self.rec_active.store(false, Ordering::SeqCst);
+    }
+
+    pub fn start_replay(&self) {
+        if self.rep_active.load(Ordering::SeqCst) {
+            return;
+        }
+        self.rep_stop.store(false, Ordering::SeqCst);
+        self.rep_active.store(true, Ordering::SeqCst);
+        let stop_sig = self.rep_stop.clone();
+        let active_sig = self.rep_active.clone();
+        let cfg_opt = AppConfig::load().ok();
+        if let Some(cfg) = cfg_opt {
+            tokio::spawn(async move {
+                let synchronizer = ReplaySynchronizer::new(cfg);
+                synchronizer.run_sync_watcher(stop_sig).await;
+                active_sig.store(false, Ordering::SeqCst);
+            });
+        }
+    }
+
+    pub fn stop_replay(&self) {
+        self.rep_stop.store(true, Ordering::SeqCst);
+        self.rep_active.store(false, Ordering::SeqCst);
+    }
 }
 
 #[derive(Serialize, Deserialize)]
 struct StatusDto {
     league_running: bool,
     in_game: bool,
+    phase: String,
+    is_recording_watcher: bool,
+    is_replay_watcher: bool,
     match_clock: Option<String>,
 }
 
@@ -30,51 +84,54 @@ struct RecordingItem {
 }
 
 #[tauri::command]
-fn get_status() -> StatusDto {
-    StatusDto {
-        league_running: false,
-        in_game: false,
-        match_clock: None,
+async fn get_status(state: tauri::State<'_, Arc<AppState>>) -> Result<StatusDto, String> {
+    let client_running = LcuCredentials::is_client_running();
+    let game_running = LcuCredentials::is_game_process_running();
+
+    let mut phase = "Offline".to_string();
+    if let Some(creds) = LcuCredentials::find_active() {
+        if let Ok(p) = creds.get_gameflow_phase().await {
+            phase = p;
+        } else if client_running {
+            phase = "Client Active".to_string();
+        }
+    } else if client_running {
+        phase = "Client Active".to_string();
+    } else if game_running {
+        phase = "InProgress".to_string();
     }
+
+    Ok(StatusDto {
+        league_running: client_running || game_running,
+        in_game: game_running || phase == "InProgress",
+        phase,
+        is_recording_watcher: state.rec_active.load(Ordering::SeqCst),
+        is_replay_watcher: state.rep_active.load(Ordering::SeqCst),
+        match_clock: None,
+    })
 }
 
 #[tauri::command]
-async fn start_recording_watcher(state: tauri::State<'_, Arc<AppState>>) -> Result<(), String> {
-    state.rec_stop.store(false, Ordering::SeqCst);
-    let stop_sig = state.rec_stop.clone();
-    let cfg_opt = AppConfig::load().ok();
-    if let Some(cfg) = cfg_opt {
-        tokio::spawn(async move {
-            let recorder = LeagueRecorder::new(cfg);
-            recorder.run_watcher_loop(stop_sig).await;
-        });
-    }
+fn start_recording_watcher(state: tauri::State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.start_recording();
     Ok(())
 }
 
 #[tauri::command]
 fn stop_recording_watcher(state: tauri::State<'_, Arc<AppState>>) -> Result<(), String> {
-    state.rec_stop.store(true, Ordering::SeqCst);
+    state.stop_recording();
     Ok(())
 }
 
 #[tauri::command]
-async fn start_replay_watcher(state: tauri::State<'_, Arc<AppState>>) -> Result<(), String> {
-    state.rep_stop.store(false, Ordering::SeqCst);
-    let stop_sig = state.rep_stop.clone();
-    let cfg_opt = AppConfig::load().ok();
-    if let Some(cfg) = cfg_opt {
-        tokio::spawn(async move {
-            let synchronizer = ReplaySynchronizer::new(cfg);
-            synchronizer.run_sync_watcher(stop_sig).await;
-        });
-    }
+fn start_replay_watcher(state: tauri::State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.start_replay();
     Ok(())
 }
 
 #[tauri::command]
 fn stop_replay_watcher(state: tauri::State<'_, Arc<AppState>>) -> Result<(), String> {
-    state.rep_stop.store(true, Ordering::SeqCst);
+    state.stop_replay();
     Ok(())
 }
 
@@ -165,9 +222,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let state = Arc::new(AppState {
-        rec_stop: Arc::new(AtomicBool::new(false)),
-        rep_stop: Arc::new(AtomicBool::new(false)),
+    let state = Arc::new(AppState::default());
+
+    // Background Auto-Detection Thread (mimicking Python main.py _auto_detect_monitor_loop)
+    let auto_state = state.clone();
+    tokio::spawn(async move {
+        let mut last_phase = String::new();
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+            // 1. Check LCU Gameflow Phase for ChampSelect or InProgress auto-start
+            if let Some(creds) = LcuCredentials::find_active() {
+                if let Ok(phase) = creds.get_gameflow_phase().await {
+                    if (phase == "ChampSelect" || phase == "InProgress") && phase != last_phase {
+                        info!("🎮 Auto-detect: League entered {}! Auto-starting recording watcher...", phase);
+                        last_phase = phase.clone();
+                        auto_state.start_recording();
+                    } else if phase == "None" || phase == "Lobby" || phase == "EndOfGame" {
+                        last_phase = phase.clone();
+                    }
+                }
+            } else if LcuCredentials::is_game_process_running() {
+                if !auto_state.rec_active.load(Ordering::SeqCst) {
+                    info!("🎮 Auto-detect: League of Legends.exe running! Auto-starting recording watcher...");
+                    auto_state.start_recording();
+                }
+            }
+
+            // 2. Check for active ROFL replays
+            if RoflProcessDetector::detect_running_rofl().is_some() {
+                if !auto_state.rep_active.load(Ordering::SeqCst) {
+                    info!("▶ Auto-detect: ROFL replay running! Auto-starting replay auto-sync...");
+                    auto_state.start_replay();
+                }
+            }
+        }
     });
 
     tauri::Builder::default()

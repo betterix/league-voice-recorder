@@ -148,12 +148,48 @@ async function saveSettings() {
 setInterval(async () => {
   const state = await invokeTauri("get_status");
   if (state) {
+    const pillLeague = document.getElementById("pill-league");
     if (state.league_running) {
-      document.getElementById("pill-league").className = "health-pill online";
-      document.getElementById("pill-league").querySelector(".text").innerText = state.in_game ? "League: In-Game" : "League: Client Active";
+      pillLeague.className = "health-pill online";
+      if (state.phase && state.phase !== "Offline") {
+        pillLeague.querySelector(".text").innerText = `League: ${state.phase}`;
+      } else {
+        pillLeague.querySelector(".text").innerText = state.in_game ? "League: In-Game" : "League: Client Active";
+      }
     } else {
-      document.getElementById("pill-league").className = "health-pill";
-      document.getElementById("pill-league").querySelector(".text").innerText = "League: Idle";
+      pillLeague.className = "health-pill";
+      pillLeague.querySelector(".text").innerText = "League: Idle";
+    }
+
+    // Sync button state if auto-started
+    const btnRec = document.getElementById("btn-rec");
+    const txtRec = document.getElementById("btn-rec-text");
+    if (state.is_recording_watcher && !isRecording) {
+      isRecording = true;
+      btnRec.classList.add("active");
+      txtRec.innerText = "Stop Recording Watcher";
+      appendLog("🔴 Auto-started recording watcher (ChampSelect / InProgress detected).", "rec");
+      updateStatus("Recording watcher active. Capturing match...");
+    } else if (!state.is_recording_watcher && isRecording) {
+      isRecording = false;
+      btnRec.classList.remove("active");
+      txtRec.innerText = "Start Recording Watcher";
+      updateStatus("Standby.");
+    }
+
+    const btnRep = document.getElementById("btn-rep");
+    const txtRep = document.getElementById("btn-rep-text");
+    if (state.is_replay_watcher && !isReplaySync) {
+      isReplaySync = true;
+      btnRep.classList.add("active");
+      txtRep.innerText = "Stop Replay Auto-Sync";
+      appendLog("▶ Auto-started replay synchronizer (ROFL replay detected).", "sync");
+      updateStatus("Replay synchronizer active.");
+    } else if (!state.is_replay_watcher && isReplaySync) {
+      isReplaySync = false;
+      btnRep.classList.remove("active");
+      txtRep.innerText = "Start Replay Auto-Sync";
+      updateStatus("Standby.");
     }
 
     if (state.match_clock) {

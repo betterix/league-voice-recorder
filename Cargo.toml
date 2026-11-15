@@ -25,3 +25,15 @@ tauri = "2.0"
 
 [build-dependencies]
 tauri-build = "2.0"
+
+[profile.dev]
+opt-level = 1
+debug = 0
+strip = true
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
