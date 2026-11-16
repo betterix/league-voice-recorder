@@ -96,13 +96,24 @@ class TestConfigModule(unittest.TestCase):
             save_config,
         )
 
-        # 1. Test DPAPI round-trip
+        # 1. Test DPAPI / PBKDF2 round-trip
         secret_sample = "lvr_upload_sample_token_xyz987"
         encrypted = encrypt_secret(secret_sample)
         self.assertNotEqual(secret_sample, encrypted)
         self.assertTrue(len(encrypted) > 10)
         decrypted = decrypt_secret(encrypted)
         self.assertEqual(secret_sample, decrypted)
+
+        # Test PBKDF2 fallback explicitly
+        from app.config import _pbkdf2_encrypt
+        import base64
+        pbk_enc = "LVR_PBKDF2:" + base64.urlsafe_b64encode(_pbkdf2_encrypt(secret_sample.encode("utf-8"))).decode("ascii")
+        self.assertEqual(decrypt_secret(pbk_enc), secret_sample)
+
+        # Test legacy format backwards compatibility
+        legacy_blob = b"12345678" + secret_sample.encode("utf-8")
+        legacy_enc = "LVR_SEC:" + base64.urlsafe_b64encode(legacy_blob).decode("ascii")
+        self.assertEqual(decrypt_secret(legacy_enc), secret_sample)
 
         # 2. Test saving plaintext key is automatically encrypted on disk
         save_config({

@@ -1,14 +1,117 @@
 import base64
+import ctypes
+from ctypes import wintypes
 import functools
 import hashlib
-import hmac
 import json
 import os
 from pathlib import Path
 import shutil
 import sys
 
-_SECRET_SALT = b"LVR_SECRET_STORAGE_V1"
+_SECRET_SALT = b"LVR_SECRET_STORAGE_V2"
+
+
+def _win_dpapi_encrypt(data: bytes) -> bytes | None:
+    """Encrypts bytes using native Windows DPAPI (CryptProtectData)."""
+    if sys.platform != "win32":
+        return None
+    try:
+        class DATA_BLOB(ctypes.Structure):
+            _fields_ = [
+                ("cbData", wintypes.DWORD),
+                ("pbData", ctypes.POINTER(ctypes.c_char)),
+            ]
+
+        CryptProtectData = ctypes.windll.crypt32.CryptProtectData
+        CryptProtectData.argtypes = [
+            ctypes.POINTER(DATA_BLOB),
+            wintypes.LPCWSTR,
+            ctypes.POINTER(DATA_BLOB),
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(DATA_BLOB),
+        ]
+        CryptProtectData.restype = wintypes.BOOL
+
+        in_blob = DATA_BLOB(
+            len(data),
+            ctypes.cast(ctypes.create_string_buffer(data), ctypes.POINTER(ctypes.c_char)),
+        )
+        out_blob = DATA_BLOB()
+        # CRYPTPROTECT_UI_FORBIDDEN = 0x01
+        if CryptProtectData(
+            ctypes.byref(in_blob), "LVR_SECRET", None, None, None, 1, ctypes.byref(out_blob)
+        ):
+            enc_bytes = ctypes.string_at(out_blob.pbData, out_blob.cbData)
+            ctypes.windll.kernel32.LocalFree(out_blob.pbData)
+            return enc_bytes
+    except Exception:
+        pass
+    return None
+
+
+def _win_dpapi_decrypt(enc_data: bytes) -> bytes | None:
+    """Decrypts bytes using native Windows DPAPI (CryptUnprotectData)."""
+    if sys.platform != "win32":
+        return None
+    try:
+        class DATA_BLOB(ctypes.Structure):
+            _fields_ = [
+                ("cbData", wintypes.DWORD),
+                ("pbData", ctypes.POINTER(ctypes.c_char)),
+            ]
+
+        CryptUnprotectData = ctypes.windll.crypt32.CryptUnprotectData
+        CryptUnprotectData.argtypes = [
+            ctypes.POINTER(DATA_BLOB),
+            ctypes.POINTER(wintypes.LPWSTR),
+            ctypes.POINTER(DATA_BLOB),
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(DATA_BLOB),
+        ]
+        CryptUnprotectData.restype = wintypes.BOOL
+
+        in_blob = DATA_BLOB(
+            len(enc_data),
+            ctypes.cast(ctypes.create_string_buffer(enc_data), ctypes.POINTER(ctypes.c_char)),
+        )
+        out_blob = DATA_BLOB()
+        # CRYPTPROTECT_UI_FORBIDDEN = 0x01
+        if CryptUnprotectData(
+            ctypes.byref(in_blob), None, None, None, None, 1, ctypes.byref(out_blob)
+        ):
+            dec_bytes = ctypes.string_at(out_blob.pbData, out_blob.cbData)
+            ctypes.windll.kernel32.LocalFree(out_blob.pbData)
+            return dec_bytes
+    except Exception:
+        pass
+    return None
+
+
+def _pbkdf2_keystream(salt: bytes, length: int) -> bytes:
+    """Derives keystream bytes using PBKDF2-HMAC-SHA256 (for cross-platform fallback)."""
+    return hashlib.pbkdf2_hmac("sha256", _SECRET_SALT, salt, 100000, dklen=length)
+
+
+def _pbkdf2_encrypt(data: bytes) -> bytes:
+    """Cross-platform encryption fallback using random salt and PBKDF2 key derivation."""
+    salt = os.urandom(16)
+    keystream = _pbkdf2_keystream(salt, len(data))
+    ciphertext = bytes(b ^ k for b, k in zip(data, keystream))
+    return salt + ciphertext
+
+
+def _pbkdf2_decrypt(raw: bytes) -> bytes | None:
+    """Cross-platform decryption fallback using PBKDF2."""
+    if len(raw) < 16:
+        return None
+    salt, ciphertext = raw[:16], raw[16:]
+    keystream = _pbkdf2_keystream(salt, len(ciphertext))
+    return bytes(c ^ k for c, k in zip(ciphertext, keystream))
 
 
 def encrypt_secret(plaintext: str) -> str:
@@ -16,27 +119,36 @@ def encrypt_secret(plaintext: str) -> str:
     if not plaintext:
         return ""
     b_data = plaintext.encode("utf-8")
-    tag = hmac.new(_SECRET_SALT, b_data, hashlib.sha256).digest()[:8]
-    blob = tag + b_data
-    return "LVR_SEC:" + base64.urlsafe_b64encode(blob).decode("ascii")
+    dpapi_result = _win_dpapi_encrypt(b_data)
+    if dpapi_result is not None:
+        return "LVR_DPAPI:" + base64.urlsafe_b64encode(dpapi_result).decode("ascii")
+
+    pbkdf2_result = _pbkdf2_encrypt(b_data)
+    return "LVR_PBKDF2:" + base64.urlsafe_b64encode(pbkdf2_result).decode("ascii")
 
 
 def decrypt_secret(ciphertext: str) -> str:
     """Decodes configuration secrets."""
     if not ciphertext:
         return ""
-    if ciphertext.startswith("LVR_SEC:"):
-        try:
+    try:
+        if ciphertext.startswith("LVR_DPAPI:"):
+            raw = base64.urlsafe_b64decode(ciphertext[len("LVR_DPAPI:") :].encode("ascii"))
+            dec = _win_dpapi_decrypt(raw)
+            if dec is not None:
+                return dec.decode("utf-8", errors="replace")
+        elif ciphertext.startswith("LVR_PBKDF2:"):
+            raw = base64.urlsafe_b64decode(ciphertext[len("LVR_PBKDF2:") :].encode("ascii"))
+            dec = _pbkdf2_decrypt(raw)
+            if dec is not None:
+                return dec.decode("utf-8", errors="replace")
+        elif ciphertext.startswith("LVR_SEC:"):
+            # Legacy backwards compatibility format
             raw = base64.urlsafe_b64decode(ciphertext[len("LVR_SEC:") :].encode("ascii"))
-            if len(raw) < 8:
-                return ""
-            tag, b_data = raw[:8], raw[8:]
-            expected_tag = hmac.new(_SECRET_SALT, b_data, hashlib.sha256).digest()[:8]
-            if not hmac.compare_digest(tag, expected_tag):
-                return ""
-            return b_data.decode("utf-8", errors="replace")
-        except Exception:
-            return ""
+            if len(raw) >= 8:
+                return raw[8:].decode("utf-8", errors="replace")
+    except Exception:
+        pass
     return ""
 
 
@@ -336,7 +448,7 @@ def save_config(config_data):
     if os.path.exists(legacy_config_path):
         try:
             with open(legacy_config_path, "w", encoding="utf-8") as f:
-                f.write(json.dumps(merged_data, indent=4, ensure_ascii=False))
+                f.write(json.dumps(disk_data, indent=4, ensure_ascii=False))
         except Exception:
             pass
 
