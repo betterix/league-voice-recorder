@@ -680,6 +680,112 @@ class TestUIApp(unittest.TestCase):
             self.app._in_test_suite = True
             self.app._cloud_role = "unknown"
 
+    def test_debug_panel_toggle_and_config(self):
+        """Verify debug panel checkbox toggles visibility and updates config."""
+        self.assertTrue(hasattr(self.app, "show_debug_cb"))
+        self.assertTrue(hasattr(self.app, "debug_panel_frame"))
+
+        # Test toggle ON
+        self.app.show_debug_var.set(True)
+        self.app._on_toggle_debug_panel()
+        self.assertTrue(self.app.config.get("show_debug_panel"))
+        self.assertTrue(self.app.debug_panel_frame.winfo_ismapped() or self.app.show_debug_var.get())
+
+        # Test toggle OFF
+        self.app.show_debug_var.set(False)
+        self.app._on_toggle_debug_panel()
+        self.assertFalse(self.app.config.get("show_debug_panel"))
+
+    def test_debug_telemetry_updates_with_workers(self):
+        """Verify telemetry labels populate properly with recorder and replay worker data."""
+        self.app.show_debug_var.set(True)
+        self.app._apply_debug_panel_visibility()
+
+        # Mock recorder worker
+        mock_rec = MagicMock()
+        mock_rec.last_game_time = 125.25
+        mock_rec.first_game_time = -0.550
+        mock_rec.real_game_id = "EUW1_99998888"
+        mock_rec.game_patch = "14.22"
+        mock_rec.recording = True
+        mock_rec.is_paused = False
+        mock_rec.get_timing_breakdown.return_value = {
+            "base_time": 125.25,
+            "dt": 0.15,
+            "current_time": 125.40,
+            "is_paused": False,
+        }
+        self.app.recorder_worker = mock_rec
+
+        # Mock replay worker
+        mock_rep = MagicMock()
+        mock_rep.active_rofl_path = "C:/replays/EUW1-123456.rofl"
+        mock_rep.last_replay_time = 362.5
+        mock_rep.last_vlc_time = 362.4
+        mock_rep.last_drift = 0.100
+        mock_rep.last_replay_speed = 2.0
+        mock_rep.volume = 75
+        mock_rep.current_game_id = "123456"
+        self.app.replay_worker = mock_rep
+
+        try:
+            self.app._update_debug_telemetry(mic_l=0.45, app_l=0.72, is_discord_muted=False)
+
+            # Check match engine labels
+            self.assertIn("125.400s", self.app.dbg_val_game_time.cget("text"))
+            self.assertIn("125.250s", self.app.dbg_val_base_time.cget("text"))
+            self.assertIn("+0.150s", self.app.dbg_val_dt.cget("text"))
+            self.assertIn("-0.550s", self.app.dbg_val_offset.cget("text"))
+            self.assertEqual(self.app.dbg_val_game_id.cget("text"), "EUW1_99998888")
+            self.assertEqual(self.app.dbg_val_game_phase.cget("text"), "14.22")
+            self.assertIn("RECORDING", self.app.dbg_val_pause_state.cget("text"))
+
+            # Check audio capture labels
+            self.assertIn("45.0%", self.app.dbg_val_mic.cget("text"))
+            self.assertIn("72.0%", self.app.dbg_val_mic.cget("text"))
+            self.assertIn("UNMUTED", self.app.dbg_val_muted.cget("text"))
+
+            # Check replay engine labels
+            self.assertEqual(self.app.dbg_val_rofl.cget("text"), "EUW1-123456.rofl")
+            self.assertIn("362.50s", self.app.dbg_val_rep_time.cget("text"))
+            self.assertIn("362.40s", self.app.dbg_val_vlc_time.cget("text"))
+            self.assertIn("+100.0 ms", self.app.dbg_val_drift.cget("text"))
+            self.assertEqual(self.app.dbg_val_speed.cget("text"), "2.00x")
+            self.assertEqual(self.app.dbg_val_vol.cget("text"), "123456.mp3")
+
+            # Check lobby/watching state (recording=False, waiting for live match)
+            mock_rec.recording = False
+            self.app._update_debug_telemetry()
+            self.assertEqual(self.app.dbg_val_game_time.cget("text"), "Waiting for match...")
+            self.assertEqual(self.app.dbg_val_base_time.cget("text"), "Waiting for Live API (:2999)...")
+            self.assertEqual(self.app.dbg_val_dt.cget("text"), "0.000s (Listening)")
+            self.assertEqual(self.app.dbg_val_pause_state.cget("text"), "LISTENING ⏳")
+        finally:
+            self.app.recorder_worker = None
+            self.app.replay_worker = None
+            self.app.show_debug_var.set(False)
+            self.app._apply_debug_panel_visibility()
+
+    def test_debug_panel_i18n(self):
+        """Verify debug panel labels translate dynamically upon language change."""
+        self.app.show_debug_var.set(True)
+        set_language("hu")
+        self.app._update_ui_texts()
+
+        self.assertIn("TELEMETRIA", self.app.debug_title_lbl.cget("text"))
+        self.assertIn("Játék óra", self.app.dbg_lbl_game_time_title.cget("text"))
+        self.assertIn("Riot alap óra", self.app.dbg_lbl_base_time_title.cget("text"))
+        self.assertIn("Kezdő eltolás", self.app.dbg_lbl_offset_title.cget("text"))
+        self.assertIn("Replay óra", self.app.dbg_lbl_rep_time_title.cget("text"))
+
+        set_language("en")
+        self.app._update_ui_texts()
+        self.assertIn("TELEMETRY", self.app.debug_title_lbl.cget("text"))
+        self.assertIn("Game Clock", self.app.dbg_lbl_game_time_title.cget("text"))
+        self.assertIn("Riot Base Clock", self.app.dbg_lbl_base_time_title.cget("text"))
+        self.app.show_debug_var.set(False)
+        self.app._apply_debug_panel_visibility()
+
 
 if __name__ == "__main__":
     unittest.main()

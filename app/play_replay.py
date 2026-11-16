@@ -213,6 +213,11 @@ class ReplaySynchronizer:
         self.duration = 1800.0
         self.is_paused = False
         self.speed = 1.0
+        self.active_rofl_path = ""
+        self.last_replay_time = 0.0
+        self.last_vlc_time = 0.0
+        self.last_drift = 0.0
+        self.last_replay_speed = 1.0
         self._cached_audio_meter = None
         import threading
 
@@ -404,6 +409,11 @@ class ReplaySynchronizer:
                         )
 
                         target_time = max(0.0, game_time)
+                        drift = (vlc_time - target_time) if vlc_time >= 0 else 0.0
+                        self.last_replay_time = game_time
+                        self.last_vlc_time = max(0.0, vlc_time) if vlc_time >= 0 else 0.0
+                        self.last_drift = drift
+                        self.last_replay_speed = replay_speed
 
                         if not is_playing:
                             # Resuming from pause or starting
@@ -452,8 +462,8 @@ class ReplaySynchronizer:
                             time_jump = abs(game_time - last_game_time) > 0.5
                             drift = abs(vlc_time - target_time) if vlc_time >= 0 else 0.0
 
-                            # Only seek if jump or significant drift (>1.0s) AND respected 800ms seek cooldown
-                            if (time_jump or drift > 1.0) and (now_wall - last_seek_wall_time >= 0.8):
+                            # Only seek if jump or noticeable drift (>0.25s) AND respected seek cooldown
+                            if (time_jump or drift > 0.25) and (now_wall - last_seek_wall_time >= 0.1):
                                 player.set_time(int(target_time * 1000))
                                 player.set_rate(replay_speed)
                                 last_seek_wall_time = now_wall
@@ -478,7 +488,14 @@ class ReplaySynchronizer:
 
                     # 2. Replay paused or stopped
                     else:
+                        vlc_time = (
+                            (player.get_time() / 1000.0) if hasattr(player, "get_time") else -1.0
+                        )
                         self.last_game_time = game_time
+                        self.last_replay_time = game_time
+                        self.last_vlc_time = max(0.0, vlc_time) if vlc_time >= 0 else 0.0
+                        self.last_drift = 0.0
+                        self.last_replay_speed = replay_speed
                         self.is_paused = True
                         if is_playing:
                             player.pause()
@@ -566,8 +583,10 @@ class ReplaySynchronizer:
 
             if rofl_path is None:
                 last_handled_path = None
+                self.active_rofl_path = ""
                 self.update_status("WATCHING", t("replay.waiting_for_replay"))
             elif rofl_path != last_handled_path:
+                self.active_rofl_path = rofl_path
                 self.log(t("logs.rofl_detected", file=os.path.basename(rofl_path)))
                 game_id = parse_rofl_game_id(rofl_path)
 

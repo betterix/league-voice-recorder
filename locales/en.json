@@ -78,6 +78,7 @@
     },
     "log": {
         "autoscroll": "Auto-scroll to latest",
+        "show_debug": "⚡ Live Telemetry",
         "copy": "📋 Copy Log",
         "clear": "🗑 Clear Log",
         "copied": "📋 Log copied to clipboard."
@@ -255,5 +256,32 @@
         "status_watching_rec": "⏳ Status: Watching for Match",
         "status_watching_replay": "⏳ Status: Watching for Replay",
         "minimized_notification": "League Voice Recorder is running in the background in the system tray."
+    },
+    "debug": {
+        "title": "⚡ LIVE TELEMETRY",
+        "match_section": "🎮 MATCH TIMELINE",
+        "audio_section": "🎙 AUDIO ENGINE",
+        "replay_section": "🔁 REPLAY SYNC",
+        "system_section": "💻 SYSTEM & MEMORY",
+        "game_time": "Game Clock:",
+        "base_game_time": "Riot Base Clock:",
+        "timer_dt": "Clock Delta (dt):",
+        "offset": "Start Offset:",
+        "game_id": "Game ID:",
+        "patch": "Patch:",
+        "match_state": "Match State:",
+        "target_app": "Target App:",
+        "discord_state": "Discord Voice:",
+        "mic_device": "Microphone:",
+        "levels": "Levels (App/Mic):",
+        "replay_id": "Replay ID:",
+        "replay_time": "Replay Clock:",
+        "vlc_time": "VLC Playhead:",
+        "drift": "Sync Drift:",
+        "speed": "Playback Speed:",
+        "replay_audio": "Matched Audio:",
+        "ram_usage": "Process RAM (RSS):",
+        "threads": "Active Threads:",
+        "lcu_phase": "LCU Phase:"
     }
 }

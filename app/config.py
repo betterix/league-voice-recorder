@@ -168,6 +168,7 @@ def get_clean_default_config():
         "hud_y": -1,
         "audio_format": "mp3",
         "minimize_to_tray": True,
+        "show_debug_panel": False,
         "remote_server_url": "",
         "remote_api_key_encrypted": "",
     }
@@ -215,6 +216,7 @@ def get_default_config():
         "hud_y": _parse_int(os.getenv("HUD_Y", "-1"), -1),
         "audio_format": os.getenv("AUDIO_FORMAT", "mp3").lower(),
         "minimize_to_tray": os.getenv("MINIMIZE_TO_TRAY", "true").lower() in ("true", "1", "yes"),
+        "show_debug_panel": os.getenv("SHOW_DEBUG_PANEL", "false").lower() in ("true", "1", "yes"),
         "remote_server_url": os.getenv("REMOTE_SERVER_URL", "").strip(),
         "remote_api_key_encrypted": os.getenv("REMOTE_API_KEY_ENCRYPTED", "").strip(),
     }

@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
@@ -122,6 +123,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
 
             # Automatic Champion Select & Replay match detection monitor
             self.after(1000, self._start_auto_detect_monitor)
+            self.after(60000, self._periodic_memory_trim)
 
             # Clean leftover *.old files from previous updates and schedule background update check
             try:
@@ -354,6 +356,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         """Minimizes window to tray and announces with toast notification."""
         if not self.config.get("minimize_to_tray", True):
             self.iconify()
+            self._trim_process_memory()
             return
         try:
             self.withdraw()
@@ -361,6 +364,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.tray_manager.show()
                 self._update_tray_status()
                 self._announce_minimized_to_tray()
+            self._trim_process_memory()
         except Exception:
             pass
 
@@ -387,6 +391,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                     is_test = bool(os.environ.get("LVR_TEST_MODE") or os.environ.get("PYTEST_CURRENT_TEST"))
                     # If clicked on the down bar (taskbar), do NOT minimize to tray
                     if not is_test and self._is_minimized_from_down_bar():
+                        self._trim_process_memory()
                         return
 
                     self.withdraw()
@@ -394,6 +399,9 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                         self.tray_manager.show()
                         self._update_tray_status()
                         self._announce_minimized_to_tray()
+                    self._trim_process_memory()
+                elif self.state() == "iconic":
+                    self._trim_process_memory()
             except Exception:
                 pass
 
@@ -411,6 +419,30 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             self.state("normal")
             self.lift()
             self.focus_force()
+        except Exception:
+            pass
+
+    def _trim_process_memory(self):
+        """Forces garbage collection and releases uncommitted working set pages on Windows."""
+        try:
+            import gc
+            gc.collect()
+            if sys.platform.startswith("win"):
+                import ctypes
+                kernel32 = ctypes.windll.kernel32
+                psapi = ctypes.windll.psapi
+                h_proc = kernel32.GetCurrentProcess()
+                psapi.EmptyWorkingSet(h_proc)
+        except Exception:
+            pass
+
+    def _periodic_memory_trim(self):
+        """Runs periodic garbage collection and working set trim every 60 seconds."""
+        if getattr(self, "_is_destroyed", False):
+            return
+        self._trim_process_memory()
+        try:
+            self.after(60000, self._periodic_memory_trim)
         except Exception:
             pass
 
@@ -1206,11 +1238,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             self._sync_hud_visibility_and_state(
                 mic_l=cur_mic, app_l=cur_app, is_discord_muted=cur_muted
             )
+            self._update_debug_telemetry(cur_mic, cur_app, cur_muted)
         except Exception:
             pass
         self._meter_timer = self.after(30, self._update_audio_meters)
 
     def _setup_tab_log(self, parent):
+        self.log_tab_parent = parent
         parent.grid_columnconfigure(0, weight=1)
         parent.grid_rowconfigure(0, weight=1)
 
@@ -1228,9 +1262,12 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         self.log_textbox.grid(row=0, column=0, padx=10, pady=(10, 8), sticky="nsew")
         self.log_textbox.configure(state="disabled")
 
+        # Telemetry & Debug Panel (Column 1)
+        self._setup_debug_telemetry_panel(parent)
+
         # Control Bar below log
         log_ctrl_frame = ctk.CTkFrame(parent, fg_color="transparent")
-        log_ctrl_frame.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="ew")
+        log_ctrl_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=(0, 10), sticky="ew")
 
         self.autoscroll_var = tk.BooleanVar(value=True)
         self.autoscroll_cb = ctk.CTkCheckBox(
@@ -1244,6 +1281,20 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             text_color=("#0F172A", "#CBD5E1"),
         )
         self.autoscroll_cb.pack(side="left")
+
+        self.show_debug_var = tk.BooleanVar(value=bool(self.config.get("show_debug_panel", False)))
+        self.show_debug_cb = ctk.CTkCheckBox(
+            log_ctrl_frame,
+            text=t("log.show_debug"),
+            variable=self.show_debug_var,
+            command=self._on_toggle_debug_panel,
+            font=ctk.CTkFont(size=12),
+            checkmark_color=("#FFFFFF", "#060B18"),
+            fg_color=("#0891B2", "#0AC8B9"),
+            hover_color=("#0E7490", "#0397AB"),
+            text_color=("#0F172A", "#CBD5E1"),
+        )
+        self.show_debug_cb.pack(side="left", padx=(16, 0))
 
         self.clear_btn = ctk.CTkButton(
             log_ctrl_frame,
@@ -1276,6 +1327,307 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             command=self._copy_log,
         )
         self.copy_btn.pack(side="right")
+
+        self._apply_debug_panel_visibility()
+
+    def _setup_debug_telemetry_panel(self, parent):
+        self.debug_panel_frame = ctk.CTkScrollableFrame(
+            parent,
+            width=350,
+            fg_color=("#FFFFFF", "#060B18"),
+            border_width=1,
+            border_color=("#E2E8F0", "#162038"),
+            corner_radius=10,
+        )
+
+        # Header
+        self.debug_title_lbl = ctk.CTkLabel(
+            self.debug_panel_frame,
+            text=t("debug.title"),
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=("#0891B2", "#0AC8B9"),
+            anchor="w",
+        )
+        self.debug_title_lbl.pack(fill="x", padx=10, pady=(6, 4))
+
+        def _make_dbg_card(sec_title, title_color):
+            card = ctk.CTkFrame(
+                self.debug_panel_frame,
+                fg_color=("#F8FAFC", "#0B1329"),
+                border_width=1,
+                border_color=("#E2E8F0", "#162038"),
+                corner_radius=8,
+            )
+            card.pack(fill="x", padx=8, pady=5)
+            card.grid_columnconfigure(0, weight=1)
+            card.grid_columnconfigure(1, weight=1)
+
+            sec_lbl = ctk.CTkLabel(
+                card,
+                text=sec_title,
+                font=ctk.CTkFont(size=12, weight="bold"),
+                text_color=title_color,
+                anchor="w",
+            )
+            sec_lbl.grid(row=0, column=0, columnspan=2, padx=8, pady=(5, 3), sticky="w")
+            return card, sec_lbl
+
+        def _add_dbg_row(card, row_idx, title_text, val_color=None, font_size=12):
+            lbl = ctk.CTkLabel(
+                card,
+                text=title_text,
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color=("#475569", "#94A3B8"),
+                anchor="w",
+            )
+            lbl.grid(row=row_idx, column=0, padx=(8, 4), pady=2, sticky="w")
+            val = ctk.CTkLabel(
+                card,
+                text="—",
+                font=ctk.CTkFont(family="Consolas", size=font_size, weight="bold"),
+                text_color=val_color or ("#0F172A", "#F8FAFC"),
+                anchor="e",
+            )
+            val.grid(row=row_idx, column=1, padx=(4, 8), pady=2, sticky="e")
+            return lbl, val
+
+        # 1. Match & Recorder Engine Card
+        self.card_match, self.debug_sec_match_lbl = _make_dbg_card(
+            t("debug.match_section"), ("#0284C7", "#38BDF8")
+        )
+        self.dbg_lbl_game_time_title, self.dbg_val_game_time = _add_dbg_row(
+            self.card_match, 1, t("debug.game_time"), ("#0891B2", "#3DDCC4"), font_size=13
+        )
+        self.dbg_lbl_base_time_title, self.dbg_val_base_time = _add_dbg_row(
+            self.card_match, 2, t("debug.base_game_time")
+        )
+        self.dbg_lbl_dt_title, self.dbg_val_dt = _add_dbg_row(
+            self.card_match, 3, t("debug.timer_dt"), ("#D97706", "#FBBF24")
+        )
+        self.dbg_lbl_offset_title, self.dbg_val_offset = _add_dbg_row(
+            self.card_match, 4, t("debug.offset")
+        )
+        self.dbg_lbl_game_id_title, self.dbg_val_game_id = _add_dbg_row(
+            self.card_match, 5, t("debug.game_id")
+        )
+        self.dbg_lbl_game_phase_title, self.dbg_val_game_phase = _add_dbg_row(
+            self.card_match, 6, t("debug.patch")
+        )
+        self.dbg_lbl_pause_state_title, self.dbg_val_pause_state = _add_dbg_row(
+            self.card_match, 7, t("debug.match_state")
+        )
+
+        # 2. Audio Capture Engine Card
+        self.card_audio, self.debug_sec_audio_lbl = _make_dbg_card(
+            t("debug.audio_section"), ("#7C3AED", "#A78BFA")
+        )
+        self.dbg_lbl_scene_title, self.dbg_val_scene = _add_dbg_row(
+            self.card_audio, 1, t("debug.target_app")
+        )
+        self.dbg_lbl_mic_title, self.dbg_val_mic = _add_dbg_row(
+            self.card_audio, 2, t("debug.levels"), ("#0284C7", "#38BDF8")
+        )
+        self.dbg_lbl_muted_title, self.dbg_val_muted = _add_dbg_row(
+            self.card_audio, 3, t("debug.discord_state")
+        )
+
+        # 3. Replay Sync Engine Card
+        self.card_replay, self.debug_sec_replay_lbl = _make_dbg_card(
+            t("debug.replay_section"), ("#D97706", "#FBBF24")
+        )
+        self.dbg_lbl_rofl_title, self.dbg_val_rofl = _add_dbg_row(
+            self.card_replay, 1, t("debug.replay_id")
+        )
+        self.dbg_lbl_rep_time_title, self.dbg_val_rep_time = _add_dbg_row(
+            self.card_replay, 2, t("debug.replay_time"), ("#D97706", "#FBBF24"), font_size=13
+        )
+        self.dbg_lbl_vlc_time_title, self.dbg_val_vlc_time = _add_dbg_row(
+            self.card_replay, 3, t("debug.vlc_time")
+        )
+        self.dbg_lbl_drift_title, self.dbg_val_drift = _add_dbg_row(
+            self.card_replay, 4, t("debug.drift")
+        )
+        self.dbg_lbl_speed_title, self.dbg_val_speed = _add_dbg_row(
+            self.card_replay, 5, t("debug.speed")
+        )
+        self.dbg_lbl_vol_title, self.dbg_val_vol = _add_dbg_row(
+            self.card_replay, 6, t("debug.replay_audio")
+        )
+
+        # 4. System & Process Stats Card
+        self.card_system, self.debug_sec_system_lbl = _make_dbg_card(
+            t("debug.system_section"), ("#059669", "#34D399")
+        )
+        self.dbg_lbl_memory_title, self.dbg_val_memory = _add_dbg_row(
+            self.card_system, 1, t("debug.ram_usage")
+        )
+        self.dbg_lbl_threads_title, self.dbg_val_threads = _add_dbg_row(
+            self.card_system, 2, t("debug.threads")
+        )
+        self.dbg_lbl_hud_title, self.dbg_val_hud = _add_dbg_row(
+            self.card_system, 3, t("debug.lcu_phase")
+        )
+
+    def _on_toggle_debug_panel(self):
+        val = bool(self.show_debug_var.get())
+        self.config["show_debug_panel"] = val
+        save_config(self.config)
+        self._apply_debug_panel_visibility()
+
+    def _apply_debug_panel_visibility(self):
+        if not hasattr(self, "debug_panel_frame") or not hasattr(self, "log_tab_parent"):
+            return
+        is_shown = bool(self.show_debug_var.get())
+        if is_shown:
+            self.log_tab_parent.grid_columnconfigure(1, weight=0, minsize=350)
+            self.debug_panel_frame.grid(row=0, column=1, padx=(0, 10), pady=(10, 8), sticky="nsew")
+            self._update_debug_telemetry(0.0, 0.0, False)
+        else:
+            self.debug_panel_frame.grid_remove()
+            self.log_tab_parent.grid_columnconfigure(1, weight=0, minsize=0)
+
+    def _dbg_set(self, widget, text):
+        if getattr(widget, "_last_text", None) != text:
+            widget.configure(text=text)
+            widget._last_text = text
+
+    def _update_debug_telemetry(self, mic_l=0.0, app_l=0.0, is_discord_muted=False):
+        if not hasattr(self, "show_debug_var") or not self.show_debug_var.get():
+            return
+        if not hasattr(self, "dbg_val_game_time"):
+            return
+
+        # 1. Match Engine
+        rec = self.recorder_worker
+        is_rec_active = rec is not None and getattr(rec, "recording", False)
+        if is_rec_active:
+            timing = {}
+            if hasattr(rec, "get_timing_breakdown"):
+                try:
+                    timing = rec.get_timing_breakdown()
+                except Exception:
+                    timing = {}
+            base_time = timing.get("base_time", getattr(rec, "last_game_time", -1.0))
+            dt = timing.get("dt", 0.0)
+            cur_time = timing.get("current_time", (base_time + dt) if base_time >= 0 else -1.0)
+            is_paused = timing.get("is_paused", getattr(rec, "is_paused", False))
+
+            if cur_time >= 0:
+                mins = int(cur_time // 60)
+                secs = int(cur_time % 60)
+                gt_str = f"{cur_time:.3f}s ({mins:02d}:{secs:02d})"
+            else:
+                gt_str = "Waiting for match..."
+
+            if base_time >= 0:
+                base_time_str = f"{base_time:.3f}s (API)"
+            else:
+                base_time_str = "Waiting for API..."
+
+            if is_paused:
+                dt_str = "+0.000s (PAUSED)"
+            elif base_time >= 0:
+                dt_ms = int(dt * 1000)
+                dt_str = f"+{dt:.3f}s (+{dt_ms}ms)"
+            else:
+                dt_str = "—"
+
+            offset = getattr(rec, "first_game_time", 0.0)
+            offset_str = f"{offset:+.3f}s" if offset != 0.0 else "0.000s"
+            gid = getattr(rec, "real_game_id", None) or "Detecting..."
+            phase = getattr(rec, "game_patch", "") or "In Progress"
+            pause_str = "PAUSED ⏸" if is_paused else "RECORDING 🔴"
+        elif rec is not None:
+            # Watcher is running in background listening for Live Client Data API
+            gt_str = "Waiting for match..."
+            base_time_str = "Waiting for Live API (:2999)..."
+            dt_str = "0.000s (Listening)"
+            offset = getattr(rec, "first_game_time", 0.0)
+            offset_str = f"{offset:+.3f}s" if offset != 0.0 else "0.000s"
+            gid = getattr(rec, "real_game_id", None) or "—"
+            phase = getattr(rec, "game_patch", "") or "—"
+            pause_str = "LISTENING ⏳"
+        else:
+            gt_str = "Inactive"
+            base_time_str = "—"
+            dt_str = "—"
+            offset_str = "—"
+            gid = "—"
+            phase = "—"
+            pause_str = "IDLE"
+
+        self._dbg_set(self.dbg_val_game_time, gt_str)
+        self._dbg_set(self.dbg_val_base_time, base_time_str)
+        self._dbg_set(self.dbg_val_dt, dt_str)
+        self._dbg_set(self.dbg_val_offset, offset_str)
+        self._dbg_set(self.dbg_val_game_id, str(gid))
+        self._dbg_set(self.dbg_val_game_phase, str(phase))
+        self._dbg_set(self.dbg_val_pause_state, pause_str)
+
+        # 2. Audio Capture
+        scene_str = self.config.get("scene_name", "Discord + Mic")
+        mic_str = f"{mic_l * 100:.1f}%"
+        app_str = f"{app_l * 100:.1f}%"
+        levels_str = f"App: {app_str} | Mic: {mic_str}"
+        muted_str = "MUTED 🔇" if is_discord_muted else "UNMUTED 🎙"
+
+        self._dbg_set(self.dbg_val_scene, scene_str)
+        self._dbg_set(self.dbg_val_mic, levels_str)
+        self._dbg_set(self.dbg_val_muted, muted_str)
+
+        # 3. Replay Engine
+        rep = self.replay_worker
+        if rep and getattr(rep, "running", False):
+            if getattr(rep, "syncing", False):
+                rofl_path = getattr(rep, "active_rofl_path", "") or ""
+                rofl_name = os.path.basename(rofl_path) if rofl_path else (getattr(rep, "current_game_id", "") or "Active")
+                rt = getattr(rep, "last_replay_time", 0.0)
+                rt_mins = int(rt // 60)
+                rt_secs = int(rt % 60)
+                rt_str = f"{rt:.2f}s ({rt_mins:02d}:{rt_secs:02d})"
+                vt = getattr(rep, "last_vlc_time", 0.0)
+                vt_str = f"{vt:.2f}s"
+                drift = getattr(rep, "last_drift", 0.0)
+                drift_str = f"{drift * 1000:+.1f} ms"
+                spd = getattr(rep, "last_replay_speed", 1.0)
+                spd_str = f"{spd:.2f}x"
+                matched_audio = f"{getattr(rep, 'current_game_id', '')}.mp3" if getattr(rep, "current_game_id", None) else "—"
+            else:
+                rofl_name = "Waiting for .rofl replay..."
+                rt_str = "Waiting for Replay API (:2999)..."
+                vt_str = "—"
+                drift_str = "0.0 ms (Watching)"
+                spd_str = "1.00x"
+                matched_audio = "—"
+        else:
+            rofl_name = "—"
+            rt_str = "Inactive"
+            vt_str = "—"
+            drift_str = "—"
+            spd_str = "—"
+            matched_audio = "—"
+
+        self._dbg_set(self.dbg_val_rofl, rofl_name)
+        self._dbg_set(self.dbg_val_rep_time, rt_str)
+        self._dbg_set(self.dbg_val_vlc_time, vt_str)
+        self._dbg_set(self.dbg_val_drift, drift_str)
+        self._dbg_set(self.dbg_val_speed, spd_str)
+        self._dbg_set(self.dbg_val_vol, matched_audio)
+
+        # 4. System & Process Stats (rate limited to once every 1s)
+        now = time.monotonic()
+        if now - getattr(self, "_last_dbg_sys_check", 0) >= 1.0:
+            self._last_dbg_sys_check = now
+            try:
+                import psutil
+                proc = psutil.Process()
+                rss = proc.memory_info().rss / (1024 * 1024)
+                self._dbg_set(self.dbg_val_memory, f"{rss:.1f} MB")
+            except Exception:
+                pass
+            self._dbg_set(self.dbg_val_threads, f"{threading.active_count()} active")
+            lcu_str = getattr(self, "_last_auto_started_phase", None) or "None"
+            self._dbg_set(self.dbg_val_hud, str(lcu_str))
 
     # -------------------------------------------------------------
     # TAB 2: RECORDINGS EXPLORER
@@ -2626,6 +2978,33 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 self.autoscroll_cb.configure(text=t("log.autoscroll"))
                 self.copy_btn.configure(text=t("log.copy"))
                 self.clear_btn.configure(text=t("log.clear"))
+            if hasattr(self, "show_debug_cb"):
+                self.show_debug_cb.configure(text=t("log.show_debug"))
+            if hasattr(self, "debug_title_lbl"):
+                self.debug_title_lbl.configure(text=t("debug.title"))
+                self.debug_sec_match_lbl.configure(text=t("debug.match_section"))
+                self.dbg_lbl_game_time_title.configure(text=t("debug.game_time"))
+                self.dbg_lbl_base_time_title.configure(text=t("debug.base_game_time"))
+                self.dbg_lbl_dt_title.configure(text=t("debug.timer_dt"))
+                self.dbg_lbl_offset_title.configure(text=t("debug.offset"))
+                self.dbg_lbl_game_id_title.configure(text=t("debug.game_id"))
+                self.dbg_lbl_game_phase_title.configure(text=t("debug.patch"))
+                self.dbg_lbl_pause_state_title.configure(text=t("debug.match_state"))
+                self.debug_sec_audio_lbl.configure(text=t("debug.audio_section"))
+                self.dbg_lbl_scene_title.configure(text=t("debug.target_app"))
+                self.dbg_lbl_mic_title.configure(text=t("debug.levels"))
+                self.dbg_lbl_muted_title.configure(text=t("debug.discord_state"))
+                self.debug_sec_replay_lbl.configure(text=t("debug.replay_section"))
+                self.dbg_lbl_rofl_title.configure(text=t("debug.replay_id"))
+                self.dbg_lbl_rep_time_title.configure(text=t("debug.replay_time"))
+                self.dbg_lbl_vlc_time_title.configure(text=t("debug.vlc_time"))
+                self.dbg_lbl_drift_title.configure(text=t("debug.drift"))
+                self.dbg_lbl_speed_title.configure(text=t("debug.speed"))
+                self.dbg_lbl_vol_title.configure(text=t("debug.replay_audio"))
+                self.debug_sec_system_lbl.configure(text=t("debug.system_section"))
+                self.dbg_lbl_memory_title.configure(text=t("debug.ram_usage"))
+                self.dbg_lbl_threads_title.configure(text=t("debug.threads"))
+                self.dbg_lbl_hud_title.configure(text=t("debug.lcu_phase"))
 
             # Recordings tab
             if hasattr(self, "open_folder_btn"):
@@ -2748,6 +3127,13 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                     text = item[1]
                     self.log_textbox.configure(state="normal")
                     self.log_textbox.insert("end", text + "\n")
+                    # Rolling line cap: keep max 1500 lines to prevent unbounded memory growth
+                    try:
+                        line_count = int(self.log_textbox.index("end-1c").split(".")[0])
+                        if line_count > 1500:
+                            self.log_textbox.delete("1.0", "251.0")
+                    except Exception:
+                        pass
                     if self.autoscroll_var.get():
                         self.log_textbox.see("end")
                     self.log_textbox.configure(state="disabled")
@@ -3037,13 +3423,23 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             threading.Thread(target=self._stop_recorder_worker_async, daemon=True).start()
 
     def _stop_recorder_worker_async(self):
-        if self.recorder_worker:
-            self.recorder_worker.stop()
-            if self.recorder_thread:
-                self.recorder_thread.join(timeout=5)
-            self.recorder_worker = None
-            self.recorder_thread = None
+        worker = self.recorder_worker
+        thread = self.recorder_thread
+        self.recorder_worker = None
+        self.recorder_thread = None
+        if worker:
+            try:
+                worker.stop()
+                worker.close()
+            except Exception:
+                pass
+        if thread and thread.is_alive() and threading.current_thread() != thread:
+            try:
+                thread.join(timeout=3.0)
+            except Exception:
+                pass
         self.msg_queue.put(("STATUS_REC", "STOPPED", ""))
+        self._trim_process_memory()
 
     def _reset_rec_button_state(self):
         self.rec_btn.configure(
@@ -3052,9 +3448,15 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             fg_color="#E11D48",
             hover_color="#BE123C",
         )
+        if self.recorder_worker:
+            try:
+                self.recorder_worker.close()
+            except Exception:
+                pass
         self.recorder_worker = None
         self.recorder_thread = None
         self._update_tray_status()
+        self._trim_process_memory()
 
     def _start_auto_detect_monitor(self):
         self._auto_detect_thread = threading.Thread(
@@ -3071,7 +3473,7 @@ class LeagueVoiceRecorderApp(ctk.CTk):
         from app.play_replay import detect_running_rofl_process
 
         while not getattr(self, "_is_destroyed", False):
-            # 1. Champion Select & Active Match Live Match Watcher Auto-Start
+            # 1. Champion Select LCU Phase Check
             if self.config.get("auto_start_champ_select", True) and not self.recorder_worker:
                 try:
                     phase = get_lcu_gameflow_phase()
@@ -3084,29 +3486,23 @@ class LeagueVoiceRecorderApp(ctk.CTk):
                 except Exception:
                     pass
 
-                # Fallback: If League of Legends.exe process is already running a live match
-                if not self.recorder_worker and not self.replay_worker and not getattr(self, "_auto_started_match", False):
-                    try:
-                        for proc in psutil.process_iter(["pid", "name"]):
-                            if (proc.info.get("name") or "").lower() == "league of legends.exe":
-                                rofl, _ = detect_running_rofl_process()
-                                if not rofl:
-                                    self._auto_started_match = True
-                                    self.msg_queue.put(("AUTO_START_REC",))
-                                    break
-                    except Exception:
-                        pass
-
-            # 2. Replay Match Auto-Sync Auto-Start
-            if self.config.get("auto_start_replay", True) and not self.replay_worker:
+            # 2. Replay and Active Live Match detection via single process check
+            auto_rec = self.config.get("auto_start_champ_select", True) and not self.recorder_worker
+            auto_rep = self.config.get("auto_start_replay", True) and not self.replay_worker
+            if auto_rec or auto_rep:
                 try:
-                    rofl_path, _ = detect_running_rofl_process()
-                    if rofl_path:
-                        if getattr(self, "_last_auto_started_rofl", None) != rofl_path:
-                            self._last_auto_started_rofl = rofl_path
-                            self.msg_queue.put(("AUTO_START_REPLAY",))
+                    rofl_path, rofl_pid = detect_running_rofl_process()
+                    if rofl_pid:
+                        if rofl_path and auto_rep:
+                            if getattr(self, "_last_auto_started_rofl", None) != rofl_path:
+                                self._last_auto_started_rofl = rofl_path
+                                self.msg_queue.put(("AUTO_START_REPLAY",))
+                        elif not rofl_path and auto_rec and not self.replay_worker and not getattr(self, "_auto_started_match", False):
+                            self._auto_started_match = True
+                            self.msg_queue.put(("AUTO_START_REC",))
                     else:
                         self._last_auto_started_rofl = None
+                        self._auto_started_match = False
                 except Exception:
                     pass
 
@@ -3247,13 +3643,22 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             threading.Thread(target=self._stop_replay_worker_async, daemon=True).start()
 
     def _stop_replay_worker_async(self):
-        if self.replay_worker:
-            self.replay_worker.stop()
-            if self.replay_thread:
-                self.replay_thread.join(timeout=3)
-            self.replay_worker = None
-            self.replay_thread = None
+        worker = self.replay_worker
+        thread = self.replay_thread
+        self.replay_worker = None
+        self.replay_thread = None
+        if worker:
+            try:
+                worker.stop()
+            except Exception:
+                pass
+        if thread and thread.is_alive() and threading.current_thread() != thread:
+            try:
+                thread.join(timeout=3.0)
+            except Exception:
+                pass
         self.msg_queue.put(("STATUS_REPLAY", "STOPPED", ""))
+        self._trim_process_memory()
 
     def _reset_replay_button_state(self):
         self.rep_btn.configure(
@@ -3262,9 +3667,15 @@ class LeagueVoiceRecorderApp(ctk.CTk):
             fg_color="#0284C7",
             hover_color="#0369A1",
         )
+        if self.replay_worker:
+            try:
+                self.replay_worker.stop()
+            except Exception:
+                pass
         self.replay_worker = None
         self.replay_thread = None
         self._update_tray_status()
+        self._trim_process_memory()
 
     # ==========================================
     # SYSTEM HEALTH CHECK

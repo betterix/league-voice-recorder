@@ -78,6 +78,7 @@
     },
     "log": {
         "autoscroll": "Automatikus görgetés a legfrissebbhez",
+        "show_debug": "⚡ Élő Telemetria",
         "copy": "📋 Napló másolása",
         "clear": "🗑 Napló törlése",
         "copied": "📋 Napló vágólapra másolva."
@@ -255,5 +256,32 @@
         "status_watching_rec": "⏳ Állapot: Meccs figyelése",
         "status_watching_replay": "⏳ Állapot: Replay figyelése",
         "minimized_notification": "A League Voice Recorder a tálcán fut a háttérben."
+    },
+    "debug": {
+        "title": "⚡ ÉLŐ TELEMETRIA",
+        "match_section": "🎮 MÉRKŐZÉS IDŐVONAL",
+        "audio_section": "🎙 HANGMOTOR",
+        "replay_section": "🔁 VISSZAJÁTSZÁS SZINKRON",
+        "system_section": "💻 RENDSZER & MEMÓRIA",
+        "game_time": "Játék óra:",
+        "base_game_time": "Riot alap óra:",
+        "timer_dt": "Óra eltérés (dt):",
+        "offset": "Kezdő eltolás:",
+        "game_id": "Játék ID:",
+        "patch": "Verzió:",
+        "match_state": "Állapot:",
+        "target_app": "Célalkalmazás:",
+        "discord_state": "Discord hang:",
+        "mic_device": "Mikrofon:",
+        "levels": "Szintek (App/Mik):",
+        "replay_id": "Replay ID:",
+        "replay_time": "Replay óra:",
+        "vlc_time": "VLC pozíció:",
+        "drift": "Szinkron eltérés:",
+        "speed": "Lejátszási sebesség:",
+        "replay_audio": "Hozzárendelt hang:",
+        "ram_usage": "Folyamat RAM (RSS):",
+        "threads": "Aktív szálak:",
+        "lcu_phase": "LCU Fázis:"
     }
 }
