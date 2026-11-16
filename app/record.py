@@ -406,15 +406,30 @@ class LeagueRecorder:
         self.log(t("logs.replay_abort"))
 
     def close(self):
-        """Closes all recording and monitoring resources."""
+        """Closes all recording, monitoring, and network session resources."""
+        self.stop_event.set()
         self.abort_recording()
         if hasattr(self, "native_recorder") and self.native_recorder:
             try:
                 self.native_recorder.close()
             except Exception:
                 pass
+        if hasattr(self, "session") and self.session:
+            try:
+                self.session.close()
+            except Exception:
+                pass
 
-    def start_recording(self, initial_game_time=0.0, t_poll_start=None):
+    def get_timing_breakdown(self) -> dict:
+        """Returns high-precision timing breakdown: base_time, dt, current_time, is_paused."""
+        if not getattr(self, "recording", False) or self.last_game_time < 0:
+            return {"base_time": -1.0, "dt": 0.0, "current_time": -1.0, "is_paused": False}
+        if hasattr(self, "native_recorder") and self.native_recorder:
+            return self.native_recorder.get_timing_breakdown()
+        gt = max(0.0, self.last_game_time) if self.last_game_time >= 0 else 0.0
+        return {"base_time": self.last_game_time, "dt": 0.0, "current_time": gt, "is_paused": self.is_paused}
+
+    def start_recording(self, initial_game_time=0.0, t_poll_start=None, match_zero_time=None):
         """
         Starts audio recording immediately with zero latency.
         Accurately accounts for invocation latency to ensure sample-accurate alignment.
@@ -426,22 +441,29 @@ class LeagueRecorder:
             self.log(t("logs.replay_guard"))
             return
 
-        t_start = time.perf_counter()
-        t_now = time.perf_counter()
+        t_now = time.monotonic()
+        ref_time = t_poll_start if t_poll_start is not None else t_now
         base_time = float(initial_game_time) if initial_game_time is not None else 0.0
+        delay = max(0.0, t_now - ref_time)
+        measured_start_time = base_time + delay
 
-        # If match just started (early fountain period <= 15.0s), 0:00 alignment is exactly 0.0 (NO silence prepended!)
-        if base_time <= 15.0:
-            self.first_game_time = 0.0
-            self.last_game_time = max(0.0, base_time)
-        else:
-            ref_time = t_poll_start if t_poll_start is not None else t_start
-            delay = max(0.0, t_now - ref_time)
-            self.first_game_time = base_time + delay
-            self.last_game_time = base_time
+        if match_zero_time is None:
+            match_zero_time = ref_time - base_time
 
         session_id = str(int(time.time()))
-        self.native_recorder.start_recording(session_id, initial_game_time=self.first_game_time)
+        offset_result = self.native_recorder.start_recording(
+            session_id,
+            match_zero_time=match_zero_time,
+            initial_game_time=measured_start_time,
+        )
+
+        if isinstance(offset_result, (int, float)):
+            self.first_game_time = float(offset_result)
+        else:
+            # Fallback when native_recorder is a test mock without return value
+            self.first_game_time = 0.0 if base_time <= 0.5 else measured_start_time
+
+        self.last_game_time = base_time
         self.recording = True
         self.is_paused = False
         self.last_advance_time = time.monotonic()
@@ -595,12 +617,15 @@ class LeagueRecorder:
         self.log(t("logs.recorder_started"))
         self.update_status("WATCHING", t("record.waiting_for_match"))
 
+        # Pre-arm audio capture into circular pre-roll buffer ahead of match start
+        self.native_recorder.arm_pre_roll()
+
         consecutive_misses = 0
         self.pause_tick_count = 0
         self.last_advance_time = time.monotonic()
 
         while not self.stop_event.is_set():
-            t_poll_start = time.perf_counter()
+            t_poll_start = time.monotonic()
             game_time = None
             try:
                 # 1. Try lightweight gamestats endpoint (avoids 500 errors during loading screen)
@@ -648,8 +673,13 @@ class LeagueRecorder:
                     # Do NOT start recording during loading screen (game_time == 0.0) or countdown (< 0.0).
                     if not self.recording:
                         if game_time > 0.0:
+                            t_poll_finish = time.monotonic()
+                            t_sample = (t_poll_start + t_poll_finish) / 2.0
+                            t_match_zero = t_sample - game_time
                             self.start_recording(
-                                initial_game_time=game_time, t_poll_start=t_poll_start
+                                initial_game_time=game_time,
+                                t_poll_start=t_poll_start,
+                                match_zero_time=t_match_zero,
                             )
                         elif game_time == 0.0:
                             self.update_status("WATCHING", t("record.waiting_for_match"))
@@ -665,17 +695,21 @@ class LeagueRecorder:
                         # Match pause detection:
                         # Riot's Live Client Data API refreshes at ~4Hz (every 250ms).
                         # Between API refreshes (0ms - 250ms), game_time naturally remains unchanged during normal gameplay.
-                        # Requiring unchanged game_time for > 0.45s (or > 20 polls) ensures true in-game pauses are caught
-                        # instantly without rapid 50Hz false-pause chopping during normal unpaused gameplay.
+                        # Aggressive pause detection: if unchanged for >= 0.28s (or >= 8 polls @ 20ms),
+                        # an in-game pause is detected immediately, and detection lag audio is sliced out.
                         if game_time == self.last_game_time and game_time > 0:
                             self.pause_tick_count += 1
                             elapsed_unchanged = time.monotonic() - getattr(
                                 self, "last_advance_time", time.monotonic()
                             )
                             if (
-                                self.pause_tick_count >= 20 or elapsed_unchanged >= 0.45
+                                self.pause_tick_count >= 8 or elapsed_unchanged >= 0.28
                             ) and not self.is_paused:
-                                self.native_recorder.pause(pause_game_time=self.last_game_time)
+                                pause_start_mono = getattr(self, "last_advance_time", time.monotonic())
+                                self.native_recorder.pause(
+                                    pause_game_time=self.last_game_time,
+                                    pause_mono_time=pause_start_mono,
+                                )
                                 self.is_paused = True
                                 self.log(t("logs.pause"))
                                 p_time_val = max(0.0, game_time)
@@ -734,23 +768,29 @@ class LeagueRecorder:
                 else:
                     self.update_status("WATCHING", t("record.waiting_for_match"))
 
-            is_high_frequency = self.recording or (game_time is not None and game_time < 0.0)
-            poll_interval = 0.005 if is_high_frequency else min(0.05, self.check_time)
-            slice_count = max(1, int(poll_interval / 0.005))
+            # Polling frequency:
+            # - Pre-match countdown (game_time < 0.0): 10ms high-precision polling to catch match start
+            # - Active recording: 20ms (0.02s) aggressive high-speed polling for instant pause/unpause detection
+            # - Client offline / idle: 150ms to avoid hammering localhost when the port is closed
+            is_countdown = (not self.recording) and (game_time is not None and game_time < 0.0)
+            poll_interval = 0.01 if is_countdown else (0.02 if self.recording else 0.15)
+            slice_count = max(1, int(poll_interval / 0.01))
             for _ in range(slice_count):
                 if self.stop_event.is_set():
                     break
-                time.sleep(0.005)
+                time.sleep(0.01)
 
         # Clean shutdown if stopped while recording
         if self.recording:
             self.stop_recording_and_rename()
 
+        self.close()
         self.log(t("logs.recorder_stopped"))
         self.update_status("STOPPED", "")
 
     def stop(self):
         self.stop_event.set()
+        self.close()
 
 
 def main():

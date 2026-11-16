@@ -267,6 +267,35 @@ class TestTimingAndPaddingAccuracy(unittest.TestCase):
             f"Post-pause call delayed by {error_45_ms:.2f}ms! In-game pause caused voice desync!",
         )
 
+    def test_aggressive_pause_clock_anchoring(self):
+        """
+        Verifies that when pause() is called with pause_mono_time=self.last_advance_time,
+        total_paused_duration includes the entire freeze period (including detection window),
+        preventing post-pause time from jumping forward or accumulating delay.
+        """
+        from unittest.mock import patch
+
+        nr = NativeAudioRecorder(record_folder=self.temp_dir.name, log_callback=lambda msg: None)
+        nr.is_recording = True
+        nr.t_match_zero = 100.0
+
+        # Match clock hits 30.0s at monotonic 130.0
+        freeze_mono = 130.0
+
+        # Detection confirmed 280ms later (at 130.28)
+        nr.pause(pause_game_time=30.0, pause_mono_time=freeze_mono)
+        self.assertTrue(nr.is_paused)
+        self.assertEqual(nr._pause_mono_time, 130.0)
+
+        # Unpause 10 seconds after freeze (at monotonic 140.0)
+        with patch("time.monotonic", return_value=140.0):
+            nr.resume()
+            self.assertFalse(nr.is_paused)
+            self.assertEqual(nr.total_paused_duration, 10.0, "Pause duration must match exact freeze duration (10.0s)!")
+            self.assertEqual(nr.get_current_game_time(), 30.0, "Game time upon unpause must be exactly 30.0s!")
+
+        nr.close()
+
     # =========================================================================
     # TEST 4: Multi-Burst Scrim Simulation with Multiple Pauses (Long Test)
     # =========================================================================
@@ -616,6 +645,306 @@ class TestTimingAndPaddingAccuracy(unittest.TestCase):
         # Elapsed since sample is ~50ms, so first_game_time is ~637.05
         self.assertAlmostEqual(rec.first_game_time, 637.05, delta=0.05)
         rec.close()
+
+    # =========================================================================
+    # REGRESSION TEST SUITE: Tests A through G (Deterministic Synthetic Clocks)
+    # =========================================================================
+
+    def test_regression_a_normal_match_zero_start_with_preroll(self):
+        """
+        Test A: Normal 00:00 start
+        - Capture is armed before match start via pre-roll.
+        - Audio is pushed before 00:00 (during loading screen / countdown).
+        - Match starts at 0.000.
+        - Verify effective_offset is strictly 0.0 (NO artificial padding).
+        - Verify initial captured audio starting at 0.5s is completely preserved
+          at sample 24000 (0.500s) without loss or artificial delay.
+        """
+        nr = NativeAudioRecorder(record_folder=self.temp_dir.name, log_callback=lambda msg: None)
+        nr.resolve_target_pid = MagicMock(return_value=None)
+        nr._start_mic_capture = MagicMock()
+        nr.is_pre_rolling = True
+
+        try:
+            t_zero = 1000.0
+
+            # Push 3 seconds of pre-game audio (t = 997.0 to 1000.0)
+            pre_tone = generate_tone_pcm(300.0, 3.0, sample_rate=48000, channels=2)
+            nr._discord_preroll.push(997.0, pre_tone)
+
+            # Push voice call starting at 0.5s match time (t = 1000.5 to 1002.5, 1000 Hz)
+            voice_tone = generate_tone_pcm(1000.0, 2.0, sample_rate=48000, channels=2)
+            nr._discord_preroll.push(1000.5, voice_tone)
+
+            # Match starts at 00:00 (t_match_zero = 1000.0)
+            offset = nr.start_recording("test_a_session", match_zero_time=t_zero, initial_game_time=0.0)
+            self.assertEqual(offset, 0.0, "Pre-roll covering 00:00 must produce exactly 0.0 offset!")
+
+            # Close writer to flush RIFF header
+            if nr._discord_writer:
+                nr._discord_writer.close()
+
+            with wave.open(nr.discord_wav_path, "rb") as wf:
+                total_frames = wf.getnframes()
+                samples = np.frombuffer(wf.readframes(total_frames), dtype=np.int16)[0::2]
+
+            onset = find_tone_onset_sample(samples, 1000.0, sample_rate=48000)
+            expected_onset = int(0.5 * 48000)
+            err_ms = abs(onset - expected_onset) / 48.0
+            self.assertLess(err_ms, 15.0, f"Voice onset error {err_ms:.2f}ms in pre-roll extraction!")
+        finally:
+            nr.close()
+
+    def test_regression_b_seven_second_late_start(self):
+        """
+        Test B: 7-second late start
+        - Recorder starts 7 seconds into match (initial_game_time = 7.0s, no pre-roll covering 00:00).
+        - Verify effective_offset returned is exactly 7.000s.
+        - Verify FFmpeg mix prepends adelay=7000 (exactly 7.0s silence).
+        - Synthetic tone spoken at 7.0s appears at exactly sample 336000 (7.000s) in decoded MP3.
+        """
+        ffmpeg_cmd = get_ffmpeg_path()
+        if not ffmpeg_cmd or not os.path.exists(ffmpeg_cmd):
+            self.skipTest("FFmpeg binary required for decoded MP3 verification.")
+
+        nr = NativeAudioRecorder(record_folder=self.temp_dir.name, log_callback=lambda msg: None)
+        nr.resolve_target_pid = MagicMock(return_value=12345)
+        nr._capture_discord_loop = MagicMock()
+        nr._start_mic_capture = MagicMock()
+
+        try:
+            t_zero = 1000.0
+            offset = nr.start_recording("test_b_session", match_zero_time=t_zero, initial_game_time=7.0)
+            self.assertAlmostEqual(offset, 7.0, delta=0.01)
+
+            # Write tone spoken at 7.0s (1200 Hz for 2.0s) directly into WAV
+            tone_7 = generate_tone_pcm(1200.0, 2.0, sample_rate=48000, channels=2)
+            nr._discord_writer.write_frames(tone_7)
+            nr._discord_writer.close()
+
+            mp3_out = nr._mix_to_mp3("late_start_7s", initial_offset=offset, cleanup=False)
+            self.assertIsNotNone(mp3_out)
+
+            decoded_wav = os.path.join(self.temp_dir.name, "decoded_7s.wav")
+            subprocess.run(
+                [ffmpeg_cmd, "-y", "-i", mp3_out, "-f", "wav", decoded_wav],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+            with wave.open(decoded_wav, "rb") as wf:
+                total_frames = wf.getnframes()
+                samples = np.frombuffer(wf.readframes(total_frames), dtype=np.int16)[0::2]
+
+            onset = find_tone_onset_sample(samples, 1200.0, sample_rate=48000)
+            expected_sample = 48000 * 7
+            err_ms = abs(onset - expected_sample) / 48.0
+            self.assertLess(err_ms, 25.0, f"Late start 7s tone onset delayed/shifted: {err_ms:.2f}ms!")
+        finally:
+            nr.close()
+
+    def test_regression_c_other_late_starts_2s_15s_60s(self):
+        """
+        Test C: Other late starts
+        - Test 2 seconds, 15 seconds, and 60 seconds.
+        - Verify exact offsets (2000ms, 15000ms, 60000ms adelay) without arbitrary clamping.
+        """
+        for late_sec in (2.0, 15.0, 60.0):
+            nr = NativeAudioRecorder(record_folder=self.temp_dir.name, log_callback=lambda msg: None)
+            nr.resolve_target_pid = MagicMock(return_value=None)
+            nr._start_mic_capture = MagicMock()
+            try:
+                offset = nr.start_recording(
+                    f"late_{int(late_sec)}s", match_zero_time=1000.0, initial_game_time=late_sec
+                )
+                self.assertAlmostEqual(offset, late_sec, delta=0.01, msg=f"Late start {late_sec}s must not be clamped!")
+            finally:
+                nr.close()
+
+    def test_regression_d_api_polling_delay_preservation(self):
+        """
+        Test D: API polling delay
+        - Simulate 450ms HTTP polling delay on match detection:
+          Riot API reports gameTime = 0.450s at t_poll_finish.
+        - Verify pre-roll preserves the original match start (00:00:000) and audio spoken at 0.100s.
+        - Verify effective_offset is 0.0.
+        """
+        nr = NativeAudioRecorder(record_folder=self.temp_dir.name, log_callback=lambda msg: None)
+        nr.resolve_target_pid = MagicMock(return_value=None)
+        nr._start_mic_capture = MagicMock()
+        nr.is_pre_rolling = True
+
+        try:
+            t_poll_start = 100.0
+            t_poll_finish = 100.450
+            game_time = 0.450
+            t_sample = (t_poll_start + t_poll_finish) / 2.0  # 100.225
+            t_match_zero = t_sample - game_time  # 99.775
+
+            # Pre-game audio (95.0 to 99.775)
+            pre_pcm = generate_tone_pcm(250.0, 4.775, sample_rate=48000, channels=2)
+            nr._discord_preroll.push(95.0, pre_pcm)
+
+            # In-game call spoken at 0.100s match time (99.875, 1100 Hz for 0.5s)
+            call_pcm = generate_tone_pcm(1100.0, 0.5, sample_rate=48000, channels=2)
+            nr._discord_preroll.push(99.875, call_pcm)
+
+            offset = nr.start_recording(
+                "test_d_session", match_zero_time=t_match_zero, initial_game_time=game_time
+            )
+            self.assertEqual(offset, 0.0, "API polling delay must not force artificial silence when pre-roll is active!")
+
+            if nr._discord_writer:
+                nr._discord_writer.close()
+
+            with wave.open(nr.discord_wav_path, "rb") as wf:
+                samples = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16)[0::2]
+
+            onset = find_tone_onset_sample(samples, 1100.0, sample_rate=48000)
+            expected_sample = int(0.100 * 48000)
+            err_ms = abs(onset - expected_sample) / 48.0
+            self.assertLess(err_ms, 15.0, f"API polling delay caused audio onset shift: {err_ms:.2f}ms!")
+        finally:
+            nr.close()
+
+    def test_regression_e_discord_and_mic_sample_synchronization(self):
+        """
+        Test E: Discord and microphone synchronization
+        - Simultaneously feeds synthetic tones to Discord (1500 Hz) and Mic (400 Hz).
+        - Verifies that both audio streams remain aligned at the sample level.
+        """
+        nr = NativeAudioRecorder(record_folder=self.temp_dir.name, log_callback=lambda msg: None)
+        nr.resolve_target_pid = MagicMock(return_value=None)
+        nr._start_mic_capture = MagicMock()
+        nr.is_pre_rolling = True
+
+        try:
+            t_zero = 200.0
+            # Push 1.0s pre-roll for both
+            nr._discord_preroll.push(199.0, b"\x00" * (48000 * 1 * 4))
+            nr._mic_preroll.push(199.0, b"\x00" * (48000 * 1 * 2))
+
+            # Push simultaneous tone at 1.0s match clock (mono 201.0, 1.0s duration)
+            d_tone = generate_tone_pcm(1500.0, 1.0, 48000, 2)
+            m_tone = generate_tone_pcm(400.0, 1.0, 48000, 1)
+            nr._discord_preroll.push(201.0, d_tone)
+            nr._mic_preroll.push(201.0, m_tone)
+
+            nr.start_recording("test_e_session", match_zero_time=t_zero, initial_game_time=0.0)
+
+            if nr._discord_writer:
+                nr._discord_writer.close()
+            if nr._mic_writer:
+                nr._mic_writer.close()
+
+            with wave.open(nr.discord_wav_path, "rb") as wf:
+                d_samples = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16)[0::2]
+            with wave.open(nr.mic_wav_path, "rb") as wf:
+                m_samples = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16)
+
+            d_onset = find_tone_onset_sample(d_samples, 1500.0, 48000)
+            m_onset = find_tone_onset_sample(m_samples, 400.0, 48000)
+
+            diff_samples = abs(d_onset - m_onset)
+            diff_ms = diff_samples / 48.0
+            self.assertLess(diff_ms, 15.0, f"Discord and Mic streams desynchronized by {diff_ms:.2f}ms!")
+        finally:
+            nr.close()
+
+    def test_regression_f_long_session_drift_and_multiple_pauses(self):
+        """
+        Test F: Long-session drift
+        - Simulates a 600-second (10-minute) match with 3 in-game pauses and lag truncations.
+        - Verifies timing errors do not accumulate across pauses and long playback.
+        """
+        wav_path = os.path.join(self.temp_dir.name, "long_session.wav")
+        writer = TimelineWavWriter(wav_path, channels=2, sample_rate=48000, start_offset=0.0)
+
+        # 0 to 60s
+        writer.write_frames(b"\x00" * (48000 * 60 * 4))
+        # Call at 60s (800 Hz)
+        writer.write_frames(generate_tone_pcm(800.0, 1.0, 48000, 2))
+
+        # 61s to 180s (Pause 1 at 180s)
+        writer.write_frames(b"\x00" * (48000 * 119 * 4))
+        # 450ms pause detection lag
+        writer.write_frames(b"\x99\x99" * int(0.450 * 48000 * 2))
+        writer.truncate_to_game_time(180.0)
+
+        # 180s to 360s (Pause 2 at 360s)
+        writer.write_frames(b"\x00" * (48000 * 180 * 4))
+        writer.write_frames(b"\x99\x99" * int(0.400 * 48000 * 2))
+        writer.truncate_to_game_time(360.0)
+
+        # 360s to 540s (Pause 3 at 540s)
+        writer.write_frames(b"\x00" * (48000 * 180 * 4))
+        writer.write_frames(b"\x99\x99" * int(0.450 * 48000 * 2))
+        writer.truncate_to_game_time(540.0)
+
+        # 540s to 590s
+        writer.write_frames(b"\x00" * (48000 * 50 * 4))
+        # Call at 590s (1400 Hz)
+        writer.write_frames(generate_tone_pcm(1400.0, 1.0, 48000, 2))
+        writer.write_frames(b"\x00" * (48000 * 9 * 4))
+        writer.close()
+
+        with wave.open(wav_path, "rb") as wf:
+            total_frames = wf.getnframes()
+            self.assertEqual(total_frames, 48000 * 600, "10-minute match must be exactly 48000 * 600 frames!")
+            samples = np.frombuffer(wf.readframes(total_frames), dtype=np.int16)[0::2]
+
+        onset_60 = find_tone_onset_sample(samples[: 48000 * 70], 800.0, 48000)
+        self.assertLess(abs(onset_60 - 48000 * 60) / 48.0, 15.0)
+
+        onset_590 = find_tone_onset_sample(samples[48000 * 580 : 48000 * 595], 1400.0, 48000)
+        global_onset_590 = 48000 * 580 + onset_590
+        err_590_ms = abs(global_onset_590 - 48000 * 590) / 48.0
+        self.assertLess(err_590_ms, 15.0, f"Cumulative drift after 10 mins and 3 pauses: {err_590_ms:.2f}ms!")
+
+    def test_regression_g_single_source_of_truth_no_double_padding(self):
+        """
+        Test G: Single source of truth / No double padding
+        - If recording starts late (e.g. 15.0s), the 15.0s offset must be applied ONLY ONCE in FFmpeg,
+          NEVER in both TimelineWavWriter and FFmpeg.
+        """
+        wav_path = os.path.join(self.temp_dir.name, "single_pad.wav")
+        # TimelineWavWriter does NOT prepend silence frames: its frame 0 represents match time 15.0s
+        writer = TimelineWavWriter(wav_path, channels=2, sample_rate=48000, start_offset=15.0)
+        # Tone spoken immediately at match time 15.0s
+        writer.write_frames(generate_tone_pcm(950.0, 2.0, 48000, 2))
+        writer.close()
+
+        with wave.open(wav_path, "rb") as wf:
+            self.assertEqual(wf.getnframes(), 48000 * 2, "WAV writer must not insert initial silence!")
+
+        nr = NativeAudioRecorder(record_folder=self.temp_dir.name, log_callback=lambda msg: None)
+        nr.discord_wav_path = wav_path
+        nr.mic_wav_path = None
+
+        ffmpeg_cmd = get_ffmpeg_path()
+        if not ffmpeg_cmd or not os.path.exists(ffmpeg_cmd):
+            self.skipTest("FFmpeg required")
+
+        out_mp3 = nr._mix_to_mp3("no_double_pad", initial_offset=15.0, cleanup=False)
+        self.assertIsNotNone(out_mp3)
+
+        decoded_wav = os.path.join(self.temp_dir.name, "decoded_single_pad.wav")
+        subprocess.run(
+            [ffmpeg_cmd, "-y", "-i", out_mp3, "-f", "wav", decoded_wav],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        with wave.open(decoded_wav, "rb") as wf:
+            samples = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16)[0::2]
+
+        onset = find_tone_onset_sample(samples, 950.0, 48000)
+        expected_sample = 48000 * 15
+        err_ms = abs(onset - expected_sample) / 48.0
+        self.assertLess(err_ms, 25.0, f"Offset applied incorrectly: {err_ms:.2f}ms error! (Expected ~15.0s)")
+        nr.close()
 
 
 def run_standalone_benchmark():

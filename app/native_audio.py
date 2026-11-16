@@ -14,7 +14,6 @@ import subprocess
 import sys
 import threading
 import time
-import wave
 
 import numpy as np
 import psutil
@@ -382,21 +381,152 @@ def get_default_microphone_info():
         return None, 1, 48000
 
 
+class AudioPreRollBuffer:
+    """
+    Thread-safe, bounded in-memory circular pre-roll buffer.
+    Holds PCM chunks tagged with their start monotonic timestamp.
+    Used to capture audio ahead of match start detection and slice
+    cleanly at match time 00:00 (t_match_zero).
+    """
+
+    def __init__(self, sample_rate=48000, channels=2, max_duration=30.0):
+        self.sample_rate = sample_rate
+        self.channels = channels
+        self.frame_size = channels * 2
+        self.max_duration = float(max_duration)
+        self.lock = threading.Lock()
+        self.chunks = collections.deque()  # entries: (start_mono, pcm_bytes)
+        self.total_frames = 0
+
+    def push(self, mono_time: float, pcm_bytes: bytes):
+        """Pushes a PCM audio chunk with its start monotonic timestamp."""
+        if not pcm_bytes:
+            return
+        frames = len(pcm_bytes) // self.frame_size
+        with self.lock:
+            self.chunks.append((float(mono_time), pcm_bytes))
+            self.total_frames += frames
+            max_frames = int(self.max_duration * self.sample_rate)
+            while self.total_frames > max_frames and len(self.chunks) > 1:
+                _, oldest_bytes = self.chunks.popleft()
+                self.total_frames -= len(oldest_bytes) // self.frame_size
+
+    def get_earliest_timestamp(self) -> float | None:
+        """Returns the start monotonic timestamp of the oldest chunk in buffer."""
+        with self.lock:
+            if not self.chunks:
+                return None
+            return self.chunks[0][0]
+
+    def get_latest_timestamp(self) -> float | None:
+        """Returns the end monotonic timestamp of the newest chunk in buffer."""
+        with self.lock:
+            if not self.chunks:
+                return None
+            last_start, last_bytes = self.chunks[-1]
+            dur = (len(last_bytes) // self.frame_size) / self.sample_rate
+            return last_start + dur
+
+    def has_coverage_for(self, t_match_zero: float) -> bool:
+        """Returns True if the pre-roll buffer contains audio samples at or before t_match_zero."""
+        with self.lock:
+            if not self.chunks:
+                return False
+            earliest = self.chunks[0][0]
+            latest = self.chunks[-1][0] + ((len(self.chunks[-1][1]) // self.frame_size) / self.sample_rate)
+            return earliest <= t_match_zero <= latest
+
+    def extract_from(self, t_match_zero: float) -> tuple[bytes, float]:
+        """
+        Extracts all samples starting exactly at t_match_zero.
+        Maintains sample-accurate timing by padding silence for any idle gaps
+        between audio chunks.
+        Returns:
+            (extracted_pcm_bytes, effective_offset)
+            If t_match_zero is covered, effective_offset is 0.0.
+            If buffer starts after t_match_zero (late start), effective_offset
+            is (earliest_timestamp - t_match_zero).
+        """
+        with self.lock:
+            if not self.chunks:
+                return b"", 0.0
+
+            earliest = self.chunks[0][0]
+            if earliest > t_match_zero:
+                # Buffer started after t_match_zero (late start)
+                effective_offset = earliest - t_match_zero
+                current_timeline_time = earliest
+                extracted_parts = []
+                while self.chunks:
+                    start_mono, data = self.chunks.popleft()
+                    if start_mono > current_timeline_time:
+                        gap_sec = start_mono - current_timeline_time
+                        gap_frames = round(gap_sec * self.sample_rate)
+                        if gap_frames > 0:
+                            extracted_parts.append(b"\x00" * (gap_frames * self.frame_size))
+                    extracted_parts.append(data)
+                    chunk_dur = (len(data) // self.frame_size) / self.sample_rate
+                    current_timeline_time = start_mono + chunk_dur
+
+                self.total_frames = 0
+                return b"".join(extracted_parts), effective_offset
+
+            # Buffer covers t_match_zero: discard pre-game, slice the straddling chunk
+            current_timeline_time = t_match_zero
+            extracted_parts = []
+            while self.chunks:
+                start_mono, data = self.chunks.popleft()
+                chunk_dur = (len(data) // self.frame_size) / self.sample_rate
+                end_mono = start_mono + chunk_dur
+
+                if end_mono <= t_match_zero:
+                    # Wholly before match 0:00 (e.g. countdown/loading screen) -> discard
+                    continue
+                elif start_mono <= t_match_zero < end_mono:
+                    # Straddles match 0:00 -> slice at exact frame
+                    skip_sec = t_match_zero - start_mono
+                    skip_frames = round(skip_sec * self.sample_rate)
+                    skip_bytes = skip_frames * self.frame_size
+                    if skip_bytes < len(data):
+                        extracted_parts.append(data[skip_bytes:])
+                    current_timeline_time = end_mono
+                else:
+                    # Wholly after match 0:00
+                    if start_mono > current_timeline_time:
+                        gap_sec = start_mono - current_timeline_time
+                        gap_frames = round(gap_sec * self.sample_rate)
+                        if gap_frames > 0:
+                            extracted_parts.append(b"\x00" * (gap_frames * self.frame_size))
+                    extracted_parts.append(data)
+                    current_timeline_time = end_mono
+
+            self.chunks.clear()
+            self.total_frames = 0
+            return b"".join(extracted_parts), 0.0
+
+    def clear(self):
+        """Clears all buffered chunks."""
+        with self.lock:
+            self.chunks.clear()
+            self.total_frames = 0
+
+
 class TimelineWavWriter:
     """
     Direct-to-disk PCM WAV writer that maintains sample-accurate match clock synchronization.
-    - Sample 0 in the file ALWAYS corresponds to game_time = 0.000 (00:00:000).
+    - Sample 0 in the file ALWAYS corresponds to game_time = 0.000 (00:00:000) for normal starts.
     - Writes PCM frames sequentially without backwards seeking, guaranteeing pristine voice quality.
     - If audio is silent (e.g. Discord inactive), pads exact silence frames so the next utterance
       begins at the exact match clock timestamp.
     - Finalizes with standard 44-byte RIFF WAVE header.
     """
 
-    def __init__(self, file_path, channels=2, sample_rate=48000):
+    def __init__(self, file_path, channels=2, sample_rate=48000, start_offset=0.0):
         self.file_path = file_path
         self.channels = channels
         self.sample_rate = sample_rate
         self.frame_size = channels * 2
+        self.start_offset = float(start_offset or 0.0)
         self.lock = threading.Lock()
         self.file = open(file_path, "wb+")  # noqa: SIM115
         self.file.write(b"\x00" * 44)  # placeholder header
@@ -460,48 +590,33 @@ class TimelineWavWriter:
 
     def write_frames_at_time(self, pcm_bytes: bytes, game_time: float):
         """
-        Writes PCM frames anchored to the in-game League match clock.
-        If there was an extended silence gap (>10ms), pads silence up to game_time
-        so the upcoming utterance starts at the exact match clock timestamp.
-        During continuous active speech, writes sequentially without seeking backwards,
-        guaranteeing pristine, unclipped studio audio quality.
+        Writes PCM frames sequentially to disk.
+        Does NOT inject artificial silence based on API clock to guarantee
+        speech is recorded exactly at the timestamp when it is spoken.
         """
         if not pcm_bytes:
             return
-        if game_time is not None and game_time > 0:
-            with self.lock:
-                if not self.file.closed:
-                    target_frame = int(game_time * self.sample_rate)
-                    # Require at least 10ms (480 frames @ 48kHz) gap before inserting silence,
-                    # eliminating micro-gap stutter during active sentences
-                    if target_frame > (self.current_frame + 480):
-                        gap_frames = target_frame - self.current_frame
-                        bytes_needed = gap_frames * self.frame_size
-                        chunk = b"\x00" * min(bytes_needed, 65536)
-                        rem = bytes_needed
-                        while rem > 0:
-                            w = min(rem, len(chunk))
-                            self.file.write(chunk[:w])
-                            rem -= w
-                        self.current_frame = target_frame
-
         self.write_frames(pcm_bytes)
 
     def truncate_to_game_time(self, game_time: float):
         """
         Rewinds and truncates the WAV file back to the exact frame of game_time.
+        Accounts for start_offset so that relative frame index within the file
+        matches (game_time - start_offset).
         Used strictly during in-game pause detection to trim the ~400ms detection lag.
         """
-        if game_time is None or game_time < 0:
+        if game_time is None:
             return
         with self.lock:
             if self.file.closed:
                 return
-            target_frame = int(game_time * self.sample_rate)
+            rel_game_time = max(0.0, float(game_time) - self.start_offset)
+            target_frame = round(rel_game_time * self.sample_rate)
             if target_frame < self.current_frame:
                 target_byte = 44 + target_frame * self.frame_size
                 self.file.seek(target_byte)
                 self.file.truncate()
+                self.file.flush()
                 self.current_frame = target_frame
 
     def close(self, final_game_time=None):
@@ -597,11 +712,21 @@ class NativeAudioRecorder:
         # Thread synchronization lock and pause-detection staging buffers
         self._buffer_lock = threading.Lock()
         self._time_lock = threading.Lock()
-        self._base_game_time = 0.0
-        self._base_game_monotonic = time.monotonic()
+        self._base_game_time = None
+        self._base_game_monotonic = None
+        self.is_recording = False
+        self.is_pre_rolling = False
+        self.is_paused = False
         self._discord_staging = collections.deque()
         self._mic_staging = collections.deque()
         self._staging_delay_sec = 2.0
+
+        # Pre-roll buffers (30s capacity)
+        self._discord_preroll = AudioPreRollBuffer(sample_rate=48000, channels=2, max_duration=30.0)
+        self._mic_preroll = AudioPreRollBuffer(sample_rate=48000, channels=1, max_duration=30.0)
+        self.t_match_zero = None
+        self.total_paused_duration = 0.0
+        self._pause_mono_time = None
 
         # Discord local IPC mute watcher (shared singleton across recorders)
         self.discord_mute_watcher = get_shared_discord_mute_watcher(
@@ -644,12 +769,36 @@ class NativeAudioRecorder:
     def get_current_game_time(self) -> float:
         """Returns the high-precision League match clock timestamp right now."""
         with self._time_lock:
-            if self._base_game_time is None:
+            if not getattr(self, "is_recording", False) or self.t_match_zero is None:
                 return 0.0
             if self.is_paused:
-                return self._base_game_time
-            dt = time.monotonic() - self._base_game_monotonic
-            return max(0.0, self._base_game_time + dt)
+                if self._pause_mono_time is not None:
+                    return max(0.0, self._pause_mono_time - self.t_match_zero - self.total_paused_duration)
+                return self.latest_game_time
+            now = time.monotonic()
+            return max(0.0, now - self.t_match_zero - self.total_paused_duration)
+
+    def get_timing_breakdown(self) -> dict:
+        """Returns the high-precision League match clock timing breakdown: base_time, dt, current_time."""
+        with self._time_lock:
+            if not getattr(self, "is_recording", False) or self.t_match_zero is None:
+                return {"base_time": -1.0, "dt": 0.0, "current_time": -1.0, "is_paused": False}
+            if self.is_paused:
+                cur = max(0.0, (self._pause_mono_time or time.monotonic()) - self.t_match_zero - self.total_paused_duration)
+                return {
+                    "base_time": self.latest_game_time,
+                    "dt": 0.0,
+                    "current_time": cur,
+                    "is_paused": True,
+                }
+            now = time.monotonic()
+            cur = max(0.0, now - self.t_match_zero - self.total_paused_duration)
+            return {
+                "base_time": self.latest_game_time,
+                "dt": max(0.0, cur - self.latest_game_time),
+                "current_time": cur,
+                "is_paused": False,
+            }
 
     def log(self, message):
         try:
@@ -729,9 +878,18 @@ class NativeAudioRecorder:
             self._idle_monitor_thread.start()
 
     def _stop_idle_monitor(self):
-        """Stops background idle audio monitoring."""
+        """Stops background idle audio monitoring and joins worker thread."""
         self._stop_idle_monitor_event.set()
         self._stop_mic_monitor()
+        if (
+            self._idle_monitor_thread
+            and self._idle_monitor_thread.is_alive()
+            and threading.current_thread() != self._idle_monitor_thread
+        ):
+            try:
+                self._idle_monitor_thread.join(timeout=0.5)
+            except Exception:
+                pass
         self._idle_monitor_thread = None
 
     def _idle_app_monitor_loop(self):
@@ -788,6 +946,7 @@ class NativeAudioRecorder:
         except Exception:
             pass
         finally:
+            cached_meter = None
             try:
                 import comtypes
                 comtypes.CoUninitialize()
@@ -795,16 +954,74 @@ class NativeAudioRecorder:
                 pass
 
     def close(self):
+        """
+        Closes all recording and monitoring resources cleanly.
+        Guarantees threads, WASAPI loopback, and PyAudio streams are terminated.
+        """
         self._stop_idle_monitor()
-        if self.is_recording:
+        self.stop_event.set()
+        self.is_recording = False
+        self.is_pre_rolling = False
+        self.is_paused = False
+
+        if hasattr(self, "_tap") and self._tap:
             try:
-                self.stop_and_finalize("closed")
+                self._tap.stop()
             except Exception:
                 pass
+            self._tap = None
+
+        if self._mic_stream:
+            try:
+                self._mic_stream.stop_stream()
+                self._mic_stream.close()
+            except Exception:
+                pass
+            self._mic_stream = None
+
+        if self._discord_thread and self._discord_thread.is_alive() and threading.current_thread() != self._discord_thread:
+            try:
+                self._discord_thread.join(timeout=1.0)
+            except Exception:
+                pass
+            self._discord_thread = None
+
+        if self._mic_writer_thread and self._mic_writer_thread.is_alive() and threading.current_thread() != self._mic_writer_thread:
+            try:
+                self._mic_writer_thread.join(timeout=1.0)
+            except Exception:
+                pass
+            self._mic_writer_thread = None
+
+        if self._discord_writer:
+            try:
+                self._discord_writer.close()
+            except Exception:
+                pass
+            self._discord_writer = None
+
+        if self._mic_writer:
+            try:
+                self._mic_writer.close()
+            except Exception:
+                pass
+            self._mic_writer = None
+
+        while not self._mic_queue.empty():
+            try:
+                self._mic_queue.get_nowait()
+            except Exception:
+                break
+
+        with self._buffer_lock:
+            self._discord_staging.clear()
+            self._mic_staging.clear()
+            self._discord_preroll.clear()
+            self._mic_preroll.clear()
 
     def __del__(self):
         try:
-            self._stop_idle_monitor()
+            self.close()
         except Exception:
             pass
 
@@ -814,7 +1031,7 @@ class NativeAudioRecorder:
         Uses smooth decay for visual VU meter animations.
         Completely non-blocking (runs in 0.001ms on GUI thread).
         """
-        if not self.is_recording:
+        if not self.is_recording and not self.is_pre_rolling:
             if self._idle_monitor_thread is None or not self._idle_monitor_thread.is_alive():
                 self._start_idle_monitor()
 
@@ -871,56 +1088,38 @@ class NativeAudioRecorder:
     def set_ai_noise_suppression(self, enabled: bool):
         """No-op on main branch."""
 
-    def start_recording(self, session_id, initial_game_time=0.0):
-        """Starts asynchronous capture of target process audio and player microphone."""
-        if self.is_recording:
+    def arm_pre_roll(self):
+        """
+        Arms audio capture ahead of match start (e.g. during ChampSelect / loading screen / countdown).
+        Captures Discord audio and player microphone into bounded in-memory circular buffers.
+        Completely eliminates audio device startup latency and ensures match start 00:00 audio
+        is never lost.
+        """
+        if self.is_recording or self.is_pre_rolling:
             return
 
         self._stop_idle_monitor()
         self.stop_event.clear()
-        self.is_paused = False
-        self.is_recording = True
-        if hasattr(self, "discord_mute_watcher") and self.discord_mute_watcher:
-            self.discord_mute_watcher.is_recording = True
-
-        init_gt = max(0.0, float(initial_game_time or 0.0))
-        now = time.monotonic()
-        with self._time_lock:
-            self._base_game_time = init_gt
-            self._base_game_monotonic = now
-            self.latest_game_time = init_gt
-
         with self._buffer_lock:
-            self._discord_staging.clear()
-            self._mic_staging.clear()
+            self._discord_preroll.clear()
+            self._mic_preroll.clear()
+            self.is_pre_rolling = True
 
         resolved_pid = self.resolve_target_pid()
-
-        temp_dir = os.path.join(self.record_folder, ".temp_audio")
-        os.makedirs(temp_dir, exist_ok=True)
-
-        self.discord_wav_path = os.path.join(temp_dir, f"{session_id}_app.wav")
-        self.mic_wav_path = os.path.join(temp_dir, f"{session_id}_mic.wav")
-
-        # 1. Start Discord Process Loopback thread
-        if resolved_pid:
-            try:
-                proc_name = psutil.Process(resolved_pid).name()
-            except Exception:
-                proc_name = "Discord"
-            self.log(f"Hooking ProcessLoopback for {proc_name} (PID: {resolved_pid})...")
+        if resolved_pid and (self._discord_thread is None or not self._discord_thread.is_alive()):
             self._discord_thread = threading.Thread(
                 target=self._capture_discord_loop,
-                args=(resolved_pid, self.discord_wav_path),
+                args=(resolved_pid,),
                 daemon=True,
-                name="DiscordProcessLoopbackWorker",
+                name="DiscordPreRollWorker",
             )
             self._discord_thread.start()
-        else:
-            self.log("⚠️ No target Discord process found. Recording microphone only.")
-            self.discord_wav_path = None
 
-        # 2. Start Microphone capture via shared PyAudio
+        if self._mic_stream is None:
+            self._start_mic_capture()
+
+    def _start_mic_capture(self):
+        """Starts PyAudio microphone capture stream and worker thread."""
         try:
             pa = get_shared_pyaudio()
             mic_device = get_clean_microphone_device(pa, self.mic_device, self.mic_device_name)
@@ -935,22 +1134,33 @@ class NativeAudioRecorder:
                 mic_rate = int(mic_device.get("defaultSampleRate", 48000))
                 self.mic_channels = mic_channels
 
-                self._mic_writer_thread = threading.Thread(
-                    target=self._write_mic_loop,
-                    args=(self.mic_wav_path, mic_channels, mic_rate),
-                    daemon=True,
-                    name="MicWriterThread",
-                )
-                self._mic_writer_thread.start()
+                if self._mic_writer_thread is None or not self._mic_writer_thread.is_alive():
+                    self._mic_writer_thread = threading.Thread(
+                        target=self._write_mic_loop,
+                        args=(mic_channels, mic_rate),
+                        daemon=True,
+                        name="MicWriterThread",
+                    )
+                    self._mic_writer_thread.start()
 
                 def mic_callback(in_data, frames, time_info, status):
-                    if not self.is_paused and self.is_recording:
-                        if self.is_discord_muted():
-                            # Inject silence zeros while maintaining exact frame timeline alignment
-                            self._mic_queue.put(b"\x00" * len(in_data))
-                            self.current_mic_level = 0.0
-                        else:
-                            self._mic_queue.put(bytes(in_data))
+                    now = time.monotonic()
+                    if self.is_discord_muted():
+                        chunk = b"\x00" * len(in_data)
+                        self.current_mic_level = 0.0
+                    else:
+                        chunk = bytes(in_data)
+                        try:
+                            floats = np.frombuffer(chunk, dtype=np.int16)
+                            if len(floats) > 0:
+                                peak = max(int(floats.max()), -int(floats.min())) * _INV_INT16_MAX
+                                self.current_mic_level = max(peak, self.current_mic_level * 0.85)
+                        except Exception:
+                            pass
+
+                    if self.is_pre_rolling or (self.is_recording and not self.is_paused):
+                        dur = (len(chunk) // (self.mic_channels * 2)) / mic_rate
+                        self._mic_queue.put((now - dur, chunk))
                     return (None, pyaudio.paContinue)
 
                 self._mic_stream = pa.open(
@@ -963,28 +1173,128 @@ class NativeAudioRecorder:
                     stream_callback=mic_callback,
                 )
                 self._mic_stream.start_stream()
-                self.log(f"Microphone recording started on '{mic_device['name']}' ({mic_channels}ch @ {mic_rate}Hz).")
+                self.log(f"Microphone capture started on '{mic_device['name']}' ({mic_channels}ch @ {mic_rate}Hz).")
             else:
-                self.log("⚠️ No microphone device found. Recording Discord only.")
+                self.log("⚠️ No microphone device found.")
                 self.mic_wav_path = None
         except Exception as e:
             self.log(f"Warning: Could not start microphone capture: {e}")
             self.mic_wav_path = None
 
-        self.is_recording = True
+    def start_recording(self, session_id, match_zero_time=None, initial_game_time=0.0):
+        """
+        Starts active recording of target process audio and player microphone.
+        If pre-roll was active and covers match 00:00 (t_match_zero), flushes pre-roll audio
+        from 00:00 onward into WAV writers and returns effective_offset = 0.0 (NO silence padding).
+        If late start or pre-roll does not cover 00:00, returns effective_offset (actual late-start seconds)
+        so that FFmpeg can add exact silence padding once.
+        """
+        if self.is_recording:
+            return 0.0
 
-    def _capture_discord_loop(self, pid, wav_path):
+        self._stop_idle_monitor()
+        self.stop_event.clear()
+        self.is_paused = False
+        if hasattr(self, "discord_mute_watcher") and self.discord_mute_watcher:
+            self.discord_mute_watcher.is_recording = True
+
+        now = time.monotonic()
+        init_gt = max(0.0, float(initial_game_time or 0.0))
+        if match_zero_time is None:
+            match_zero_time = now - init_gt
+
+        self.t_match_zero = float(match_zero_time)
+        self.total_paused_duration = 0.0
+        self._pause_mono_time = None
+        self.latest_game_time = init_gt
+
+        temp_dir = os.path.join(self.record_folder, ".temp_audio")
+        os.makedirs(temp_dir, exist_ok=True)
+
+        self.discord_wav_path = os.path.join(temp_dir, f"{session_id}_app.wav")
+        self.mic_wav_path = os.path.join(temp_dir, f"{session_id}_mic.wav")
+
+        with self._buffer_lock:
+            # Drain any pending mic chunks into mic pre-roll
+            while not self._mic_queue.empty():
+                try:
+                    item = self._mic_queue.get_nowait()
+                    if isinstance(item, tuple):
+                        self._mic_preroll.push(item[0], item[1])
+                    else:
+                        self._mic_preroll.push(now, item)
+                except queue.Empty:
+                    break
+
+            disc_has_cov = self._discord_preroll.has_coverage_for(self.t_match_zero)
+            mic_has_cov = self._mic_preroll.has_coverage_for(self.t_match_zero)
+
+            disc_bytes, disc_offset = self._discord_preroll.extract_from(self.t_match_zero)
+            mic_bytes, mic_offset = self._mic_preroll.extract_from(self.t_match_zero)
+
+            if disc_has_cov or mic_has_cov:
+                # Pre-roll covered match 00:00 -> 0 artificial delay!
+                effective_offset = 0.0
+            else:
+                # Genuine late start -> offset is actual elapsed match time
+                effective_offset = max(disc_offset, mic_offset, init_gt)
+
+            self.is_pre_rolling = False
+            self.is_recording = True
+
+            self._discord_writer = TimelineWavWriter(
+                self.discord_wav_path, channels=2, sample_rate=48000, start_offset=effective_offset
+            )
+            if disc_bytes:
+                self._discord_writer.write_frames(disc_bytes)
+
+            self._mic_writer = TimelineWavWriter(
+                self.mic_wav_path, channels=self.mic_channels, sample_rate=48000, start_offset=effective_offset
+            )
+            if mic_bytes:
+                self._mic_writer.write_frames(mic_bytes)
+
+        # 1. Start Discord Process Loopback thread if not running
+        resolved_pid = self.resolve_target_pid()
+        if resolved_pid:
+            if self._discord_thread is None or not self._discord_thread.is_alive():
+                try:
+                    proc_name = psutil.Process(resolved_pid).name()
+                except Exception:
+                    proc_name = "Discord"
+                self.log(f"Hooking ProcessLoopback for {proc_name} (PID: {resolved_pid})...")
+                self._discord_thread = threading.Thread(
+                    target=self._capture_discord_loop,
+                    args=(resolved_pid,),
+                    daemon=True,
+                    name="DiscordProcessLoopbackWorker",
+                )
+                self._discord_thread.start()
+        else:
+            if not disc_bytes:
+                self.log("⚠️ No target Discord process found. Recording microphone only.")
+                self.discord_wav_path = None
+
+        # 2. Start Microphone capture if not running
+        if self._mic_stream is None:
+            self._start_mic_capture()
+
+        return effective_offset
+
+    def _capture_discord_loop(self, pid, wav_path=None):
         """
         Polls Discord process audio frames via proctap.ProcessAudioCapture.
         Guarantees standard 48000 Hz stereo format regardless of Windows soundcard settings (7.1, 96kHz, etc.).
         Writes sequentially to TimelineWavWriter with exact match clock synchronization.
         """
+        tap = None
         try:
             pac_cls = ProcessAudioCapture
             if pac_cls is None:
                 from proctap import ProcessAudioCapture as pac_cls
 
             tap = pac_cls(pid, resample_quality="best")
+            self._tap = tap
             tap.start()
 
             # Strict isolation check: ensure capture is strictly process-specific to Discord.
@@ -992,15 +1302,10 @@ class NativeAudioRecorder:
                 native_loop = tap._backend._native
                 if hasattr(native_loop, "is_process_specific") and not native_loop.is_process_specific():
                     self.log("❌ ERROR: Process loopback is NOT process-specific! Aborting capture to prevent recording background audio.")
-                    tap.stop()
                     return
 
-            writer = TimelineWavWriter(wav_path, channels=2, sample_rate=48000)
-            self._discord_writer = writer
-
-            init_gt = self.get_current_game_time()
-            if init_gt > 0:
-                writer.sync_to_game_time(init_gt)
+            if wav_path and self._discord_writer is None:
+                self._discord_writer = TimelineWavWriter(wav_path, channels=2, sample_rate=48000)
 
             while not self.stop_event.is_set():
                 d = tap.read(timeout=0.01)
@@ -1010,52 +1315,76 @@ class NativeAudioRecorder:
                         peak = max(float(floats.max()), -float(floats.min()))
                         self.current_app_level = max(peak, self.current_app_level * 0.85)
 
-                    if not self.is_paused:
-                        ints = np.clip(floats * 32767.0, -32768, 32767).astype(np.int16)
-                        raw_bytes = ints.tobytes()
-                        now_gt = self.get_current_game_time()
-                        writer.write_frames_at_time(raw_bytes, now_gt)
+                    ints = np.clip(floats * 32767.0, -32768, 32767).astype(np.int16)
+                    raw_bytes = ints.tobytes()
+                    now = time.monotonic()
+                    chunk_dur = (len(raw_bytes) // 4) / 48000.0
 
-            writer.close(final_game_time=self.get_current_game_time())
-            tap.stop()
+                    with self._buffer_lock:
+                        if self.is_pre_rolling:
+                            self._discord_preroll.push(now - chunk_dur, raw_bytes)
+                        elif self.is_recording and not self.is_paused:
+                            if self._discord_writer:
+                                self._discord_writer.write_frames(raw_bytes)
+
         except Exception as e:
             self.log(f"Discord process audio capture error: {e}")
+        finally:
+            if self._discord_writer:
+                try:
+                    self._discord_writer.close()
+                except Exception:
+                    pass
+                self._discord_writer = None
+            if tap:
+                try:
+                    tap.stop()
+                except Exception:
+                    pass
+                self._tap = None
 
-    def _write_mic_loop(self, wav_path, channels, rate):
-        """Consumes microphone audio chunks from queue and writes directly to TimelineWavWriter."""
+    def _write_mic_loop(self, channels, rate, wav_path=None):
+        """Consumes microphone audio chunks from queue and writes to pre-roll or TimelineWavWriter."""
         try:
-            writer = TimelineWavWriter(wav_path, channels=channels, sample_rate=rate)
-            self._mic_writer = writer
-
-            init_gt = self.get_current_game_time()
-            if init_gt > 0:
-                writer.sync_to_game_time(init_gt)
+            if wav_path and self._mic_writer is None:
+                self._mic_writer = TimelineWavWriter(wav_path, channels=channels, sample_rate=rate)
 
             while not self.stop_event.is_set() or not self._mic_queue.empty():
                 try:
                     item = self._mic_queue.get(timeout=0.05)
-                    chunk = item[0] if isinstance(item, tuple) else item
-                    writer.write_frames(chunk)
-                    try:
-                        floats = np.frombuffer(chunk, dtype=np.int16)
-                        if len(floats) > 0:
-                            peak = max(int(floats.max()), -int(floats.min())) * _INV_INT16_MAX
-                            self.current_mic_level = max(peak, self.current_mic_level * 0.85)
-                    except Exception:
-                        pass
+                    if isinstance(item, tuple):
+                        chunk_mono, chunk = item
+                    else:
+                        chunk = item
+                        chunk_mono = time.monotonic()
+
+                    with self._buffer_lock:
+                        if self.is_pre_rolling:
+                            self._mic_preroll.push(chunk_mono, chunk)
+                        elif self.is_recording and not self.is_paused:
+                            if self._mic_writer:
+                                self._mic_writer.write_frames(chunk)
                 except queue.Empty:
                     continue
 
-            writer.close(final_game_time=self.get_current_game_time())
         except Exception as e:
             self.log(f"Mic writer error: {e}")
+        finally:
+            if self._mic_writer:
+                try:
+                    self._mic_writer.close()
+                except Exception:
+                    pass
+                self._mic_writer = None
 
-    def pause(self, pause_game_time=None):
+    def pause(self, pause_game_time=None, pause_mono_time=None):
         """Marks recording paused when match is paused and trims detection lag."""
+        now = time.monotonic()
+        p_mono = float(pause_mono_time) if pause_mono_time is not None else now
         with self._time_lock:
             self.is_paused = True
+            self._pause_mono_time = p_mono
             if pause_game_time is not None and pause_game_time >= 0:
-                self._base_game_time = float(pause_game_time)
                 self.latest_game_time = float(pause_game_time)
 
         with self._buffer_lock:
@@ -1080,9 +1409,12 @@ class NativeAudioRecorder:
 
     def resume(self):
         """Resumes audio recording when match resumes."""
+        now = time.monotonic()
         with self._time_lock:
+            if self._pause_mono_time is not None:
+                self.total_paused_duration += (now - self._pause_mono_time)
+                self._pause_mono_time = None
             self.is_paused = False
-            self._base_game_monotonic = time.monotonic()
         with self._buffer_lock:
             pass
         self.log("Recording resumed.")
@@ -1100,6 +1432,7 @@ class NativeAudioRecorder:
 
         self.stop_event.set()
         self.is_recording = False
+        self.is_pre_rolling = False
         if hasattr(self, "discord_mute_watcher") and self.discord_mute_watcher:
             self.discord_mute_watcher.is_recording = False
 
@@ -1175,20 +1508,11 @@ class NativeAudioRecorder:
             cmd.extend(["-i", mic_target])
             mix_filter = f"[0:a]{format_filter}"
 
-        wav_dur = 0.0
-        check_p = self.discord_wav_path if (discord_ok and os.path.exists(self.discord_wav_path)) else mic_target
-        if check_p and os.path.exists(check_p):
-            try:
-                with wave.open(check_p, "rb") as wf:
-                    wav_dur = wf.getnframes() / max(1, wf.getframerate())
-            except Exception:
-                pass
-
         post_filters = []
         if initial_offset < -0.005:
             post_filters.append(f"atrim=start={abs(initial_offset):.3f},asetpts=PTS-STARTPTS")
-        elif initial_offset > 0.005 and wav_dur < (initial_offset - 0.5):
-            delay_ms = int(initial_offset * 1000)
+        elif initial_offset > 0.005:
+            delay_ms = round(initial_offset * 1000)
             post_filters.append(f"adelay=delays={delay_ms}:all=1")
 
         if post_filters:
