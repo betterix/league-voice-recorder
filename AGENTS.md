@@ -227,8 +227,7 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
   - Sync actions:
     - Rate change: Calls `player.set_rate(replay_speed)`.
     - Zero-Latency Unpause: If unpausing at the same timestamp (`abs(game_time - paused_game_time) < 0.25`), calls `player.play()` and `player.set_rate(replay_speed)` immediately without issuing a pipeline-flushing `set_time()` seek.
-    - Tightened Drift Correction: Automatically corrects audio drift when `drift > 0.25s` (250ms) to ensure replay playback stays strictly aligned after scrubs or pauses.
-    - Large Drift & Scrub Seeking: For timeline scrubs or large jumps (>0.5s), seeks with an 100ms cooldown to permanently eliminate seek storms caused by VLC asynchronous time reporting.
+    - Smooth Drift Correction & Audio Stability: Automatically corrects audio drift when `drift > 0.5s` (500ms) with a 250ms seek cooldown, eliminating VLC pipeline buffer flushing and audio cracking during replay playback.
     - Rewind handling: If `player.get_state() == vlc.State.Ended`, automatically reloads media before seeking.
     - Pause: If `paused == True` or `game_time <= 0.5`, calls `player.pause()`.
   - Auto-exit: If the Replay API fails 8 consecutive times (replay closed), it stops VLC and returns to the watcher loop.

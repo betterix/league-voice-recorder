@@ -462,8 +462,8 @@ class ReplaySynchronizer:
                             time_jump = abs(game_time - last_game_time) > 0.5
                             drift = abs(vlc_time - target_time) if vlc_time >= 0 else 0.0
 
-                            # Only seek if jump or noticeable drift (>0.25s) AND respected seek cooldown
-                            if (time_jump or drift > 0.25) and (now_wall - last_seek_wall_time >= 0.1):
+                            # Only seek if jump or noticeable drift (>0.5s) AND respected seek cooldown
+                            if (time_jump or drift > 0.5) and (now_wall - last_seek_wall_time >= 0.25):
                                 player.set_time(int(target_time * 1000))
                                 player.set_rate(replay_speed)
                                 last_seek_wall_time = now_wall
