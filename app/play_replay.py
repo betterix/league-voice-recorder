@@ -354,6 +354,7 @@ class ReplaySynchronizer:
         self.update_status("SYNCING", os.path.basename(abs_path))
 
         API_URL = "https://127.0.0.1:2999/replay/playback"
+        REPLAY_OFFSET = 1.0
         is_playing = False
         last_game_time = -1.0
         last_seek_wall_time = 0.0
@@ -408,7 +409,7 @@ class ReplaySynchronizer:
                             (player.get_time() / 1000.0) if hasattr(player, "get_time") else -1.0
                         )
 
-                        target_time = max(0.0, game_time)
+                        target_time = max(0.0, game_time + REPLAY_OFFSET)
                         drift = (vlc_time - target_time) if vlc_time >= 0 else 0.0
                         self.last_replay_time = game_time
                         self.last_vlc_time = max(0.0, vlc_time) if vlc_time >= 0 else 0.0
@@ -463,7 +464,7 @@ class ReplaySynchronizer:
                             drift = abs(vlc_time - target_time) if vlc_time >= 0 else 0.0
 
                             # Only seek if jump or noticeable drift (>0.5s) AND respected seek cooldown
-                            if (time_jump or drift > 0.5) and (now_wall - last_seek_wall_time >= 0.25):
+                            if (time_jump or drift > 1) and (now_wall - last_seek_wall_time >= 0.5):
                                 player.set_time(int(target_time * 1000))
                                 player.set_rate(replay_speed)
                                 last_seek_wall_time = now_wall
@@ -505,7 +506,7 @@ class ReplaySynchronizer:
                             self.update_status("PAUSED", f"{game_time:.1f}s")
                         elif paused_game_time >= 0 and abs(game_time - paused_game_time) > 0.5:
                             # User scrubbed while paused in League replay
-                            target_time = max(0.0, game_time)
+                            target_time = max(0.0, game_time + REPLAY_OFFSET)
                             player.set_time(int(target_time * 1000))
                             last_seek_wall_time = now_wall
                             paused_game_time = game_time
