@@ -17,6 +17,7 @@ import math
 import os
 import sys
 import tkinter as tk
+import tkinter.font as tkfont
 
 # Windows API constants for Click-Through overlay
 GWL_EXSTYLE = -20
@@ -286,6 +287,10 @@ class LeagueOverlay:
         self.volume_hit_win = None
         self._init_lock_hit_window()
         self._init_volume_hit_window()
+
+        # Initialize fonts and persistent canvas items once (retained-mode)
+        self._init_fonts()
+        self._init_canvas_items()
 
         # Initial render
         self.render()
@@ -599,12 +604,18 @@ class LeagueOverlay:
     # ==========================================
     # RENDERING ENGINE
     # ==========================================
-    def render(self) -> None:
-        """Redraws the entire HUD matching the PNG designs."""
-        self.canvas.delete("all")
+    def _init_fonts(self) -> None:
+        """Initializes reusable, persistent font objects to eliminate GDI/Tcl font recreation leaks."""
+        self._font_label = tkfont.Font(self.window, family="Segoe UI", size=10, weight="bold")
+        self._font_status_rec = tkfont.Font(self.window, family="Segoe UI", size=10, weight="bold")
+        self._font_status_small = tkfont.Font(self.window, family="Segoe UI", size=9, weight="bold")
+        self._font_timer = tkfont.Font(self.window, family="Segoe UI", size=19, weight="bold")
+        self._font_lock = tkfont.Font(self.window, family="Segoe UI", size=10)
 
+    def _init_canvas_items(self) -> None:
+        """Creates all canvas items once in retained mode, eliminating per-frame allocations."""
         # 1. Base card background & outer border
-        draw_rounded_rect(
+        self._item_bg = draw_rounded_rect(
             self.canvas,
             1,
             1,
@@ -617,7 +628,7 @@ class LeagueOverlay:
         )
 
         # 2. Vertical divider line
-        self.canvas.create_line(
+        self._item_divider = self.canvas.create_line(
             self.DIVIDER_X,
             10,
             self.DIVIDER_X,
@@ -626,48 +637,170 @@ class LeagueOverlay:
             width=1,
         )
 
+        # 3. Lock button
+        self._item_lock_oval = self.canvas.create_oval(
+            self.LOCK_X - 11,
+            self.LOCK_Y - 11,
+            self.LOCK_X + 11,
+            self.LOCK_Y + 11,
+            fill="#131B2E",
+            outline="#2A3547",
+            width=1,
+        )
+        self._item_lock_text = self.canvas.create_text(
+            self.LOCK_X,
+            self.LOCK_Y,
+            text="🔓",
+            anchor="center",
+            font=self._font_lock,
+            fill="#38BDF8",
+        )
+
+        # 4. Digital Match Timer
+        self._item_timer = self.canvas.create_text(
+            self.TIMER_X,
+            self.TIMER_Y,
+            text=self.time_str,
+            anchor="center",
+            fill=self.COLOR_TIMER,
+            font=self._font_timer,
+        )
+
+        # 5. Recorder HUD items
+        self._item_mic_label = self.canvas.create_text(
+            16,
+            22,
+            text="MIC",
+            anchor="w",
+            fill=self.COLOR_LABEL,
+            font=self._font_label,
+        )
+        self._item_mic_bars: list[int] = [
+            self.canvas.create_line(0, 0, 0, 0, fill=self.COLOR_TEAL, width=2.2, capstyle="round")
+            for _ in range(self.NUM_BARS)
+        ]
+
+        self._item_discord_label = self.canvas.create_text(
+            16,
+            54,
+            text="DISCORD",
+            anchor="w",
+            fill=self.COLOR_LABEL,
+            font=self._font_label,
+        )
+        self._item_discord_bars: list[int] = [
+            self.canvas.create_line(0, 0, 0, 0, fill=self.COLOR_PERIWINKLE, width=2.2, capstyle="round")
+            for _ in range(self.NUM_BARS)
+        ]
+
+        self._item_rec_status_dot = self.canvas.create_oval(
+            258, 18, 266, 26, fill=self.COLOR_RED, outline=""
+        )
+        self._item_rec_status_text = self.canvas.create_text(
+            270,
+            22,
+            text="REC",
+            anchor="w",
+            fill=self.COLOR_RED,
+            font=self._font_status_rec,
+        )
+
+        # 6. Replay HUD items
+        self._item_replay_bars: list[int] = [
+            self.canvas.create_line(0, 0, 0, 0, fill=self.COLOR_TEAL, width=2.2, capstyle="round")
+            for _ in range(self.REPLAY_NUM_BARS)
+        ]
+        self._item_playhead = self.canvas.create_line(
+            0, 13, 0, 31, fill="#FFFFFF", width=2.2, capstyle="round"
+        )
+        self._item_volume_label = self.canvas.create_text(
+            16,
+            54,
+            text="VOLUME",
+            anchor="w",
+            fill=self.COLOR_LABEL,
+            font=self._font_label,
+        )
+        self._item_volume_track = self.canvas.create_line(
+            self.SLIDER_X1,
+            54,
+            self.SLIDER_X2,
+            54,
+            fill=self.COLOR_TRACK,
+            width=7,
+            capstyle="round",
+        )
+        self._item_volume_active = self.canvas.create_line(
+            self.SLIDER_X1,
+            54,
+            self.SLIDER_X2,
+            54,
+            fill=self.COLOR_TEAL,
+            width=7,
+            capstyle="round",
+        )
+        self._item_volume_knob = self.canvas.create_oval(
+            0, 0, 0, 0, fill=self.COLOR_TEAL, outline=self.COLOR_TEAL
+        )
+        self._item_replay_status_text = self.canvas.create_text(
+            258,
+            22,
+            text="▶ REPLAY",
+            anchor="w",
+            fill=self.COLOR_TEAL,
+            font=self._font_status_small,
+        )
+
+        self._recorder_items: tuple[int, ...] = (
+            self._item_mic_label,
+            *self._item_mic_bars,
+            self._item_discord_label,
+            *self._item_discord_bars,
+            self._item_rec_status_dot,
+            self._item_rec_status_text,
+        )
+        self._replay_items: tuple[int, ...] = (
+            *self._item_replay_bars,
+            self._item_playhead,
+            self._item_volume_label,
+            self._item_volume_track,
+            self._item_volume_active,
+            self._item_volume_knob,
+            self._item_replay_status_text,
+        )
+        self._current_rendered_mode: str | None = None
+
+    def render(self) -> None:
+        """Updates retained canvas items matching the PNG designs without any memory allocations."""
+        if self._current_rendered_mode != self.mode:
+            if self.mode == "RECORD":
+                for item in self._recorder_items:
+                    self.canvas.itemconfig(item, state="normal")
+                for item in self._replay_items:
+                    self.canvas.itemconfig(item, state="hidden")
+            else:
+                for item in self._recorder_items:
+                    self.canvas.itemconfig(item, state="hidden")
+                for item in self._replay_items:
+                    self.canvas.itemconfig(item, state="normal")
+            self._current_rendered_mode = self.mode
+
         if self.mode == "RECORD":
             self._render_recorder_content()
         else:
             self._render_replay_content()
 
     def _render_lock_icon(self) -> None:
-        """Renders the Lock/Unlock status button on the top right corner."""
+        """Updates the Lock/Unlock status button on the top right corner."""
         lock_bg = "#261E14" if self.locked else "#131B2E"
         lock_border = "#78350F" if self.locked else "#2A3547"
-        self.canvas.create_oval(
-            self.LOCK_X - 11,
-            self.LOCK_Y - 11,
-            self.LOCK_X + 11,
-            self.LOCK_Y + 11,
-            fill=lock_bg,
-            outline=lock_border,
-            width=1,
-        )
         lock_icon = "🔒" if self.locked else "🔓"
         lock_color = "#F59E0B" if self.locked else "#38BDF8"
-        self.canvas.create_text(
-            self.LOCK_X,
-            self.LOCK_Y,
-            text=lock_icon,
-            anchor="center",
-            font=("Segoe UI", 10),
-            fill=lock_color,
-        )
+        self.canvas.itemconfig(self._item_lock_oval, fill=lock_bg, outline=lock_border)
+        self.canvas.itemconfig(self._item_lock_text, text=lock_icon, fill=lock_color)
 
     def _render_recorder_content(self) -> None:
-        """Renders the Recorder HUD (MIC, DISCORD, REC, Timer, Lock)."""
-        # Row 1: MIC Label
-        self.canvas.create_text(
-            16,
-            22,
-            text="MIC",
-            anchor="w",
-            fill=self.COLOR_LABEL,
-            font=("Segoe UI", 10, "bold"),
-        )
-
-        # Row 1: MIC Animated Vertical Visualizer Bars
+        """Updates the Recorder HUD (MIC, DISCORD, REC, Timer, Lock)."""
         mic_color = "#EF4444" if self.is_muted else self.COLOR_TEAL
         mic_bars = self._generate_active_waveform(
             center_y=22.0,
@@ -675,210 +808,94 @@ class LeagueOverlay:
             phase=self._wave_phase,
             seed=0.0,
         )
-        for x, y1, y2 in mic_bars:
-            self.canvas.create_line(
-                x,
-                y1,
-                x,
-                y2,
-                fill=mic_color,
-                width=2.2,
-                capstyle="round",
-            )
+        for i, (x, y1, y2) in enumerate(mic_bars):
+            bar_id = self._item_mic_bars[i]
+            self.canvas.coords(bar_id, x, y1, x, y2)
+            self.canvas.itemconfig(bar_id, fill=mic_color)
 
-        # Row 2: DISCORD Label
-        self.canvas.create_text(
-            16,
-            54,
-            text="DISCORD",
-            anchor="w",
-            fill=self.COLOR_LABEL,
-            font=("Segoe UI", 10, "bold"),
-        )
-
-        # Row 2: DISCORD Animated Vertical Visualizer Bars
         discord_bars = self._generate_active_waveform(
             center_y=54.0,
             level=self.discord_level,
             phase=self._wave_phase * 1.15,
             seed=2.5,
         )
-        for x, y1, y2 in discord_bars:
-            self.canvas.create_line(
-                x,
-                y1,
-                x,
-                y2,
-                fill=self.COLOR_PERIWINKLE,
-                width=2.2,
-                capstyle="round",
-            )
+        for i, (x, y1, y2) in enumerate(discord_bars):
+            self.canvas.coords(self._item_discord_bars[i], x, y1, x, y2)
 
-        # Right Section: Status Indicator (REC or PAUSED)
         if self.is_paused:
-            # Amber dot + PAUSED
-            self.canvas.create_oval(
-                258, 18, 266, 26, fill=self.COLOR_AMBER, outline=""
-            )
-            self.canvas.create_text(
-                270,
-                22,
+            self.canvas.itemconfig(self._item_rec_status_dot, fill=self.COLOR_AMBER)
+            self.canvas.itemconfig(
+                self._item_rec_status_text,
                 text="PAUSED",
-                anchor="w",
                 fill=self.COLOR_AMBER,
-                font=("Segoe UI", 9, "bold"),
+                font=self._font_status_small,
             )
         else:
-            # Coral/red dot + REC
-            self.canvas.create_oval(
-                258, 18, 266, 26, fill=self.COLOR_RED, outline=""
-            )
-            self.canvas.create_text(
-                270,
-                22,
+            self.canvas.itemconfig(self._item_rec_status_dot, fill=self.COLOR_RED)
+            self.canvas.itemconfig(
+                self._item_rec_status_text,
                 text="REC",
-                anchor="w",
                 fill=self.COLOR_RED,
-                font=("Segoe UI", 10, "bold"),
+                font=self._font_status_rec,
             )
 
-        # Lock button (top right)
         self._render_lock_icon()
-
-        # Right Section: Digital Match Timer
-        self.canvas.create_text(
-            self.TIMER_X,
-            self.TIMER_Y,
-            text=self.time_str,
-            anchor="center",
-            fill=self.COLOR_TIMER,
-            font=("Segoe UI", 19, "bold"),
-        )
+        self.canvas.itemconfig(self._item_timer, text=self.time_str)
 
     def _render_replay_content(self) -> None:
-        """Renders the Replay Overlay (Audio wave with playhead, VOLUME slider, REPLAY, Timer, Lock)."""
-        # Row 1: Audio waveform vertical bars with moving playhead cursor (expanded across full width)
+        """Updates the Replay Overlay (Audio wave with playhead, VOLUME slider, REPLAY, Timer, Lock)."""
         progress = max(0.0, min(1.0, self.current_time / self.total_duration))
         cursor_x = self.REPLAY_TRACK_START_X + progress * self.REPLAY_TRACK_WIDTH
 
-        # Draw played portion (Teal) and upcoming portion (Muted slate)
         played_bars, upcoming_bars = self._split_waveform(cursor_x, audio_level=self.audio_level)
+        idx = 0
         for x, y1, y2 in played_bars:
-            self.canvas.create_line(
-                x,
-                y1,
-                x,
-                y2,
-                fill=self.COLOR_TEAL,
-                width=2.2,
-                capstyle="round",
-            )
+            bar_id = self._item_replay_bars[idx]
+            self.canvas.coords(bar_id, x, y1, x, y2)
+            self.canvas.itemconfig(bar_id, fill=self.COLOR_TEAL)
+            idx += 1
         for x, y1, y2 in upcoming_bars:
-            self.canvas.create_line(
-                x,
-                y1,
-                x,
-                y2,
-                fill=self.COLOR_UPCOMING_WAVE,
-                width=2.2,
-                capstyle="round",
-            )
+            bar_id = self._item_replay_bars[idx]
+            self.canvas.coords(bar_id, x, y1, x, y2)
+            self.canvas.itemconfig(bar_id, fill=self.COLOR_UPCOMING_WAVE)
+            idx += 1
 
-        # White playhead cursor needle
-        self.canvas.create_line(
-            cursor_x,
-            13,
-            cursor_x,
-            31,
-            fill="#FFFFFF",
-            width=2.2,
-            capstyle="round",
-        )
+        self.canvas.coords(self._item_playhead, cursor_x, 13, cursor_x, 31)
 
-        # Row 2: VOLUME Label
-        self.canvas.create_text(
-            16,
-            54,
-            text="VOLUME",
-            anchor="w",
-            fill=self.COLOR_LABEL,
-            font=("Segoe UI", 10, "bold"),
-        )
-
-        # Row 2: Volume Slider Track
-        slider_x1, slider_x2 = self.SLIDER_X1, self.SLIDER_X2
+        slider_x1 = self.SLIDER_X1
         effective_vol = 0 if self.is_muted else self.volume
         vol_pct = max(0.0, min(1.0, effective_vol / 200.0))
         knob_x = slider_x1 + vol_pct * self.SLIDER_WIDTH
 
-        # Background track capsule
-        self.canvas.create_line(
-            slider_x1,
-            54,
-            slider_x2,
-            54,
-            fill=self.COLOR_TRACK,
-            width=7,
-            capstyle="round",
-        )
-
-        # Active filled track
         active_color = "#64748B" if self.is_muted else self.COLOR_TEAL
         if knob_x > slider_x1:
-            self.canvas.create_line(
-                slider_x1,
-                54,
-                knob_x,
-                54,
-                fill=active_color,
-                width=7,
-                capstyle="round",
-            )
+            self.canvas.coords(self._item_volume_active, slider_x1, 54, knob_x, 54)
+            self.canvas.itemconfig(self._item_volume_active, fill=active_color, state="normal")
+        else:
+            self.canvas.itemconfig(self._item_volume_active, state="hidden")
 
-        # Round thumb knob
         r = 6.5
-        self.canvas.create_oval(
-            knob_x - r,
-            54 - r,
-            knob_x + r,
-            54 + r,
-            fill=active_color,
-            outline=active_color,
-        )
+        self.canvas.coords(self._item_volume_knob, knob_x - r, 54 - r, knob_x + r, 54 + r)
+        self.canvas.itemconfig(self._item_volume_knob, fill=active_color, outline=active_color)
 
-        # Right Section: Status (▶ REPLAY or ⏸ PAUSED)
         if self.is_paused:
-            self.canvas.create_text(
-                258,
-                22,
+            self.canvas.itemconfig(
+                self._item_replay_status_text,
                 text="⏸ PAUSED",
-                anchor="w",
                 fill=self.COLOR_AMBER,
-                font=("Segoe UI", 9, "bold"),
+                font=self._font_status_small,
             )
         else:
             speed_text = "REPLAY" if self.speed == 1.0 else f"{self.speed:.1f}x"
-            self.canvas.create_text(
-                258,
-                22,
+            self.canvas.itemconfig(
+                self._item_replay_status_text,
                 text=f"▶ {speed_text}",
-                anchor="w",
                 fill=self.COLOR_TEAL,
-                font=("Segoe UI", 9, "bold"),
+                font=self._font_status_small,
             )
 
-        # Lock button (top right)
         self._render_lock_icon()
-
-        # Right Section: Replay Timer
-        self.canvas.create_text(
-            self.TIMER_X,
-            self.TIMER_Y,
-            text=self.time_str,
-            anchor="center",
-            fill=self.COLOR_TIMER,
-            font=("Segoe UI", 19, "bold"),
-        )
+        self.canvas.itemconfig(self._item_timer, text=self.time_str)
 
     # ==========================================
     # WAVEFORM ALGORITHMS (PURE VERTICAL BARS)
