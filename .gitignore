@@ -70,7 +70,9 @@ Thumbs.db
 .gradex/
 
 # ==========================================
-# Private Roadmaps & Future Feature Notes
+# Private Roadmaps, Agent Tooling & Local Configs
 # ==========================================
 FUTURE_IDEAS.md
 *.local.md
+.agents/
+.serena/

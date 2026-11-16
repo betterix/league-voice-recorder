@@ -173,19 +173,25 @@ The desktop GUI application built using `customtkinter`.
 
 ### 3.2 `record.py` (`LeagueRecorder`)
 Responsible for live match detection, native WASAPI voice capture, and audio export.
-- **League Match Detection & Zero-Latency Start**:
+- **League Match Detection & Pre-Roll Zero-Latency Start**:
   - Uses a persistent HTTP keep-alive session (`requests.Session()`) polling `https://127.0.0.1:2999/liveclientdata/allgamedata`.
-  - **Zero-Latency Start**: When a live match begins, `start_recording(initial_game_time)` triggers Native WASAPI recording directly in under 1 millisecond.
-  - **Sample-Accurate Audio Alignment**:
-    - Stores `first_game_time` at the exact moment recording begins.
-    - If recording starts after 00:00 (`first_game_time > 0`), FFmpeg automatically prepends exact silence using `-af adelay=delays={delay_ms}:all=1`.
-    - If recording starts before 00:00 during countdown (`first_game_time < 0`), FFmpeg automatically trims the pre-game countdown using `-ss {abs(offset):.3f}`.
-    - This guarantees that 00:00:00 in the MP3 file is aligned frame-by-frame with League match time `game_time = 0.000`.
+  - **Pre-Roll Capture Buffer (`AudioPreRollBuffer`)**: Pre-arms Discord loopback and microphone capture into a 30-second thread-safe circular in-memory buffer while the watcher is running (ChampSelect, loading screen, or countdown).
+  - **Sample-Accurate Match Zero Slicing (`t_match_zero`)**:
+    - When match start is detected (`gameTime > 0.0`), `t_match_zero = ((t_poll_start + t_poll_finish) / 2.0) - game_time` is calculated.
+    - If pre-roll covers `t_match_zero`, `extract_from(t_match_zero)` slices the audio at the exact frame of 00:00:000, discarding pre-game countdown frames and transferring match audio directly into `TimelineWavWriter` with `effective_offset = 0.0`.
+    - Guarantees sample 0 in the output represents League match clock 00:00:000 with **zero lost voice communication** and **zero artificial silence padding**.
+  - **Single Source of Truth for Late Starts**:
+    - If recording starts late into a live match (e.g. 7.0s, 15.0s, 60.0s) and pre-roll does not cover 00:00, `effective_offset` equals the actual late start timestamp.
+    - Exactly that duration of silence is prepended **once and only once** via FFmpeg `-af adelay=delays={delay_ms}:all=1`.
+    - Eliminates arbitrary time thresholds (e.g. 15s clamping) and strictly prevents double-padding between WAV writers and FFmpeg.
   - **Replay Protection (`check_if_game_is_replay`)**: Checks process command-line arguments and cached PID for `.rofl` files. If a replay is active, live match recording is aborted/prevented.
-  - **Zero-Drift Pause Detection & WAV Lag Truncation (`truncate_to_game_time`)**:
-    - When Riot's Live Client Data API detects that `gameTime == last_game_time` (elapsed >= 0.45s), an in-game pause is triggered.
-    - Because API polling takes ~450ms to confirm the freeze, `TimelineWavWriter.truncate_to_game_time(pause_game_time)` seeks both Discord and microphone streams back to `44 + target_frame * frame_size` and truncates the files in-place, permanently slicing out the detection lag audio.
-    - When the game resumes (`gameTime > last_game_time`), audio recording resumes sequentially without any time drift relative to the League match clock.
+  - **Zero-Drift Aggressive Pause Detection & WAV Lag Truncation (`truncate_to_game_time`)**:
+    - High-speed 20ms (50Hz) responsive polling during active gameplay and pauses.
+    - When Riot's Live Client Data API detects that `gameTime == last_game_time` (elapsed >= 0.28s or >= 8 consecutive unchanged polls), an in-game pause is confirmed aggressively.
+    - Slices out detection lag audio by seeking both Discord and microphone streams back to `44 + target_frame * frame_size` (accounting for `start_offset`), truncates the files in-place, and immediately commits disk buffers via `self.file.flush()`.
+    - **Anchored Pause Monotonic Clock (`pause_mono_time = self.last_advance_time`)**: Anchors `_pause_mono_time` to the exact monotonic instant the match clock froze, completely eliminating the 280ms–450ms monotonic clock leakage that previously caused delays after unpausing.
+    - High-precision monotonic clock tracking (`time.monotonic()`) accumulates pause durations (`total_paused_duration`) to maintain sample-accurate sync across long scrim matches with zero network polling jitter.
+    - Instantaneous unpause detection (< 20ms) the moment `gameTime > last_game_time`.
   - Match end: When the game client closes, the request raises `RequestException`, which triggers `stop_recording_and_rename()`.
   - **Hands-Free Match Auto-Stop**: When the scrim finishes and `<GameID>.mp3` is saved, the watcher automatically signals completion, exits the listening loop, and resets the UI button back to `Start Recording Watcher` without requiring manual intervention.
 - **Game ID Extraction**:
@@ -196,7 +202,8 @@ Responsible for live match detection, native WASAPI voice capture, and audio exp
   - Captures Discord voice chat directly via Windows WASAPI Process Loopback.
   - Captures player microphone via native WASAPI (pyaudiowpatch) with dynamic input device selection and live VU visualizers.
   - Tracks Discord mute & deafen state in real time via local IPC (`\\.\pipe\discord-ipc-*`). When muted, feeds synchronized silence bytes to keep timeline aligned.
-  - Automatically mixes both streams into sample-accurate studio-grade `<GameID>.opus` (160 kbps full-band audio).
+  - Monotonic gap tracking (`last_discord_mono`) accounts for idle periods between team calls without ratchet drift.
+  - Automatically mixes both streams into sample-accurate studio-grade `<GameID>.mp3` via FFmpeg.
 
 ### 3.3 `play_replay.py` (`ReplaySynchronizer`)
 Responsible for detecting opened `.rofl` replays and synchronizing audio playback in VLC.
@@ -220,7 +227,8 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
   - Sync actions:
     - Rate change: Calls `player.set_rate(replay_speed)`.
     - Zero-Latency Unpause: If unpausing at the same timestamp (`abs(game_time - paused_game_time) < 0.25`), calls `player.play()` and `player.set_rate(replay_speed)` immediately without issuing a pipeline-flushing `set_time()` seek.
-    - Large Drift & Scrub Seeking: For timeline scrubs or large drift (>1.0s), seeks with an 800ms cooldown to permanently eliminate seek storms caused by VLC asynchronous time reporting.
+    - Tightened Drift Correction: Automatically corrects audio drift when `drift > 0.25s` (250ms) to ensure replay playback stays strictly aligned after scrubs or pauses.
+    - Large Drift & Scrub Seeking: For timeline scrubs or large jumps (>0.5s), seeks with an 100ms cooldown to permanently eliminate seek storms caused by VLC asynchronous time reporting.
     - Rewind handling: If `player.get_state() == vlc.State.Ended`, automatically reloads media before seeking.
     - Pause: If `paused == True` or `game_time <= 0.5`, calls `player.pause()`.
   - Auto-exit: If the Replay API fails 8 consecutive times (replay closed), it stops VLC and returns to the watcher loop.
@@ -234,9 +242,10 @@ Responsible for detecting opened `.rofl` replays and synchronizing audio playbac
   - Pure JSON-backed settings persisted to `Documents/League Voice Recorder/config.json`.
   - Exposes `load_config()`, `save_config(dict)`, and `get_ffmpeg_path()`.
 - **Git Ignore Policy (`.gitignore`)**:
-  - Ignores secrets (`config.json`).
+  - Ignores secrets (`config.json`, `.env`).
   - Ignores large local binaries (`ffmpeg.exe`, `redist/` installer).
   - Ignores local recordings (`recordings/`).
+  - Ignores local private agent tooling and configs (`.agents/`, `.serena/`).
 
 ### 3.5 Internationalization & Community Translations (`i18n.py` & `locales/`)
 - **Default Language**: English (`en.json`) is the default language.
