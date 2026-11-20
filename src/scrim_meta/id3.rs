@@ -2,7 +2,7 @@ use std::path::Path;
 use id3::{Tag, TagLike, Version};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ScrimMetadata {
     pub game_id: String,
     pub team_tag: String,
@@ -23,6 +23,8 @@ impl ScrimMetadata {
         if let Some(title) = tag.title() {
             if let Some(stripped) = title.strip_prefix("Game ") {
                 meta.game_id = stripped.trim().to_string();
+            } else if !title.is_empty() {
+                meta.game_id = title.to_string();
             }
         }
 
@@ -69,5 +71,36 @@ impl ScrimMetadata {
 
         tag.write_to_path(path, Version::Id3v23)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scrim_meta_roundtrip_id3() {
+        let temp_file = std::env::temp_dir().join("test_scrim_meta_roundtrip.mp3");
+        // Create an empty dummy file
+        std::fs::write(&temp_file, b"ID3dummy").unwrap();
+
+        let meta = ScrimMetadata {
+            game_id: "8018190134".to_string(),
+            team_tag: "G2".to_string(),
+            notes: "Baron steal at 24:10".to_string(),
+            game_patch: "14.23".to_string(),
+            recorded_at: "2026-11-20".to_string(),
+        };
+
+        let write_res = meta.write_to_mp3(&temp_file);
+        assert!(write_res.is_ok());
+
+        let read_back = ScrimMetadata::read_from_mp3(&temp_file).unwrap();
+        assert_eq!(read_back.game_id, "8018190134");
+        assert_eq!(read_back.team_tag, "G2");
+        assert_eq!(read_back.notes, "Baron steal at 24:10");
+        assert_eq!(read_back.game_patch, "14.23");
+
+        let _ = std::fs::remove_file(&temp_file);
     }
 }

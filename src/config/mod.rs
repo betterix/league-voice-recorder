@@ -24,14 +24,30 @@ pub struct AppConfig {
     pub replay_volume: u32,
     #[serde(default = "default_language")]
     pub language: String,
+    #[serde(default = "default_theme")]
+    pub theme: String,
     #[serde(default = "default_true")]
     pub auto_start_champ_select: bool,
     #[serde(default = "default_true")]
     pub auto_start_replay: bool,
+    #[serde(default = "default_true")]
+    pub hud_overlay_enabled: bool,
+    #[serde(default = "default_false")]
+    pub hud_click_through: bool,
+    #[serde(default = "default_false")]
+    pub hud_locked: bool,
+    #[serde(default = "default_hud_opacity")]
+    pub hud_opacity: f32,
+    #[serde(default = "default_neg_one")]
+    pub hud_x: i32,
+    #[serde(default = "default_neg_one")]
+    pub hud_y: i32,
     #[serde(default = "default_audio_format")]
     pub audio_format: String,
     #[serde(default = "default_true")]
     pub minimize_to_tray: bool,
+    #[serde(default = "default_false")]
+    pub show_debug_panel: bool,
     #[serde(default)]
     pub remote_server_url: String,
     #[serde(default)]
@@ -41,7 +57,7 @@ pub struct AppConfig {
 }
 
 fn default_target_pid() -> i32 { -1 }
-fn default_target_name() -> String { "discord_auto".to_string() }
+fn default_target_name() -> String { "Discord".to_string() }
 fn default_mic_index() -> i32 { -1 }
 fn default_mic_name() -> String { "default".to_string() }
 fn default_record_folder() -> PathBuf {
@@ -53,7 +69,11 @@ fn default_record_folder() -> PathBuf {
 fn default_vlc_dir() -> PathBuf { PathBuf::from(r"C:\Program Files\VideoLAN\VLC") }
 fn default_replay_volume() -> u32 { 100 }
 fn default_language() -> String { "en".to_string() }
+fn default_theme() -> String { "dark".to_string() }
 fn default_true() -> bool { true }
+fn default_false() -> bool { false }
+fn default_hud_opacity() -> f32 { 0.85 }
+fn default_neg_one() -> i32 { -1 }
 fn default_audio_format() -> String { "mp3".to_string() }
 
 impl Default for AppConfig {
@@ -67,10 +87,18 @@ impl Default for AppConfig {
             vlc_dir: default_vlc_dir(),
             replay_volume: default_replay_volume(),
             language: default_language(),
+            theme: default_theme(),
             auto_start_champ_select: true,
             auto_start_replay: true,
+            hud_overlay_enabled: true,
+            hud_click_through: false,
+            hud_locked: false,
+            hud_opacity: 0.85,
+            hud_x: -1,
+            hud_y: -1,
             audio_format: default_audio_format(),
             minimize_to_tray: true,
+            show_debug_panel: false,
             remote_server_url: String::new(),
             remote_api_key_encrypted: String::new(),
             remote_api_key: String::new(),
@@ -80,6 +108,11 @@ impl Default for AppConfig {
 
 impl AppConfig {
     pub fn config_path() -> PathBuf {
+        if let Ok(override_path) = std::env::var("LVR_CONFIG_PATH") {
+            if !override_path.is_empty() {
+                return PathBuf::from(override_path);
+            }
+        }
         let docs = UserDirs::new()
             .and_then(|u| u.document_dir().map(|p| p.to_path_buf()))
             .unwrap_or_else(|| PathBuf::from("."));
@@ -94,7 +127,6 @@ impl AppConfig {
             if !config.remote_api_key_encrypted.is_empty() {
                 config.remote_api_key = decrypt_secret(&config.remote_api_key_encrypted);
             }
-            // Ensure recording directory exists
             if !config.record_folder.exists() {
                 let _ = std::fs::create_dir_all(&config.record_folder);
             }
@@ -120,5 +152,30 @@ impl AppConfig {
         let json = serde_json::to_string_pretty(&to_save)?;
         std::fs::write(&path, json)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config_fields() {
+        let cfg = AppConfig::default();
+        assert_eq!(cfg.language, "en");
+        assert_eq!(cfg.theme, "dark");
+        assert_eq!(cfg.replay_volume, 100);
+        assert!(cfg.auto_start_champ_select);
+        assert!(cfg.auto_start_replay);
+        assert!(cfg.hud_overlay_enabled);
+        assert_eq!(cfg.audio_format, "mp3");
+    }
+
+    #[test]
+    fn test_config_path_override() {
+        let temp_dir = std::env::temp_dir().join("lvr_test_cfg.json");
+        std::env::set_var("LVR_CONFIG_PATH", temp_dir.to_str().unwrap());
+        assert_eq!(AppConfig::config_path(), temp_dir);
+        std::env::remove_var("LVR_CONFIG_PATH");
     }
 }
