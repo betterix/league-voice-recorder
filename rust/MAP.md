@@ -16,10 +16,10 @@
 ### Wave 0: Core Foundation & Configuration
 | Unit | Python Source | Rust Target | Tests | Status |
 |---|---|---|---|---|
-| `config` | `app/config.py` | `src/config/mod.rs`, `src/config/secret.rs` | `tests/test_config.py` | **Claimed / In-Progress** (secret roundtrip & validation passing) |
-| `replay_config` | `app/replay_config.py` | `src/replay/config.rs` | `tests/test_replay_config.py` | **Claimed / In-Progress** (EnableReplayApi=1 injection test passing) |
-| `i18n` | `app/i18n.py` | `src/i18n/mod.rs` | `tests/test_i18n.py` | **Open** |
-| `scrim_meta` | `app/scrim_meta.py` | `src/scrim_meta/id3.rs` | `tests/test_scrim_meta.py` | **Claimed / In-Progress** (ID3 tagging implemented) |
+| `config` | `app/config.py` | `src/config/mod.rs`, `src/config/secret.rs` | `tests/test_config.py` | **Done** (DPAPI/PBKDF2/legacy secret roundtrip & config path override verified) |
+| `replay_config` | `app/replay_config.py` | `src/replay/config.rs` | `tests/test_replay_config.py` | **Done** (EnableReplayApi=1 injection & backup verified) |
+| `i18n` | `app/i18n.py` | `src/i18n/mod.rs` | `tests/test_i18n.py` | **Done** (Dynamic locale scanning, fallback, and placeholder formatting verified) |
+| `scrim_meta` | `app/scrim_meta.py` | `src/scrim_meta/id3.rs` | `tests/test_scrim_meta.py` | **Done** (ID3v23 tag roundtrip read/write verified) |
 
 ### Wave 1: Process Inspection & Live APIs
 | Unit | Python Source | Rust Target | Tests | Status |
