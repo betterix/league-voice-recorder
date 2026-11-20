@@ -13,7 +13,7 @@ pub struct LcuCredentials {
 impl LcuCredentials {
     pub fn parse_from_file<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let content = std::fs::read_to_string(path)?;
-        let parts: Vec<&str> = content.split(':').collect();
+        let trimmed = content.trim(); let parts: Vec<&str> = trimmed.split(':').collect();
         if parts.len() < 5 {
             return Err("Invalid lockfile format".into());
         }
@@ -181,5 +181,37 @@ impl LcuCredentials {
             }
         }
         false
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_valid_lockfile() {
+        let temp_lockfile = std::env::temp_dir().join("test_lockfile");
+        std::fs::write(&temp_lockfile, "LeagueClient:12345:54321:secret_pass:https\n").unwrap();
+
+        let creds = LcuCredentials::parse_from_file(&temp_lockfile).unwrap();
+        assert_eq!(creds.process_name, "LeagueClient");
+        assert_eq!(creds.pid, 12345);
+        assert_eq!(creds.port, 54321);
+        assert_eq!(creds.password, "secret_pass");
+        assert_eq!(creds.protocol, "https");
+
+        let _ = std::fs::remove_file(&temp_lockfile);
+    }
+
+    #[test]
+    fn test_parse_invalid_lockfile() {
+        let temp_lockfile = std::env::temp_dir().join("test_invalid_lockfile");
+        std::fs::write(&temp_lockfile, "invalid_data\n").unwrap();
+
+        let err = LcuCredentials::parse_from_file(&temp_lockfile);
+        assert!(err.is_err());
+
+        let _ = std::fs::remove_file(&temp_lockfile);
     }
 }
