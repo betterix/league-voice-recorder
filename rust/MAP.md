@@ -31,18 +31,18 @@
 ### Wave 2: Audio Engines & Sinks
 | Unit | Python Source | Rust Target | Tests | Status |
 |---|---|---|---|---|
-| `audio_timeline` | `app/native_audio.py` | `src/audio/timeline.rs`, `src/audio/encoder.rs` | `tests/test_timing_accuracy.py` | **Claimed / In-Progress** (pause lag truncation & MP3 test passing) |
-| `audio_capture` | `app/native_audio.py` | `src/audio/capture.rs` | `tests/test_recorder.py` | **Claimed / In-Progress** (device enum & loopback tests passing) |
-| `record_engine` | `app/record.py` | `src/record/engine.rs` | `tests/test_recorder.py` | **Claimed / In-Progress** (record loop & MP3 save test passing) |
-| `replay_engine` | `app/play_replay.py` | `src/replay/engine.rs`, `src/replay/player.rs` | `tests/test_replay_sync.py` | **Claimed / In-Progress** |
+| `audio_timeline` | `app/native_audio.py` | `src/audio/timeline.rs`, `src/audio/encoder.rs` | `tests/test_timing_accuracy.py` | **Done** (Sample-accurate pause lag truncation & MP3 encoding verified) |
+| `audio_capture` | `app/native_audio.py` | `src/audio/capture.rs` | `tests/test_recorder.py` | **Done** (Device enumeration & loopback audio capture verified) |
+| `record_engine` | `app/record.py` | `src/record/engine.rs` | `tests/test_recorder.py` | **Done** (Live client poller, replay guard, and MP3 export verified) |
+| `replay_engine` | `app/play_replay.py` | `src/replay/engine.rs`, `src/replay/player.rs` | `tests/test_replay_sync.py` | **Done** (Rodio pure Rust player, drift seek, and speed sync verified) |
 
 ### Wave 3: Network & System Integration
 | Unit | Python Source | Rust Target | Tests | Status |
 |---|---|---|---|---|
-| `cloud_sync` | `app/cloud_sync.py` | `src/cloud_sync/mod.rs` | `tests/test_cloud_sync.py` | **Open** |
-| `tray` | `app/tray.py` | `src/tray/mod.rs` | `tests/test_tray.py` | **Open** |
-| `updater` | `app/updater.py` | `src/updater/mod.rs` | `tests/test_updater.py` | **Open** |
-| `overlay` | `app/overlay.py` | `src/overlay/mod.rs` | `tests/test_overlay.py` | **Open** |
+| `cloud_sync` | `app/cloud_sync.py` | `src/cloud_sync/mod.rs` | `tests/test_cloud_sync.py` | **Done** (FastAPI health checks, SHA256 checksums, and list verified) |
+| `tray` | `app/tray.py` | `src/tray/mod.rs` | `tests/test_tray.py` | **Done** (Tray state, dynamic tooltip, and minimize-to-tray verified) |
+| `updater` | `app/updater.py` | `src/updater/mod.rs` | `tests/test_updater.py` | **Done** (Semver tuple parser and GitHub release query verified) |
+| `overlay` | `app/overlay.py` | `src/overlay/mod.rs` | `tests/test_overlay.py` | **Done** (HUD overlay state, WS_EX_TRANSPARENT click-through verified) |
 
 ### Wave 4: Desktop UI & Coordinator
 | Unit | Python Source | Rust Target | Tests | Status |
