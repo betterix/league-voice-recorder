@@ -1,0 +1,802 @@
+import base64
+import os
+from pathlib import Path
+import subprocess
+import sys
+import threading
+import time
+
+# Ensure project root is in sys.path when run directly
+PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+import psutil
+import requests
+import urllib3
+
+from app.config import get_ffmpeg_path, load_config
+from app.i18n import t
+from app.native_audio import NativeAudioRecorder
+
+urllib3.disable_warnings()
+
+if sys.platform.startswith("win"):
+    try:
+        import ctypes
+
+        ctypes.windll.winmm.timeBeginPeriod(1)
+    except Exception:
+        pass
+
+
+def find_league_install_dir():
+    """Finds the League of Legends installation directory (running or offline)."""
+    global _CACHED_LEAGUE_INSTALL_DIR
+
+    def _is_valid_league_dir(d: str) -> bool:
+        if not d or not os.path.isdir(d):
+            return False
+        return (
+            os.path.exists(os.path.join(d, "lockfile"))
+            or os.path.exists(os.path.join(d, "LeagueClient.exe"))
+            or os.path.exists(os.path.join(d, "Config", "game.cfg"))
+            or os.path.exists(os.path.join(d, "Game", "League of Legends.exe"))
+        )
+
+    if _CACHED_LEAGUE_INSTALL_DIR and _is_valid_league_dir(_CACHED_LEAGUE_INSTALL_DIR):
+        return _CACHED_LEAGUE_INSTALL_DIR
+
+    # 1. Fast lookup via psutil (active processes)
+    try:
+        for proc in psutil.process_iter(["name", "exe"]):
+            try:
+                name = proc.info.get("name") or ""
+                if any(x in name for x in ("LeagueClientUx", "LeagueClient", "League of Legends")):
+                    exe = proc.info.get("exe")
+                    if exe:
+                        d = os.path.dirname(exe)
+                        if _is_valid_league_dir(d):
+                            _CACHED_LEAGUE_INSTALL_DIR = d
+                            return d
+                        # Check parent in case process is in Game\ subfolder
+                        parent = os.path.dirname(d)
+                        if _is_valid_league_dir(parent):
+                            _CACHED_LEAGUE_INSTALL_DIR = parent
+                            return parent
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+    except Exception:
+        pass
+
+    # 2. Riot Client Metadata configuration lookup (works offline)
+    try:
+        metadata_yaml = os.path.join(
+            os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
+            r"Riot Games\Metadata\league_of_legends.live\league_of_legends.live.product_settings.yaml",
+        )
+        if os.path.exists(metadata_yaml):
+            with open(metadata_yaml, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    if "product_install_full_path" in line:
+                        candidate = line.split(":", 1)[1].strip().strip('"').strip("'")
+                        if _is_valid_league_dir(candidate):
+                            _CACHED_LEAGUE_INSTALL_DIR = candidate
+                            return candidate
+    except Exception:
+        pass
+
+    # 3. Known drive search fallback
+    drives = list("CDEFGHIJ")
+    subpaths = [
+        r"Riot Games\League of Legends",
+        r"Program Files\Riot Games\League of Legends",
+        r"Program Files (x86)\Riot Games\League of Legends",
+        r"Games\League of Legends",
+    ]
+    for drive in drives:
+        for sub in subpaths:
+            candidate = f"{drive}:\\{sub}"
+            if _is_valid_league_dir(candidate):
+                _CACHED_LEAGUE_INSTALL_DIR = candidate
+                return candidate
+    return None
+
+
+_CACHED_LEAGUE_INSTALL_DIR = None
+_LCU_SESSION = None
+
+
+def get_lcu_gameflow_phase():
+    """
+    Queries League Client Update (LCU) API to get the current gameflow phase.
+    Returns: string (e.g. 'ChampSelect', 'Lobby', 'InProgress', 'None') or None if client offline.
+    """
+    global _CACHED_LEAGUE_INSTALL_DIR, _LCU_SESSION
+
+    if not _CACHED_LEAGUE_INSTALL_DIR or not os.path.exists(os.path.join(_CACHED_LEAGUE_INSTALL_DIR, "lockfile")):
+        _CACHED_LEAGUE_INSTALL_DIR = find_league_install_dir()
+        if not _CACHED_LEAGUE_INSTALL_DIR:
+            return None
+
+    lockfile_path = os.path.join(_CACHED_LEAGUE_INSTALL_DIR, "lockfile")
+    if not os.path.exists(lockfile_path):
+        _CACHED_LEAGUE_INSTALL_DIR = None
+        return None
+
+    try:
+        with open(lockfile_path, "r", encoding="utf-8") as f:
+            data = f.read().split(":")
+        if len(data) < 4:
+            return None
+        port = data[2]
+        password = data[3]
+        auth = base64.b64encode(f"riot:{password}".encode()).decode()
+
+        if _LCU_SESSION is None:
+            _LCU_SESSION = requests.Session()
+            _LCU_SESSION.verify = False
+
+        r = _LCU_SESSION.get(
+            f"https://127.0.0.1:{port}/lol-gameflow/v1/gameflow-phase",
+            headers={"Authorization": f"Basic {auth}"},
+            timeout=1.0,
+        )
+        if r.status_code == 200:
+            val = r.json()
+            return val if isinstance(val, str) else str(val)
+    except Exception:
+        pass
+
+    return None
+
+
+def format_patch_version(raw_version: str | None) -> str:
+    """Extracts major.minor patch string (e.g. '14.22' or '26.11') from raw version string."""
+    if not raw_version:
+        return ""
+    cleaned = str(raw_version).strip().strip('"').strip("'")
+    parts = cleaned.split(".")
+    if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+        return f"{parts[0]}.{parts[1]}"
+    return cleaned
+
+
+def get_lcu_game_version() -> str | None:
+    """Queries LCU /lol-patch/v1/game-version (Method 2) and returns major.minor patch (e.g. '14.22')."""
+    global _CACHED_LEAGUE_INSTALL_DIR, _LCU_SESSION
+
+    if not _CACHED_LEAGUE_INSTALL_DIR or not os.path.exists(os.path.join(_CACHED_LEAGUE_INSTALL_DIR, "lockfile")):
+        _CACHED_LEAGUE_INSTALL_DIR = find_league_install_dir()
+        if not _CACHED_LEAGUE_INSTALL_DIR:
+            return None
+
+    lockfile_path = os.path.join(_CACHED_LEAGUE_INSTALL_DIR, "lockfile")
+    if not os.path.exists(lockfile_path):
+        return None
+
+    try:
+        with open(lockfile_path, "r", encoding="utf-8") as f:
+            data = f.read().split(":")
+        if len(data) < 4:
+            return None
+        port = data[2]
+        password = data[3]
+        auth = base64.b64encode(f"riot:{password}".encode()).decode()
+
+        if _LCU_SESSION is None:
+            _LCU_SESSION = requests.Session()
+            _LCU_SESSION.verify = False
+
+        r = _LCU_SESSION.get(
+            f"https://127.0.0.1:{port}/lol-patch/v1/game-version",
+            headers={"Authorization": f"Basic {auth}"},
+            timeout=1.0,
+        )
+        if r.status_code == 200:
+            val = r.json()
+            formatted = format_patch_version(val)
+            if formatted:
+                return formatted
+    except Exception:
+        pass
+
+    return None
+
+
+def get_current_patch_version() -> str:
+    """Gets League patch version, prioritizing local LCU (Method 2) with fallback to Data Dragon."""
+    # Method 2: Local LCU API
+    v = get_lcu_game_version()
+    if v:
+        return v
+
+    # Fallback: Riot Data Dragon
+    try:
+        r = requests.get("https://ddragon.leagueoflegends.com/api/versions.json", timeout=1.5)
+        if r.status_code == 200:
+            items = r.json()
+            if isinstance(items, list) and items:
+                return format_patch_version(items[0])
+    except Exception:
+        pass
+
+    return ""
+
+
+class LeagueRecorder:
+    def __init__(self, config=None, log_callback=None, status_callback=None):
+        self.config = config or load_config()
+        self.log_callback = log_callback
+        self.status_callback = status_callback
+
+        self.record_folder = self.config.get("record_folder", os.path.abspath("recordings"))
+        self.native_recorder = NativeAudioRecorder(
+            record_folder=self.record_folder,
+            mic_device=self.config.get("mic_device_index"),
+            mic_device_name=self.config.get("mic_device_name"),
+            log_callback=self.log,
+        )
+        self.native_recorder.set_target_process(
+            pid=int(self.config.get("target_audio_pid", -1)),
+            name=self.config.get("target_audio_name", "Discord"),
+        )
+        self.check_time = 0.05
+
+        os.makedirs(self.record_folder, exist_ok=True)
+
+        self.recording = False
+        self.is_paused = False
+        self.real_game_id = None
+        self.game_patch = ""
+        self.last_game_time = -1
+        self.first_game_time = 0.0
+        self.stop_event = threading.Event()
+
+        # Replay detection cache
+        self._cached_game_pid = None
+        self._cached_is_replay = False
+
+        # Persistent HTTP session for live API polling
+        self.session = requests.Session()
+        self.session.verify = False
+
+    def set_mic_device(self, index, name=None):
+        if hasattr(self, "native_recorder") and self.native_recorder:
+            self.native_recorder.set_mic_device(index, name)
+
+    def log(self, message):
+        print(message)
+        if self.log_callback:
+            try:
+                self.log_callback(message)
+            except Exception:
+                pass
+
+    def update_status(self, status, detail=""):
+        if self.status_callback:
+            try:
+                self.status_callback(status, detail)
+            except Exception:
+                pass
+
+    def fetch_game_id_background(self):
+        self.log(t("logs.query_game_id"))
+        while self.recording and not self.real_game_id and not self.stop_event.is_set():
+            install_dir = find_league_install_dir()
+            if install_dir:
+                lockfile_path = os.path.join(install_dir, "lockfile")
+                if os.path.exists(lockfile_path):
+                    try:
+                        with open(lockfile_path, "r") as f:
+                            data = f.read().split(":")
+                        port = data[2]
+                        password = data[3]
+                        auth = base64.b64encode(f"riot:{password}".encode()).decode()
+
+                        r = self.session.get(
+                            f"https://127.0.0.1:{port}/lol-gameflow/v1/session",
+                            headers={"Authorization": f"Basic {auth}"},
+                            verify=False,
+                            timeout=2,
+                        )
+                        if not self.game_patch:
+                            p_ver = get_lcu_game_version()
+                            if p_ver:
+                                self.game_patch = p_ver
+                        gid = r.json().get("gameData", {}).get("gameId")
+                        if gid and gid > 0:
+                            self.real_game_id = str(gid)
+                            self.log(t("logs.game_id_found", game_id=self.real_game_id))
+                            cur_time = max(0.0, self.last_game_time)
+                            time_str = f"{int(cur_time // 60):02d}:{int(cur_time % 60):02d}"
+                            self.update_status(
+                                "RECORDING",
+                                t("record.match_time", game_id=self.real_game_id, time=time_str),
+                            )
+                            break
+                    except Exception:
+                        pass
+            # Sleep with cancellation check
+            for _ in range(15):
+                if not self.recording or self.stop_event.is_set() or self.real_game_id:
+                    break
+                time.sleep(0.2)
+
+    def check_if_game_is_replay(self):
+        """Checks if the currently running game client is a replay (.rofl) rather than a live match."""
+        # Check cached verdict for active game PID
+        if self._cached_game_pid:
+            try:
+                p = psutil.Process(self._cached_game_pid)
+                if p.is_running() and "League of Legends.exe" in p.name():
+                    return self._cached_is_replay
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                self._cached_game_pid = None
+                self._cached_is_replay = False
+
+        # 1. Fast process inspection for .rofl in League command-line arguments
+        try:
+            for proc in psutil.process_iter(["pid", "name"]):
+                name = proc.info.get("name") or ""
+                if "League of Legends.exe" in name:
+                    pid = proc.info.get("pid")
+                    cmdline = proc.info.get("cmdline")
+                    if cmdline is None and hasattr(proc, "cmdline"):
+                        try:
+                            cmdline = proc.cmdline()
+                        except Exception:
+                            cmdline = []
+                    cmdline = cmdline or []
+                    is_rofl = any(arg.lower().endswith(".rofl") for arg in cmdline)
+                    self._cached_game_pid = pid
+                    self._cached_is_replay = is_rofl
+                    return is_rofl
+        except Exception:
+            pass
+
+        # 2. League Replay Playback API (:2999/replay/playback)
+        try:
+            r = self.session.get(
+                "https://127.0.0.1:2999/replay/playback",
+                timeout=0.1,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, dict) and "time" in data:
+                    self._cached_is_replay = True
+                    return True
+        except Exception:
+            pass
+
+        return False
+
+    def is_league_game_running(self):
+        """Checks if the League of Legends 3D game client process is currently running."""
+        # Fast-path: query cached game PID directly
+        if self._cached_game_pid:
+            try:
+                p = psutil.Process(self._cached_game_pid)
+                if p.is_running() and "League of Legends.exe" in (p.name() or ""):
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                self._cached_game_pid = None
+
+        try:
+            for proc in psutil.process_iter(["pid", "name"]):
+                try:
+                    if "League of Legends.exe" in (proc.info.get("name") or ""):
+                        self._cached_game_pid = proc.info.get("pid")
+                        return True
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except Exception:
+            pass
+        return False
+
+    def abort_recording(self):
+        """Immediately aborts recording if started by mistake (e.g., during replay)."""
+        if not self.recording:
+            return
+        self.recording = False
+        try:
+            self.native_recorder.stop_and_finalize("aborted")
+        except Exception:
+            pass
+        self.log(t("logs.replay_abort"))
+
+    def close(self):
+        """Closes all recording, monitoring, and network session resources."""
+        self.stop_event.set()
+        self.abort_recording()
+        if hasattr(self, "native_recorder") and self.native_recorder:
+            try:
+                self.native_recorder.close()
+            except Exception:
+                pass
+        if hasattr(self, "session") and self.session:
+            try:
+                self.session.close()
+            except Exception:
+                pass
+
+    def get_timing_breakdown(self) -> dict:
+        """Returns high-precision timing breakdown: base_time, dt, current_time, is_paused."""
+        if not getattr(self, "recording", False) or self.last_game_time < 0:
+            return {"base_time": -1.0, "dt": 0.0, "current_time": -1.0, "is_paused": False}
+        if hasattr(self, "native_recorder") and self.native_recorder:
+            return self.native_recorder.get_timing_breakdown()
+        gt = max(0.0, self.last_game_time) if self.last_game_time >= 0 else 0.0
+        return {"base_time": self.last_game_time, "dt": 0.0, "current_time": gt, "is_paused": self.is_paused}
+
+    def start_recording(self, initial_game_time=0.0, t_poll_start=None, match_zero_time=None):
+        """
+        Starts audio recording immediately with zero latency.
+        Accurately accounts for invocation latency to ensure sample-accurate alignment.
+        """
+        if self.recording:
+            return
+
+        if self.check_if_game_is_replay():
+            self.log(t("logs.replay_guard"))
+            return
+
+        t_now = time.monotonic()
+        ref_time = t_poll_start if t_poll_start is not None else t_now
+        base_time = float(initial_game_time) if initial_game_time is not None else 0.0
+        delay = max(0.0, t_now - ref_time)
+        measured_start_time = base_time + delay
+
+        if match_zero_time is None:
+            match_zero_time = ref_time - base_time
+
+        session_id = str(int(time.time()))
+        offset_result = self.native_recorder.start_recording(
+            session_id,
+            match_zero_time=match_zero_time,
+            initial_game_time=measured_start_time,
+        )
+
+        if isinstance(offset_result, (int, float)):
+            self.first_game_time = float(offset_result)
+        else:
+            # Fallback when native_recorder is a test mock without return value
+            self.first_game_time = 0.0 if base_time <= 0.5 else measured_start_time
+
+        self.last_game_time = base_time
+        self.recording = True
+        self.is_paused = False
+        self.last_advance_time = time.monotonic()
+        self.pause_tick_count = 0
+        self.real_game_id = None
+        self.game_patch = get_current_patch_version()
+        if self.game_patch:
+            self.log(f"🎮 [Patch] League of Legends patch detected: {self.game_patch}")
+        self.log(t("logs.match_detected", time=self.first_game_time))
+        init_time = max(0.0, self.first_game_time)
+        init_time_str = f"{int(init_time // 60):02d}:{int(init_time % 60):02d}"
+        self.update_status("RECORDING", t("record.live_match_time", time=init_time_str))
+        threading.Thread(target=self.fetch_game_id_background, daemon=True).start()
+
+    def convert_to_mp3(self, video_path, base_name, initial_offset=0.0):
+        """
+        Converts recording to high quality MP3 with sample-accurate alignment.
+        """
+        self.log(t("logs.converting_mp3", name=base_name))
+        self.update_status("CONVERTING", f"{base_name}...")
+        mp3_path = os.path.join(self.record_folder, f"{base_name}.mp3")
+
+        counter = 1
+        while os.path.exists(mp3_path):
+            mp3_path = os.path.join(self.record_folder, f"{base_name}_{counter}.mp3")
+            counter += 1
+
+        ffmpeg_cmd = get_ffmpeg_path()
+        try:
+            cmd = [ffmpeg_cmd, "-y", "-threads", "0", "-i", video_path]
+            if initial_offset < -0.005:
+                cmd.extend(["-ss", f"{abs(initial_offset):.3f}"])
+            elif initial_offset > 0.005:
+                delay_ms = int(initial_offset * 1000)
+                cmd.extend(["-af", f"adelay=delays={delay_ms}:all=1"])
+
+            cmd.extend(["-threads", "0", "-q:a", "0", "-map", "a", mp3_path])
+
+            subprocess.run(
+                cmd,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            )
+            os.remove(video_path)
+
+            if os.path.exists(mp3_path) and os.path.getsize(mp3_path) < 10 * 1024:
+                try:
+                    os.remove(mp3_path)
+                except Exception:
+                    pass
+                self.log(f"⚠️ Discarded tiny stub recording (<10KB): {os.path.basename(mp3_path)}")
+                self.update_status("WATCHING", t("record.waiting_for_match"))
+                return
+
+            self.log(t("logs.saved_mp3", path=mp3_path))
+            self.update_status("SAVED", f"{os.path.basename(mp3_path)}")
+        except FileNotFoundError:
+            self.log(t("logs.ffmpeg_missing", path=video_path))
+        except Exception as e:
+            self.log(t("logs.convert_error", error=e))
+
+    def stop_recording_and_rename(self):
+        if not self.recording:
+            return
+
+        self.log(t("logs.rec_stop"))
+        self.update_status("SAVING", t("record.saving_audio"))
+
+        self.recording = False
+        # Quick final attempt to retrieve real Game ID if not found yet
+        if not self.real_game_id:
+            try:
+                install_dir = find_league_install_dir()
+                if install_dir:
+                    lockfile_path = os.path.join(install_dir, "lockfile")
+                    if os.path.exists(lockfile_path):
+                        with open(lockfile_path, "r") as f:
+                            data = f.read().split(":")
+                        port = data[2]
+                        password = data[3]
+                        auth = base64.b64encode(f"riot:{password}".encode()).decode()
+                        r = self.session.get(
+                            f"https://127.0.0.1:{port}/lol-gameflow/v1/session",
+                            headers={"Authorization": f"Basic {auth}"},
+                            verify=False,
+                            timeout=1.5,
+                        )
+                        gid = r.json().get("gameData", {}).get("gameId")
+                        if gid and gid > 0:
+                            self.real_game_id = str(gid)
+                            self.log(t("logs.game_id_found", game_id=self.real_game_id))
+            except Exception:
+                pass
+
+        base_name = (
+            self.real_game_id if self.real_game_id else f"Scrim_{time.strftime('%Y%m%d_%H%M%S')}"
+        )
+
+        last_milestone = [-1]
+
+        def on_finalize_progress(pct, detail):
+            int_pct = int(pct)
+            self.update_status("SAVING", f"{int_pct}% — {detail}")
+            for m in (25, 50, 75, 100):
+                if int_pct >= m and last_milestone[0] < m:
+                    last_milestone[0] = m
+                    self.log(f"⏳ Finalizing: {int_pct}% ({detail})")
+
+        final_mp3 = self.native_recorder.stop_and_finalize(
+            base_name,
+            initial_offset=self.first_game_time,
+            progress_callback=on_finalize_progress,
+        )
+        if final_mp3:
+            self.log(t("logs.saved_mp3", path=final_mp3))
+            self.update_status("SAVED", f"{os.path.basename(final_mp3)}")
+
+            # Automatically stamp and store initial metadata with date recorded
+            try:
+                import datetime
+
+                from app.scrim_meta import save_scrim_metadata
+
+                recorded_dt = datetime.datetime.now().strftime("%Y-%m-%d")
+                save_scrim_metadata(
+                    self.record_folder,
+                    base_name,
+                    {
+                        "game_id": base_name,
+                        "team_tag": "",
+                        "notes": "",
+                        "game_patch": self.game_patch or "",
+                        "recorded_at": recorded_dt,
+                    },
+                    embed_id3=True,
+                    filepath=final_mp3,
+                )
+            except Exception as exc:
+                self.log(f"⚠️ Could not stamp initial metadata: {exc}")
+
+            # Match recording completed: automatically stop listening
+            self.stop()
+        else:
+            self.update_status("WATCHING", t("record.waiting_for_match"))
+        self.first_game_time = 0.0
+
+    def run_loop(self):
+        self.stop_event.clear()
+        self.log(t("logs.recorder_started"))
+        self.update_status("WATCHING", t("record.waiting_for_match"))
+
+        # Pre-arm audio capture into circular pre-roll buffer ahead of match start
+        self.native_recorder.arm_pre_roll()
+
+        consecutive_misses = 0
+        self.pause_tick_count = 0
+        self.last_advance_time = time.monotonic()
+
+        while not self.stop_event.is_set():
+            t_poll_start = time.monotonic()
+            game_time = None
+            try:
+                # 1. Try lightweight gamestats endpoint (avoids 500 errors during loading screen)
+                try:
+                    r = self.session.get(
+                        "https://127.0.0.1:2999/liveclientdata/gamestats",
+                        timeout=0.15,
+                    )
+                    if r.status_code == 200:
+                        data = r.json()
+                        if isinstance(data, dict):
+                            game_time = data.get("gameTime")
+                except Exception:
+                    pass
+
+                # 2. Fallback to allgamedata if needed
+                if game_time is None:
+                    try:
+                        r = self.session.get(
+                            "https://127.0.0.1:2999/liveclientdata/allgamedata",
+                            timeout=0.15,
+                        )
+                        if r.status_code == 200:
+                            data = r.json()
+                            if isinstance(data, dict):
+                                game_time = data.get("gameData", {}).get("gameTime")
+                    except Exception:
+                        pass
+
+                if game_time is not None:
+                    consecutive_misses = 0
+
+                    # CRITICAL REPLAY CHECK: If a replay is running, do NOT record!
+                    if self.check_if_game_is_replay():
+                        if self.recording:
+                            self.abort_recording()
+                        self.update_status("WATCHING", t("replay.waiting_for_replay"))
+                        for _ in range(10):
+                            if self.stop_event.is_set():
+                                break
+                            time.sleep(0.1)
+                        continue
+
+                    # Only start recording once the match clock starts (> 0.0).
+                    # Do NOT start recording during loading screen (game_time == 0.0) or countdown (< 0.0).
+                    if not self.recording:
+                        if game_time > 0.0:
+                            t_poll_finish = time.monotonic()
+                            t_sample = (t_poll_start + t_poll_finish) / 2.0
+                            t_match_zero = t_sample - game_time
+                            self.start_recording(
+                                initial_game_time=game_time,
+                                t_poll_start=t_poll_start,
+                                match_zero_time=t_match_zero,
+                            )
+                        elif game_time == 0.0:
+                            self.update_status("WATCHING", t("record.waiting_for_match"))
+                        else:
+                            # Pre-game countdown in progress — monitor and wait for 0:00
+                            cd_str = f"-{abs(game_time):.1f}s"
+                            self.update_status("WATCHING", t("record.match_countdown", time=cd_str))
+
+                    if self.recording:
+                        # Synchronize audio timeline directly to in-game clock
+                        self.native_recorder.update_game_time(game_time)
+
+                        # Match pause detection:
+                        # Riot's Live Client Data API refreshes at ~4Hz (every 250ms).
+                        # Between API refreshes (0ms - 250ms), game_time naturally remains unchanged during normal gameplay.
+                        # Aggressive pause detection: if unchanged for >= 0.28s (or >= 8 polls @ 20ms),
+                        # an in-game pause is detected immediately, and detection lag audio is sliced out.
+                        if game_time == self.last_game_time and game_time > 0:
+                            self.pause_tick_count += 1
+                            elapsed_unchanged = time.monotonic() - getattr(
+                                self, "last_advance_time", time.monotonic()
+                            )
+                            if (
+                                self.pause_tick_count >= 8 or elapsed_unchanged >= 0.28
+                            ) and not self.is_paused:
+                                pause_start_mono = getattr(self, "last_advance_time", time.monotonic())
+                                self.native_recorder.pause(
+                                    pause_game_time=self.last_game_time,
+                                    pause_mono_time=pause_start_mono,
+                                )
+                                self.is_paused = True
+                                self.log(t("logs.pause"))
+                                p_time_val = max(0.0, game_time)
+                                p_time_str = (
+                                    f"{int(p_time_val // 60):02d}:{int(p_time_val % 60):02d}"
+                                )
+                                self.update_status(
+                                    "PAUSED", t("record.paused_time", time=p_time_str)
+                                )
+
+                        elif game_time > self.last_game_time:
+                            self.pause_tick_count = 0
+                            self.last_advance_time = time.monotonic()
+
+                            if self.is_paused:
+                                self.native_recorder.resume()
+                                self.is_paused = False
+                                self.log(t("logs.unpause"))
+                                time_val = max(0.0, game_time)
+                                time_str = f"{int(time_val // 60):02d}:{int(time_val % 60):02d}"
+                                detail_text = (
+                                    t("record.match_time", game_id=self.real_game_id, time=time_str)
+                                    if self.real_game_id
+                                    else t("record.live_match_time", time=time_str)
+                                )
+                                self.update_status("RECORDING", detail_text)
+                            elif int(game_time) != int(self.last_game_time):
+                                time_val = max(0.0, game_time)
+                                time_str = f"{int(time_val // 60):02d}:{int(time_val % 60):02d}"
+                                detail_text = (
+                                    t("record.match_time", game_id=self.real_game_id, time=time_str)
+                                    if self.real_game_id
+                                    else t("record.live_match_time", time=time_str)
+                                )
+                                self.update_status("RECORDING", detail_text)
+
+                        self.last_game_time = game_time
+
+                else:
+                    # game_time is None (League API stopped responding or connection dropped)
+                    if self.recording:
+                        consecutive_misses += 1
+                        if consecutive_misses >= 3:
+                            league_alive = self.is_league_game_running()
+                            if not league_alive or consecutive_misses >= 15:
+                                self.stop_recording_and_rename()
+                                consecutive_misses = 0
+                                break
+                    else:
+                        consecutive_misses = 0
+
+            except requests.exceptions.RequestException:
+                if self.recording:
+                    self.stop_recording_and_rename()
+                    break
+                else:
+                    self.update_status("WATCHING", t("record.waiting_for_match"))
+
+            # Polling frequency:
+            # - Pre-match countdown (game_time < 0.0): 10ms high-precision polling to catch match start
+            # - Active recording: 20ms (0.02s) aggressive high-speed polling for instant pause/unpause detection
+            # - Client offline / idle: 150ms to avoid hammering localhost when the port is closed
+            is_countdown = (not self.recording) and (game_time is not None and game_time < 0.0)
+            poll_interval = 0.01 if is_countdown else (0.02 if self.recording else 0.15)
+            slice_count = max(1, int(poll_interval / 0.01))
+            for _ in range(slice_count):
+                if self.stop_event.is_set():
+                    break
+                time.sleep(0.01)
+
+        # Clean shutdown if stopped while recording
+        if self.recording:
+            self.stop_recording_and_rename()
+
+        self.close()
+        self.log(t("logs.recorder_stopped"))
+        self.update_status("STOPPED", "")
+
+    def stop(self):
+        self.stop_event.set()
+        self.close()
+
+
+def main():
+    rec = LeagueRecorder()
+    rec.run_loop()
+
+
+if __name__ == "__main__":
+    main()
