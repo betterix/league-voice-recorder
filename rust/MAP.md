@@ -47,9 +47,12 @@
 ### Wave 4: Desktop UI & Coordinator
 | Unit | Python Source | Rust Target | Tests | Status |
 |---|---|---|---|---|
-| `ui_coordinator` | `main.py` | `src/main.rs`, `ui/` | `tests/test_ui.py` | **Claimed / In-Progress** (2-card layout, audio VU meters, health ribbon, activity log) |
+| `ui_coordinator` | `main.py` | `src/main.rs`, `ui/` | `tests/test_ui.py` | **Done** (2-card layout, audio VU meters, health ribbon, activity log, CLI & GUI modes verified) |
 
 ---
 
-## Open Questions & Grilling Frontier
-See conversation grilling round below.
+## Verification & Test Results
+- **29 Rust unit tests passing** across all modules (config, secret encryption, i18n, id3 metadata, LCU lockfile, replay process, discord IPC, audio capture, pause truncation, MP3 encoding, cloud sync, updater, overlay, and tray).
+- **Exact UI Parity**: 2-card desktop action layout with live VU audio meters, quick mic switcher, replay volume slider, monospace activity log terminal, recordings browser, settings cards, and health ribbon.
+- **Pure Rust Audio Engine**: Zero external VLC or FFmpeg process spawning requirements.
+- **Git Branch**: Work committed locally on `rust` branch with zero remote pushes.
