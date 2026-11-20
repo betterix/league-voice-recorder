@@ -24,9 +24,9 @@
 ### Wave 1: Process Inspection & Live APIs
 | Unit | Python Source | Rust Target | Tests | Status |
 |---|---|---|---|---|
-| `lcu_lockfile` | `app/record.py` (lockfile/session) | `src/lcu/lockfile.rs`, `src/lcu/live_api.rs` | `tests/test_recorder.py` | **Claimed / In-Progress** |
-| `replay_process` | `app/play_replay.py` (.rofl detection) | `src/replay/process.rs`, `src/replay/api.rs` | `tests/test_replay_sync.py` | **Claimed / In-Progress** (Game ID regex parsing tests passing) |
-| `discord_ipc` | `app/discord_ipc.py` | `src/discord_ipc/mod.rs` | `tests/test_discord_ipc.py` | **Open** |
+| `lcu_lockfile` | `app/record.py` (lockfile/session) | `src/lcu/lockfile.rs`, `src/lcu/live_api.rs` | `tests/test_recorder.py` | **Done** (Lockfile parsing & gameflow extraction verified) |
+| `replay_process` | `app/play_replay.py` (.rofl detection) | `src/replay/process.rs`, `src/replay/api.rs` | `tests/test_replay_sync.py` | **Done** (Game ID regex parsing & process inspection verified) |
+| `discord_ipc` | `app/discord_ipc.py` | `src/discord_ipc/mod.rs` | `tests/test_discord_ipc.py` | **Done** (IPC binary packet codec & mute/deaf event tracking verified) |
 
 ### Wave 2: Audio Engines & Sinks
 | Unit | Python Source | Rust Target | Tests | Status |
