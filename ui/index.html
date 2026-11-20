@@ -8,7 +8,7 @@
 </head>
 <body>
   <div class="app-container">
-    <!-- Header -->
+    <!-- Header Frame matching CustomTkinter header_frame -->
     <header class="app-header">
       <div class="brand">
         <div class="logo-badge">🎙️</div>
@@ -23,39 +23,49 @@
       <div class="health-ribbon">
         <div class="health-pill" id="pill-discord">
           <span class="dot"></span>
-          <span class="text" id="pill-discord-text">Audio: Standby</span>
+          <span class="text" id="pill-discord-text">Discord: ⚪ Checking...</span>
         </div>
         <div class="health-pill" id="pill-league">
           <span class="dot"></span>
-          <span class="text" id="pill-league-text">League: Watching</span>
+          <span class="text" id="pill-league-text">League Client: ⚪ Checking...</span>
         </div>
         <div class="health-pill online" id="pill-engine">
           <span class="dot"></span>
-          <span class="text" id="pill-engine-text">Player: Ready</span>
+          <span class="text" id="pill-engine-text">Player: 🟢 Ready</span>
         </div>
+        <button class="btn-theme" id="btn-theme-toggle" onclick="toggleTheme()" title="Toggle Theme">🌙</button>
+        <button class="btn-refresh-health" onclick="refreshHealth()" title="Refresh System Health">🔄 Refresh</button>
       </div>
     </header>
 
-    <!-- Primary Action Controls (2-Card Architecture matching Python) -->
-    <section class="controls-card">
+    <!-- 2-Card Main Action Section matching CustomTkinter action_frame -->
+    <section class="action-frame">
       <div class="action-cards-grid">
         <!-- Card 1: Scrim Recorder -->
         <div class="action-card rec-card">
           <div class="action-card-header">
             <span class="action-card-title">🎙️ SCRIM RECORDER</span>
-            <span class="action-card-status" id="rec-status-pill">● IDLE</span>
+            <span class="action-card-status" id="rec-status-pill">● IDLE (Click Start to monitor)</span>
           </div>
-          <button id="btn-rec" class="btn-primary rec-btn" onclick="toggleRecordingWatcher()">
-            <span class="icon">🔴</span>
-            <span class="btn-text" id="btn-rec-text">Start Recording Watcher</span>
+          <button id="btn-rec" class="btn-action rec-btn" onclick="toggleRecordingWatcher()">
+            <span class="btn-text" id="btn-rec-text">🔴 Start Recording Watcher</span>
           </button>
-          <div class="action-row">
-            <select id="quick-mic" class="styled-select" onchange="onQuickMicChange(this.value)">
-              <option value="default">Default Microphone</option>
-            </select>
-            <button class="btn-small" onclick="loadAudioDevices()" title="Refresh Mics">🔄</button>
+          <div class="action-row selectors-row">
+            <div class="selector-box">
+              <span class="selector-label">🎯 Target:</span>
+              <select id="quick-target" class="styled-select" disabled>
+                <option value="auto">Discord Audio (Loopback) 🎯</option>
+              </select>
+            </div>
+            <div class="selector-box">
+              <span class="selector-label">🎤 Mic:</span>
+              <select id="quick-mic" class="styled-select" onchange="onQuickMicChange(this.value)">
+                <option value="default">Default Microphone (System) 🎯</option>
+              </select>
+              <button class="btn-small" onclick="loadAudioDevices()" title="Refresh Mics">🔄</button>
+            </div>
           </div>
-          <!-- Live Audio VU Meters -->
+          <!-- Live VU Meters (Discord + Mic) -->
           <div class="meter-box">
             <div class="meter-row">
               <span class="meter-label">🔊 Discord:</span>
@@ -72,197 +82,271 @@
         <div class="action-card rep-card">
           <div class="action-card-header">
             <span class="action-card-title">🎬 REPLAY AUTO-SYNC</span>
-            <span class="action-card-status" id="rep-status-pill">● IDLE</span>
+            <span class="action-card-status" id="rep-status-pill">● IDLE (Click Start to detect .rofl)</span>
           </div>
-          <button id="btn-rep" class="btn-primary rep-btn" onclick="toggleReplayWatcher()">
-            <span class="icon">▶</span>
-            <span class="btn-text" id="btn-rep-text">Start Replay Auto-Sync</span>
+          <button id="btn-rep" class="btn-action rep-btn" onclick="toggleReplayWatcher()">
+            <span class="btn-text" id="btn-rep-text">▶ Start Replay Auto-Sync</span>
           </button>
-          <div class="action-row" style="align-items: center; justify-content: space-between;">
-            <span style="font-size: 12px; color: var(--gold-light);">Volume:</span>
-            <input type="range" id="quick-vol" min="0" max="100" value="100" oninput="updateVolume(this.value)" style="flex: 1; margin: 0 8px;">
-            <span id="quick-vol-display" style="font-size: 12px; font-weight: 600; width: 40px; text-align: right;">100%</span>
+          <div class="action-row vol-row">
+            <span class="vol-label">Volume:</span>
+            <input type="range" id="quick-vol" min="0" max="100" value="80" oninput="updateVolume(this.value)" class="vol-slider">
+            <span id="quick-vol-display" class="vol-display">80%</span>
+            <button class="btn-small" id="btn-quick-mute" onclick="toggleMute()" title="Toggle Mute (Hotkey M)">🔊</button>
           </div>
           <div class="rep-hint-row">
             <span class="rep-hint">💡 Press <b>M</b> to Mute/Unmute replay voice</span>
-            <span class="rep-info">• Pure Rust Rodio Engine</span>
+            <span class="rep-engine-badge">• Pure Rust Rodio Engine</span>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Tabbed Navigation -->
+    <!-- Tabbed Navigation matching CustomTkinter Notebook -->
     <nav class="tab-nav">
       <button class="tab-btn active" id="tab-btn-log" onclick="switchTab('log')">📋 Activity Log</button>
       <button class="tab-btn" id="tab-btn-recordings" onclick="switchTab('recordings')">📁 Scrim Recordings</button>
       <button class="tab-btn" id="tab-btn-settings" onclick="switchTab('settings')">⚙️ Settings</button>
     </nav>
 
-    <!-- Tab 1: Activity Log -->
+    <!-- Tab 1: Activity Log matching CustomTkinter _setup_tab_log -->
     <main class="tab-content active" id="tab-log">
-      <div class="terminal-toolbar">
-        <span class="terminal-title" id="txt-live-log">LIVE EVENT LOG</span>
-        <div style="display: flex; gap: 8px;">
-          <button class="btn-small" onclick="copyLog()">📋 Copy</button>
-          <button class="btn-small" onclick="clearLog()">🗑 Clear</button>
+      <div class="log-container-split">
+        <!-- Main Log Box (Consolas, word-wrap, autoscroll) -->
+        <div class="log-main-box">
+          <div class="terminal-box" id="terminal"></div>
         </div>
+        <!-- Collapsible Telemetry & Debug Panel matching _setup_debug_telemetry_panel -->
+        <aside class="debug-panel" id="debug-panel" style="display: none;">
+          <div class="debug-panel-header">
+            <span class="debug-title">🔬 Telemetry & Diagnostics</span>
+          </div>
+          <div class="debug-content">
+            <div class="debug-row"><span class="k">Match State:</span> <span class="v" id="dbg-match-state">Idle</span></div>
+            <div class="debug-row"><span class="k">Game Clock:</span> <span class="v" id="dbg-game-clock">--:--</span></div>
+            <div class="debug-row"><span class="k">LCU Phase:</span> <span class="v" id="dbg-lcu-phase">Waiting</span></div>
+            <div class="debug-row"><span class="k">Replay Sync:</span> <span class="v" id="dbg-replay-sync">Inactive</span></div>
+            <div class="debug-row"><span class="k">Audio Rate:</span> <span class="v">48,000 Hz / Stereo</span></div>
+            <div class="debug-row"><span class="k">App Loopback:</span> <span class="v" id="dbg-app-peak">0%</span></div>
+            <div class="debug-row"><span class="k">Mic Level:</span> <span class="v" id="dbg-mic-peak">0%</span></div>
+            <div class="debug-row"><span class="k">Engine:</span> <span class="v" style="color: var(--teal-accent)">Pure Rust WASAPI</span></div>
+          </div>
+        </aside>
       </div>
-      <div class="terminal-box" id="terminal">
-        <div class="log-line info"><span class="log-time">[00:00:00]</span> Engine initialized. Zero-latency WASAPI loopback & Replay Sync active.</div>
+
+      <!-- Control Bar below log matching CustomTkinter log_ctrl_frame -->
+      <div class="log-control-bar">
+        <label class="control-check">
+          <input type="checkbox" id="cb-autoscroll" checked onchange="toggleAutoscroll(this.checked)">
+          <span>Auto-scroll to latest</span>
+        </label>
+        <label class="control-check" style="margin-left: 16px;">
+          <input type="checkbox" id="cb-debug-panel" onchange="toggleDebugPanel(this.checked)">
+          <span>Show Telemetry & Debug Panel</span>
+        </label>
+        <div class="log-btn-group">
+          <button class="btn-small" onclick="copyLog()">📋 Copy Log</button>
+          <button class="btn-small" onclick="clearLog()">🗑 Clear Log</button>
+        </div>
       </div>
     </main>
 
-    <!-- Tab 2: Scrim Recordings -->
+    <!-- Tab 2: Scrim Recordings matching CustomTkinter _setup_tab_recordings -->
     <main class="tab-content" id="tab-recordings">
       <div class="recordings-toolbar">
-        <span id="recordings-count-text">Recordings: 0 files (0.0 MB)</span>
-        <div style="margin-left: auto; display: flex; gap: 8px;">
+        <span id="recordings-count-text">Recordings in folder: 0 files (0.0 MB)</span>
+        <div class="recordings-toolbar-actions">
           <button class="btn-small" onclick="loadRecordings()">🔄 Refresh</button>
-          <button class="btn-small" onclick="openRecordingsFolder()">📂 Open Folder</button>
+          <button class="btn-small" onclick="openRecordingsFolder()">📂 Open Folder in Explorer</button>
         </div>
       </div>
       <div class="recordings-list" id="recordings-list">
-        <div class="empty-state">No recordings found in recordings folder.</div>
+        <div class="empty-state">No recordings found yet in recordings folder.</div>
       </div>
     </main>
 
-    <!-- Tab 3: Settings (Scrollable) -->
+    <!-- Tab 3: Settings matching CustomTkinter _setup_tab_settings (6 Cards, Auto-save) -->
     <main class="tab-content" id="tab-settings">
       <div class="settings-scroll-container">
         
-        <!-- CARD 1: DIRECTORIES & STORAGE -->
+        <!-- CARD 1: DIRECTORIES & STORAGE (Paths & System Settings) -->
         <div class="settings-card">
-          <div class="card-title">📁 DIRECTORIES & STORAGE</div>
+          <div class="card-title">📁 Paths & System Settings</div>
           
-          <div class="setting-row">
-            <div class="setting-label-col">
-              <span class="setting-label">Recordings Folder</span>
-              <span class="setting-desc">Where scrim audio (.mp3) files are saved.</span>
-            </div>
-            <div class="setting-input-col">
-              <input type="text" id="cfg-folder" placeholder="C:\Users\...\Documents\League Voice Recorder\recordings">
-              <button class="btn-small" onclick="openRecordingsFolder()">Open</button>
-            </div>
+          <div class="setting-grid-row">
+            <span class="setting-lbl">Recordings Folder:</span>
+            <input type="text" id="cfg-folder" class="setting-input" onchange="autoSaveSettings()">
+            <button class="btn-small" onclick="openRecordingsFolder()">Browse...</button>
           </div>
 
-          <div class="setting-row">
-            <div class="setting-label-col">
-              <span class="setting-label">Replay Audio Volume</span>
-              <span class="setting-desc">Playback volume during replay sync (Press M to mute).</span>
-            </div>
-            <div class="setting-input-col" style="align-items: center;">
-              <input type="range" id="cfg-volume" min="0" max="100" value="100" oninput="updateVolume(this.value)" style="flex: 1;">
-              <span id="vol-display" style="width: 45px; text-align: right; font-weight: 600; font-size: 12px;">100%</span>
-            </div>
+          <div class="setting-grid-row">
+            <span class="setting-lbl">VLC Directory:</span>
+            <input type="text" id="cfg-vlc-dir" class="setting-input" placeholder="C:\Program Files\VideoLAN\VLC" onchange="autoSaveSettings()">
+            <button class="btn-small" onclick="browseVlcFolder()">Browse...</button>
+          </div>
+
+          <div class="setting-grid-row">
+            <span class="setting-lbl">Replay Volume (%):</span>
+            <input type="number" id="cfg-volume" min="0" max="100" class="setting-input" style="width: 100px;" onchange="autoSaveSettings()">
+            <span></span>
           </div>
         </div>
 
         <!-- CARD 2: INTERFACE & AUDIO INPUT -->
         <div class="settings-card">
-          <div class="card-title">🌐 INTERFACE & AUDIO INPUT</div>
+          <div class="card-title">🌐 Interface & Audio Input</div>
 
-          <div class="setting-row">
-            <div class="setting-label-col">
-              <span class="setting-label">Interface Language</span>
-              <span class="setting-desc">Select display language for buttons, tabs, and status pills.</span>
-            </div>
-            <div class="setting-input-col">
-              <select id="cfg-lang" class="styled-select" onchange="changeLanguage(this.value)">
-                <option value="en">English</option>
-                <option value="hu">Magyar (Hungarian)</option>
-              </select>
-            </div>
+          <div class="setting-grid-row">
+            <span class="setting-lbl">Interface Language:</span>
+            <select id="cfg-lang" class="styled-select" onchange="changeLanguage(this.value)">
+              <option value="en">English</option>
+              <option value="hu">Magyar (Hungarian)</option>
+            </select>
+            <span></span>
           </div>
 
-          <div class="setting-row">
-            <div class="setting-label-col">
-              <span class="setting-label">Microphone Input Device</span>
-              <span class="setting-desc">Windows WASAPI audio input device to record voice.</span>
-            </div>
-            <div class="setting-input-col">
-              <select id="cfg-mic" class="styled-select" onchange="markSettingsChanged()">
-                <option value="default">Default Microphone (WASAPI)</option>
-              </select>
-            </div>
+          <div class="setting-grid-row">
+            <span class="setting-lbl">Appearance Theme:</span>
+            <select id="cfg-theme" class="styled-select" onchange="onThemeChanged(this.value)">
+              <option value="dark">Dark 🌙</option>
+              <option value="light">Light ☀️</option>
+              <option value="system">System Default 💻</option>
+            </select>
+            <span></span>
+          </div>
+
+          <div class="setting-grid-row">
+            <span class="setting-lbl">Microphone Input:</span>
+            <select id="cfg-mic" class="styled-select" onchange="autoSaveSettings()">
+              <option value="default">Default Microphone (System) 🎯</option>
+            </select>
+            <span></span>
           </div>
         </div>
 
         <!-- CARD 3: MATCH AUTOMATION & WORKFLOW -->
         <div class="settings-card">
-          <div class="card-title">⚡ MATCH AUTOMATION & WORKFLOW</div>
+          <div class="card-title">⚡ Match Automation & Workflow</div>
 
-          <label style="display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer;">
-            <input type="checkbox" id="cfg-auto-champ" checked onchange="markSettingsChanged()">
-            <span>Auto-Start Recording during Champ Select / Match</span>
-          </label>
+          <div class="setting-switch-row">
+            <span class="setting-lbl">Auto-Start in Champ Select:</span>
+            <label class="switch-container">
+              <input type="checkbox" id="cfg-auto-champ" checked onchange="autoSaveSettings()">
+              <span class="switch-slider"></span>
+              <span class="switch-desc">Automatically starts recording watcher when entering Champion Select</span>
+            </label>
+          </div>
 
-          <label style="display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer;">
-            <input type="checkbox" id="cfg-auto-replay" checked onchange="markSettingsChanged()">
-            <span>Auto-Start Replay Sync when .rofl replay opens</span>
-          </label>
+          <div class="setting-switch-row">
+            <span class="setting-lbl">Auto-Start Replay Sync:</span>
+            <label class="switch-container">
+              <input type="checkbox" id="cfg-auto-replay" checked onchange="autoSaveSettings()">
+              <span class="switch-slider"></span>
+              <span class="switch-desc">Automatically starts Replay Auto-Sync when a .rofl replay is opened in League</span>
+            </label>
+          </div>
 
-          <label style="display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer;">
-            <input type="checkbox" id="cfg-minimize-tray" checked onchange="markSettingsChanged()">
-            <span>Minimize to System Tray</span>
-          </label>
+          <div class="setting-switch-row">
+            <span class="setting-lbl">Minimize to System Tray:</span>
+            <label class="switch-container">
+              <input type="checkbox" id="cfg-minimize-tray" checked onchange="autoSaveSettings()">
+              <span class="switch-slider"></span>
+              <span class="switch-desc">Keep running in background when minimized with titlebar button</span>
+            </label>
+          </div>
         </div>
 
-        <!-- CARD 4: LEAGUE REPLAY API CONFIGURATION -->
+        <!-- CARD 4: IN-GAME FLOATING HUD OVERLAY -->
         <div class="settings-card">
-          <div class="card-title">🎮 LEAGUE REPLAY API AUTO-CONFIGURATION</div>
-          <p style="font-size: 12px; color: var(--text-muted); line-height: 1.4;">
-            Automatically detects your League installation and safely injects <code>EnableReplayApi=1</code> under <code>[General]</code> in <code>Config/game.cfg</code> with automatic backup.
+          <div class="card-title">🎮 In-Game Floating HUD Overlay</div>
+
+          <div class="setting-switch-row">
+            <span class="setting-lbl">Enable In-Game Overlay:</span>
+            <label class="switch-container">
+              <input type="checkbox" id="cfg-hud-enabled" checked onchange="autoSaveSettings()">
+              <span class="switch-slider"></span>
+              <span class="switch-desc">Show real-time floating audio visualizer over League of Legends</span>
+            </label>
+          </div>
+
+          <div class="setting-switch-row">
+            <span class="setting-lbl">Lock Position / Click-Through:</span>
+            <label class="switch-container">
+              <input type="checkbox" id="cfg-hud-locked" onchange="autoSaveSettings()">
+              <span class="switch-slider"></span>
+              <span class="switch-desc">Allow mouse clicks to pass through HUD directly into the game</span>
+            </label>
+          </div>
+
+          <div class="setting-grid-row">
+            <span class="setting-lbl" id="lbl-hud-opacity">HUD Opacity (85%):</span>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <input type="range" id="cfg-hud-opacity" min="40" max="100" value="85" oninput="onOpacityInput(this.value)" onchange="autoSaveSettings()" style="flex: 1;">
+              <span id="hud-opacity-display" style="font-size: 11px; font-weight: 600; width: 35px;">85%</span>
+            </div>
+            <span></span>
+          </div>
+
+          <div class="hud-buttons-row">
+            <button class="btn-small" onclick="previewRecHud()">Preview Rec HUD</button>
+            <button class="btn-small" onclick="previewReplayHud()">Preview Replay HUD</button>
+            <button class="btn-small" onclick="hideHudPreview()">Hide Preview</button>
+            <button class="btn-small" onclick="resetHudPosition()">Reset Position</button>
+          </div>
+        </div>
+
+        <!-- CARD 5: REMOTE SCRIM SERVER (DIRECT PORT) -->
+        <div class="settings-card">
+          <div class="card-title">☁️ Remote Scrim Server (Direct Port)</div>
+
+          <div class="setting-grid-row">
+            <span class="setting-lbl">Server URL:</span>
+            <input type="text" id="cfg-cloud-url" class="setting-input" placeholder="https://your-server-ip-or-domain:8443" onchange="autoSaveSettings()">
+            <span></span>
+          </div>
+
+          <div class="setting-grid-row">
+            <span class="setting-lbl">API Secret Key:</span>
+            <input type="password" id="cfg-cloud-key" class="setting-input" placeholder="Paste your UPLOAD_KEY or PULL_KEY" onchange="autoSaveSettings()">
+            <span></span>
+          </div>
+
+          <div class="cloud-actions-row">
+            <button class="btn-indigo" onclick="testCloudConnection()">Test Connection</button>
+            <span id="cloud-test-status" class="cloud-status-text"></span>
+          </div>
+        </div>
+
+        <!-- CARD 6: SOFTWARE & UPDATES -->
+        <div class="settings-card">
+          <div class="card-title">🔄 Software & Updates</div>
+
+          <div class="setting-grid-row">
+            <span class="setting-lbl">App Version:</span>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span style="font-size: 12px; font-weight: bold; color: var(--text-muted);">v0.5.1 (Pure Rust Edition)</span>
+              <button class="btn-small" onclick="checkForUpdates()">Check for Updates</button>
+            </div>
+            <span></span>
+          </div>
+          <div id="update-status-msg" style="font-size: 11px; color: var(--text-muted); padding-top: 2px;"></div>
+        </div>
+
+        <!-- CARD 7: 1-CLICK LEAGUE REPLAY API AUTO-CONFIGURATION -->
+        <div class="settings-card">
+          <div class="card-title">⚡ League Replay API Auto-Configuration</div>
+          <p style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">
+            Auto-detects your League install and safely injects <code>EnableReplayApi=1</code> into <code>game.cfg</code> with a backup.
           </p>
-          <div style="display: flex; align-items: center; gap: 14px; margin-top: 4px;">
-            <button class="btn-small" id="btn-enable-api" onclick="triggerEnableReplayApi()">⚡ Enable Replay API in game.cfg</button>
-            <span id="api-status-badge" style="font-size: 12px; color: var(--text-muted);">Status: Checking...</span>
+          <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px;">
+            <button class="btn-small" onclick="triggerEnableReplayApi()">⚡ Enable Replay API in game.cfg</button>
+            <span id="api-status-badge" style="font-size: 11px; color: var(--text-muted);">Status: Checking...</span>
           </div>
-        </div>
-
-        <!-- CARD 5: REMOTE SCRIM CLOUD SYNC -->
-        <div class="settings-card">
-          <div class="card-title">☁️ REMOTE SCRIM CLOUD SYNC</div>
-          
-          <div class="setting-row">
-            <div class="setting-label-col">
-              <span class="setting-label">Server Endpoint</span>
-              <span class="setting-desc">Direct team scrim backend server URL.</span>
-            </div>
-            <div class="setting-input-col">
-              <input type="text" id="cfg-cloud-url" placeholder="https://scrims.example.com">
-            </div>
-          </div>
-
-          <div class="setting-row">
-            <div class="setting-label-col">
-              <span class="setting-label">API Key (Windows DPAPI Encrypted)</span>
-              <span class="setting-desc">Your team API authorization token.</span>
-            </div>
-            <div class="setting-input-col">
-              <input type="password" id="cfg-cloud-key" placeholder="••••••••••••••••">
-            </div>
-          </div>
-        </div>
-
-        <!-- CARD 6: PURE RUST AUDIO ENGINE -->
-        <div class="settings-card">
-          <div class="card-title">🛠️ PURE RUST NATIVE AUDIO ARCHITECTURE</div>
-          <div class="engine-info">
-            <div>✓ Native WASAPI Loopback Capture (0 Lag & 0 Drift)</div>
-            <div>✓ Built-in Pure Rust MP3 Encoding (Zero FFmpeg Process Spawning)</div>
-            <div>✓ Built-in Pure Rust Audio Playback Engine (Zero VLC Dependency)</div>
-          </div>
-        </div>
-
-        <!-- Save Button -->
-        <div style="margin-top: 4px; margin-bottom: 24px;">
-          <button class="btn-primary" style="width: 100%;" onclick="saveSettings()">Save Configuration</button>
         </div>
 
       </div>
     </main>
 
-    <!-- Footer -->
+    <!-- Footer Frame matching CustomTkinter -->
     <footer class="app-footer">
       <span>League Voice Recorder &bull; High-Performance Pure Rust Architecture</span>
       <span id="match-clock">Match Time: --:--</span>

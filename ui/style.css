@@ -3,11 +3,12 @@
   --bg-dark: #060B18;
   --bg-card: #0B1329;
   --bg-card-inner: #070D1E;
-  --bg-terminal: #050914;
+  --bg-terminal: #060B18;
   --gold-primary: #C8AA6E;
   --gold-light: #F0E6D2;
   --gold-dark: #785A28;
   --teal-accent: #0AC8B9;
+  --teal-hover: #0397AB;
   --blue-accent: #0284C7;
   --blue-hover: #0369A1;
   --blue-border: #38BDF8;
@@ -15,6 +16,8 @@
   --red-hover: #BE123C;
   --red-border: #F43F5E;
   --green-ok: #10B981;
+  --indigo-btn: #6366F1;
+  --indigo-hover: #4F46E5;
   --text-main: #F1F5F9;
   --text-muted: #94A3B8;
   --text-muted-dark: #64748B;
@@ -43,11 +46,11 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  padding: 14px 16px;
-  gap: 10px;
+  padding: 12px 14px;
+  gap: 8px;
 }
 
-/* Header matching CustomTkinter header frame */
+/* Header Frame matching CustomTkinter header_frame */
 .app-header {
   display: flex;
   justify-content: space-between;
@@ -55,7 +58,7 @@ body {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  padding: 10px 16px;
+  padding: 10px 14px;
 }
 
 .brand {
@@ -79,7 +82,7 @@ body {
 }
 
 .title-row h1 {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
   letter-spacing: 0.5px;
   color: var(--gold-primary);
@@ -104,6 +107,7 @@ body {
 
 .health-ribbon {
   display: flex;
+  align-items: center;
   gap: 6px;
   background: var(--bg-card-inner);
   border: 1px solid var(--border-inner);
@@ -114,32 +118,58 @@ body {
 .health-pill {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
+  gap: 5px;
+  padding: 3px 6px;
   border-radius: 6px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   color: #CBD5E1;
 }
 
 .health-pill .dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--text-muted-dark);
 }
 
 .health-pill.online .dot {
   background: var(--green-ok);
-  box-shadow: 0 0 6px var(--green-ok);
+  box-shadow: 0 0 5px var(--green-ok);
 }
 
 .health-pill.online {
   color: #E2E8F0;
 }
 
-/* Primary 2-Card Action Grid matching CustomTkinter */
-.controls-card {
+.btn-theme {
+  background: #0F1A36;
+  border: 1px solid var(--border-color);
+  color: #FBBF24;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-refresh-health {
+  background: #0F1A36;
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-refresh-health:hover,
+.btn-theme:hover {
+  background: #1E2A4A;
+}
+
+/* 2-Card Main Action Section matching CustomTkinter action_frame */
+.action-frame {
   display: flex;
   flex-direction: column;
 }
@@ -147,14 +177,14 @@ body {
 .action-cards-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 10px;
 }
 
 .action-card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  padding: 12px 14px;
+  padding: 10px 14px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -200,11 +230,10 @@ body {
   border-color: rgba(56, 189, 248, 0.4);
 }
 
-.btn-primary {
+.btn-action {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
   height: 42px;
   border-radius: 8px;
   font-size: 13px;
@@ -251,20 +280,66 @@ body {
   gap: 6px;
 }
 
-.styled-select {
-  flex: 1;
-  background: var(--bg-card-inner);
-  color: var(--text-main);
-  border: 1px solid var(--border-inner);
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 12px;
-  font-family: "Segoe UI", sans-serif;
-  outline: none;
+.selectors-row {
+  gap: 8px;
 }
 
-.styled-select:focus {
-  border-color: var(--border-color);
+.selector-box {
+  flex: 1;
+  background: var(--bg-card-inner);
+  border: 1px solid var(--border-inner);
+  border-radius: 6px;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.selector-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.styled-select {
+  flex: 1;
+  background: transparent;
+  color: var(--text-main);
+  border: none;
+  font-size: 11px;
+  font-family: "Segoe UI", sans-serif;
+  outline: none;
+  cursor: pointer;
+}
+
+.styled-select option {
+  background: #0B1329;
+  color: #F1F5F9;
+}
+
+.vol-row {
+  align-items: center;
+  gap: 8px;
+}
+
+.vol-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gold-light);
+}
+
+.vol-slider {
+  flex: 1;
+  accent-color: var(--blue-border);
+}
+
+.vol-display {
+  font-size: 11px;
+  font-weight: 700;
+  width: 36px;
+  text-align: right;
+  color: var(--text-main);
 }
 
 .btn-small {
@@ -272,7 +347,7 @@ body {
   color: var(--text-main);
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  padding: 5px 10px;
+  padding: 4px 10px;
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
@@ -283,7 +358,23 @@ body {
   background: #1E2A4A;
 }
 
-/* Live Audio VU Meters */
+.btn-indigo {
+  background: var(--indigo-btn);
+  color: #FFF;
+  border: 1px solid #818CF8;
+  border-radius: 6px;
+  padding: 5px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-indigo:hover {
+  background: var(--indigo-hover);
+}
+
+/* Live VU Meters */
 .meter-box {
   background: var(--bg-card-inner);
   border: 1px solid var(--border-inner);
@@ -303,7 +394,7 @@ body {
 .meter-label {
   font-size: 11px;
   font-weight: 600;
-  width: 72px;
+  width: 68px;
   color: var(--text-muted);
 }
 
@@ -336,21 +427,24 @@ body {
   align-items: center;
   font-size: 11px;
   color: var(--text-muted);
-  padding-top: 2px;
 }
 
 .rep-hint b {
   color: var(--gold-light);
 }
 
-/* Tabs Navigation matching CustomTkinter */
+.rep-engine-badge {
+  color: var(--teal-accent);
+}
+
+/* Tab Navigation matching CustomTkinter Notebook */
 .tab-nav {
   display: flex;
   gap: 4px;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  padding: 4px;
+  padding: 3px;
 }
 
 .tab-btn {
@@ -359,7 +453,7 @@ body {
   color: var(--text-muted);
   border: none;
   border-radius: 6px;
-  padding: 8px 12px;
+  padding: 7px 12px;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -385,7 +479,7 @@ body {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  padding: 12px 14px;
+  padding: 10px 12px;
   overflow: hidden;
   flex-direction: column;
 }
@@ -394,19 +488,20 @@ body {
   display: flex;
 }
 
-/* Terminal Log matching CustomTkinter Monospace Textbox */
-.terminal-toolbar {
+/* Activity Log Split Screen & Textbox matching CustomTkinter */
+.log-container-split {
+  flex: 1;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  gap: 8px;
+  overflow: hidden;
   margin-bottom: 8px;
 }
 
-.terminal-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--gold-primary);
-  letter-spacing: 0.5px;
+.log-main-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .terminal-box {
@@ -416,40 +511,100 @@ body {
   border-radius: 8px;
   padding: 10px 12px;
   overflow-y: auto;
-  font-family: "Consolas", "Segoe UI Mono", monospace;
+  font-family: "Consolas", "Courier New", monospace;
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.45;
   color: #CBD5E1;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 .log-line {
   margin-bottom: 2px;
-  word-break: break-all;
 }
 
-.log-time {
-  color: var(--text-muted-dark);
+.debug-panel {
+  width: 280px;
+  background: var(--bg-card-inner);
+  border: 1px solid var(--border-inner);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
 }
 
-.log-line.warn {
-  color: #FBBF24;
+.debug-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--teal-accent);
 }
 
-.log-line.error {
-  color: #F87171;
+.debug-content {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
 }
 
-.log-line.success {
-  color: var(--green-ok);
+.debug-row {
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 3px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
-/* Recordings Table matching CustomTkinter */
+.debug-row .k {
+  color: var(--text-muted);
+}
+
+.debug-row .v {
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+/* Control Bar below log matching CustomTkinter log_ctrl_frame */
+.log-control-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 4px;
+}
+
+.control-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.control-check input[type="checkbox"] {
+  accent-color: var(--teal-accent);
+  cursor: pointer;
+}
+
+.log-btn-group {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* Recordings Table matching CustomTkinter _setup_tab_recordings */
 .recordings-toolbar {
   display: flex;
   align-items: center;
-  margin-bottom: 10px;
-  font-size: 12px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 11px;
   color: var(--text-muted);
+}
+
+.recordings-toolbar-actions {
+  display: flex;
+  gap: 6px;
 }
 
 .recordings-list {
@@ -457,7 +612,7 @@ body {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
 .recording-row {
@@ -477,7 +632,7 @@ body {
 }
 
 .recording-name {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-main);
 }
@@ -490,79 +645,141 @@ body {
 .empty-state {
   text-align: center;
   padding: 40px;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-muted-dark);
 }
 
-/* Settings matching CustomTkinter Card Layout */
+/* Settings matching CustomTkinter 6-Card Layout */
 .settings-scroll-container {
   flex: 1;
   overflow-y: auto;
-  padding-right: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.settings-card {
-  background: var(--bg-card-inner);
-  border: 1px solid var(--border-inner);
-  border-radius: 8px;
-  padding: 12px 14px;
+  padding-right: 4px;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
+.settings-card {
+  background: var(--bg-card-inner);
+  border: 1px solid var(--border-inner);
+  border-radius: 10px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .card-title {
   font-size: 12px;
   font-weight: 700;
-  color: var(--gold-primary);
+  color: var(--teal-accent);
   letter-spacing: 0.5px;
+  margin-bottom: 2px;
 }
 
-.setting-row {
-  display: flex;
-  justify-content: space-between;
+.setting-grid-row {
+  display: grid;
+  grid-template-columns: 180px 1fr auto;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
 }
 
-.setting-label-col {
+.setting-lbl {
+  font-size: 11px;
+  font-weight: 700;
+  color: #CBD5E1;
+}
+
+.setting-input {
+  background: var(--bg-terminal);
+  border: 1px solid var(--border-color);
+  color: #F8FAFC;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: "Segoe UI", sans-serif;
+  outline: none;
+}
+
+.setting-input:focus {
+  border-color: var(--teal-accent);
+}
+
+/* CustomTkinter Style Switches */
+.setting-switch-row {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.switch-container {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
 }
 
-.setting-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-main);
+.switch-container input[type="checkbox"] {
+  display: none;
 }
 
-.setting-desc {
+.switch-slider {
+  width: 36px;
+  height: 18px;
+  background-color: #1E2A4A;
+  border-radius: 9px;
+  position: relative;
+  transition: 0.2s;
+  flex-shrink: 0;
+}
+
+.switch-slider::before {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  left: 2px;
+  top: 2px;
+  background-color: white;
+  border-radius: 50%;
+  transition: 0.2s;
+}
+
+.switch-container input:checked + .switch-slider {
+  background-color: var(--teal-accent);
+}
+
+.switch-container input:checked + .switch-slider::before {
+  transform: translateX(18px);
+}
+
+.switch-desc {
   font-size: 11px;
   color: var(--text-muted);
 }
 
-.setting-input-col {
+.hud-buttons-row {
   display: flex;
-  gap: 6px;
+  gap: 8px;
+  margin-top: 4px;
 }
 
-.setting-input-col input[type="text"],
-.setting-input-col input[type="password"] {
-  background: var(--bg-terminal);
-  border: 1px solid var(--border-color);
-  color: var(--text-main);
-  padding: 6px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-family: "Segoe UI", sans-serif;
-  width: 240px;
+.cloud-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
 }
 
-/* Footer matching CustomTkinter */
+.cloud-status-text {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+/* Footer Frame */
 .app-footer {
   display: flex;
   justify-content: space-between;
