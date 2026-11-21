@@ -26,8 +26,6 @@ jobs:
         include:
           - language: rust
             build-mode: none
-          - language: actions
-            build-mode: none
           - language: javascript-typescript
             build-mode: none
 

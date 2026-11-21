@@ -130,6 +130,9 @@ impl AudioCaptureManager {
                 }
             }
         }
+        if list.is_empty() {
+            list.push("Default Output Device (WASAPI)".to_string());
+        }
         list
     }
 
