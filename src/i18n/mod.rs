@@ -6,6 +6,9 @@ use serde_json::Value;
 
 static I18N_STATE: OnceLock<Mutex<I18nManager>> = OnceLock::new();
 
+const EMBEDDED_EN: &str = include_str!("../../locales/en.json");
+const EMBEDDED_HU: &str = include_str!("../../locales/hu.json");
+
 pub struct I18nManager {
     current_lang: String,
     translations: HashMap<String, Value>,
@@ -65,9 +68,8 @@ impl I18nManager {
             }
         }
 
-        if langs.is_empty() {
-            langs.insert("en".to_string(), "English".to_string());
-        }
+        langs.entry("en".to_string()).or_insert_with(|| "English".to_string());
+        langs.entry("hu".to_string()).or_insert_with(|| "Magyar".to_string());
 
         self.available_languages = langs;
         &self.available_languages
@@ -88,10 +90,23 @@ impl I18nManager {
                 }
             }
         }
+
+        // Fallback to embedded locales if disk file is missing
+        let embedded = match code {
+            "en" => Some(EMBEDDED_EN),
+            "hu" => Some(EMBEDDED_HU),
+            _ => None,
+        };
+
+        if let Some(raw) = embedded {
+            if let Ok(val) = serde_json::from_str::<Value>(raw) {
+                self.translations.insert(code.to_string(), val);
+            }
+        }
     }
 
     pub fn set_language(&mut self, code: &str) {
-        if self.available_languages.contains_key(code) {
+        if self.available_languages.contains_key(code) || code == "en" || code == "hu" {
             self.current_lang = code.to_string();
             self.load_locale(code);
         } else {
@@ -102,6 +117,18 @@ impl I18nManager {
 
     pub fn get_language(&self) -> &str {
         &self.current_lang
+    }
+
+    pub fn get_translations_for(&mut self, code: &str) -> Value {
+        self.load_locale(code);
+        self.load_locale("en");
+        if let Some(val) = self.translations.get(code) {
+            val.clone()
+        } else if let Some(en_val) = self.translations.get("en") {
+            en_val.clone()
+        } else {
+            Value::Object(serde_json::Map::new())
+        }
     }
 
     fn resolve_key<'a>(val: &'a Value, parts: &[&str]) -> Option<&'a str> {
@@ -159,6 +186,11 @@ pub fn get_language() -> String {
     mgr.get_language().to_string()
 }
 
+pub fn get_translations_for(code: &str) -> Value {
+    let mut mgr = get_manager().lock().unwrap();
+    mgr.get_translations_for(code)
+}
+
 pub fn t(key: &str) -> String {
     let mgr = get_manager().lock().unwrap();
     mgr.translate(key, &[])
@@ -191,5 +223,16 @@ mod tests {
     fn test_placeholder_formatting() {
         let formatted = t_with("record.target_scene", &[("scene", "Discord + Mic")]);
         assert!(formatted.contains("Discord + Mic"));
+    }
+
+    #[test]
+    fn test_get_translations_returns_valid_json() {
+        let en = get_translations_for("en");
+        assert!(en.get("app").is_some());
+        assert!(en.get("settings").is_some());
+
+        let hu = get_translations_for("hu");
+        assert!(hu.get("app").is_some());
+        assert!(hu.get("settings").is_some());
     }
 }

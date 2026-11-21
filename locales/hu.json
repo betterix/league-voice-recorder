@@ -1,7 +1,7 @@
 {
     "__language_name__": "Magyar",
     "app": {
-        "title": "🎮 LEAGUE VOICE RECORDER",
+        "title": "LEAGUE VOICE RECORDER",
         "subtitle": "Automatikus Discord hangfelvétel és játékbeli visszajátszás szinkronizáció",
         "window_title": "League Voice Recorder és Visszajátszás Szinkronizáló",
         "active_rec_warning": "Jelenleg egy mérkőzés felvétele folyamatban van!\nBiztosan ki szeretnél lépni és leállítani a felvételt?"

@@ -52,8 +52,10 @@ pub struct AppConfig {
     pub remote_server_url: String,
     #[serde(default)]
     pub remote_api_key_encrypted: String,
-    #[serde(skip)]
+    #[serde(default)]
     pub remote_api_key: String,
+    #[serde(default)]
+    pub discord_ipc_token: String,
 }
 
 fn default_target_pid() -> i32 { -1 }
@@ -102,6 +104,7 @@ impl Default for AppConfig {
             remote_server_url: String::new(),
             remote_api_key_encrypted: String::new(),
             remote_api_key: String::new(),
+            discord_ipc_token: String::new(),
         }
     }
 }
@@ -145,9 +148,36 @@ impl AppConfig {
         }
 
         let mut to_save = self.clone();
+
+        // 1. Preserve existing on-disk secrets if incoming payload has them empty (e.g. from partial UI saves)
+        if path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(disk_val) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if to_save.discord_ipc_token.is_empty() {
+                        if let Some(tok) = disk_val.get("discord_ipc_token").and_then(|v| v.as_str()) {
+                            if !tok.is_empty() {
+                                to_save.discord_ipc_token = tok.to_string();
+                            }
+                        }
+                    }
+                    if to_save.remote_api_key.is_empty() {
+                        if let Some(enc) = disk_val.get("remote_api_key_encrypted").and_then(|v| v.as_str()) {
+                            if !enc.is_empty() {
+                                to_save.remote_api_key_encrypted = enc.to_string();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Encrypt secret API key if provided
         if !to_save.remote_api_key.is_empty() {
             to_save.remote_api_key_encrypted = encrypt_secret(&to_save.remote_api_key);
         }
+
+        // 3. Clear plaintext secret before serializing to disk
+        to_save.remote_api_key = String::new();
 
         let json = serde_json::to_string_pretty(&to_save)?;
         std::fs::write(&path, json)?;
@@ -158,6 +188,8 @@ impl AppConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
     fn test_default_config_fields() {
@@ -173,9 +205,50 @@ mod tests {
 
     #[test]
     fn test_config_path_override() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         let temp_dir = std::env::temp_dir().join("lvr_test_cfg.json");
-        std::env::set_var("LVR_CONFIG_PATH", temp_dir.to_str().unwrap());
+        unsafe { std::env::set_var("LVR_CONFIG_PATH", temp_dir.to_str().unwrap()) };
         assert_eq!(AppConfig::config_path(), temp_dir);
-        std::env::remove_var("LVR_CONFIG_PATH");
+        unsafe { std::env::remove_var("LVR_CONFIG_PATH") };
+    }
+
+    #[test]
+    fn test_config_save_preserves_tokens_and_encrypts_key() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let temp_path = std::env::temp_dir().join(format!("lvr_test_save_cfg_{}.json", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        unsafe { std::env::set_var("LVR_CONFIG_PATH", temp_path.to_str().unwrap()) };
+
+        // 1. Initial save with discord token and plain api key
+        let mut initial = AppConfig::default();
+        initial.discord_ipc_token = "discord_auth_token_xyz".to_string();
+        initial.remote_api_key = "super_secret_pull_key".to_string();
+        initial.save().unwrap();
+
+        // Check raw content on disk: plain key must NOT be stored, encrypted must be present
+        let raw = std::fs::read_to_string(&temp_path).unwrap();
+        assert!(!raw.contains("super_secret_pull_key"), "Plain text API key found in config.json on disk!");
+        assert!(raw.contains("discord_auth_token_xyz"), "Discord token missing from config.json!");
+
+        // 2. Load back: decrypted key must match
+        let loaded = AppConfig::load().unwrap();
+        assert_eq!(loaded.discord_ipc_token, "discord_auth_token_xyz");
+        assert_eq!(loaded.remote_api_key, "super_secret_pull_key");
+
+        // 3. Partial save from UI with empty token/key: must preserve existing token and encrypted key
+        let mut partial = AppConfig::default();
+        partial.language = "hu".to_string();
+        partial.replay_volume = 75;
+        partial.discord_ipc_token = String::new(); // UI didn't have it
+        partial.remote_api_key = String::new();   // UI didn't change it
+        partial.save().unwrap();
+
+        let reloaded = AppConfig::load().unwrap();
+        assert_eq!(reloaded.language, "hu");
+        assert_eq!(reloaded.replay_volume, 75);
+        assert_eq!(reloaded.discord_ipc_token, "discord_auth_token_xyz", "Discord token was erased on partial save!");
+        assert_eq!(reloaded.remote_api_key, "super_secret_pull_key", "API key was erased on partial save!");
+
+        let _ = std::fs::remove_file(&temp_path);
+        unsafe { std::env::remove_var("LVR_CONFIG_PATH") };
     }
 }

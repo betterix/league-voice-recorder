@@ -1,9 +1,0 @@
-[build]
-target-dir = "D:\\cargo_target\\league-voice-recorder"
-
-[env]
-PATH = { value = "C:\\Users\\Zsolt\\AppData\\Local\\Nuitka\\Nuitka\\Cache\\downloads\\gcc\\x86_64\\15.2.0posix-13.0.0-msvcrt-r6\\mingw64\\bin;${PATH}" }
-
-[target.x86_64-pc-windows-gnu]
-linker = "C:\\Users\\Zsolt\\AppData\\Local\\Nuitka\\Nuitka\\Cache\\downloads\\gcc\\x86_64\\15.2.0posix-13.0.0-msvcrt-r6\\mingw64\\bin\\gcc.exe"
-ar = "C:\\Users\\Zsolt\\AppData\\Local\\Nuitka\\Nuitka\\Cache\\downloads\\gcc\\x86_64\\15.2.0posix-13.0.0-msvcrt-r6\\mingw64\\bin\\ar.exe"

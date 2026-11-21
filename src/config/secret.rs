@@ -1,4 +1,7 @@
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{
+    engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD},
+    Engine as _,
+};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
@@ -17,7 +20,7 @@ mod dpapi {
     }
 
     #[link(name = "crypt32")]
-    extern "system" {
+    unsafe extern "system" {
         fn CryptProtectData(
             pDataIn: *const DataBlob,
             szDataDescr: *const u16,
@@ -40,7 +43,7 @@ mod dpapi {
     }
 
     #[link(name = "kernel32")]
-    extern "system" {
+    unsafe extern "system" {
         fn LocalFree(hMem: *mut c_void) -> *mut c_void;
     }
 
@@ -139,7 +142,7 @@ pub fn encrypt_secret(plaintext: &str) -> String {
     format!("LVR_SEC:{}", URL_SAFE_NO_PAD.encode(blob))
 }
 
-/// Decodes configuration secrets supporting LVR_DPAPI:, LVR_PBKDF2:, and LVR_SEC: prefixes.
+/// Decodes configuration secrets supporting LVR_DPAPI: (padded and unpadded), LVR_SEC:, and plaintext fallbacks.
 pub fn decrypt_secret(ciphertext: &str) -> String {
     if ciphertext.is_empty() {
         return String::new();
@@ -147,7 +150,12 @@ pub fn decrypt_secret(ciphertext: &str) -> String {
 
     #[cfg(windows)]
     if let Some(payload) = ciphertext.strip_prefix("LVR_DPAPI:") {
-        if let Ok(raw) = URL_SAFE_NO_PAD.decode(payload) {
+        let raw_opt = URL_SAFE_NO_PAD
+            .decode(payload)
+            .or_else(|_| URL_SAFE.decode(payload))
+            .or_else(|_| STANDARD.decode(payload))
+            .or_else(|_| STANDARD_NO_PAD.decode(payload));
+        if let Ok(raw) = raw_opt {
             if let Some(dec) = dpapi::win_dpapi_decrypt(&raw) {
                 return String::from_utf8_lossy(&dec).to_string();
             }
@@ -155,7 +163,11 @@ pub fn decrypt_secret(ciphertext: &str) -> String {
     }
 
     if let Some(payload) = ciphertext.strip_prefix("LVR_SEC:") {
-        if let Ok(raw) = URL_SAFE_NO_PAD.decode(payload) {
+        let raw_opt = URL_SAFE_NO_PAD
+            .decode(payload)
+            .or_else(|_| URL_SAFE.decode(payload))
+            .or_else(|_| STANDARD.decode(payload));
+        if let Ok(raw) = raw_opt {
             if raw.len() < 8 {
                 return String::new();
             }
@@ -167,6 +179,11 @@ pub fn decrypt_secret(ciphertext: &str) -> String {
                 return String::from_utf8_lossy(b_data).to_string();
             }
         }
+    }
+
+    // If ciphertext is raw plaintext without encrypted prefix, return as-is
+    if !ciphertext.starts_with("LVR_") {
+        return ciphertext.to_string();
     }
 
     String::new()

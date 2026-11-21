@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>League Overlay</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 350px;
+      height: 76px;
+      overflow: hidden;
+      background: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    #hud-card {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 350px;
+      height: 76px;
+      background: #0E1116;
+      border: 1.5px solid #232B37;
+      border-radius: 10px;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+      cursor: grab;
+      opacity: 0.85;
+      transition: opacity 0.15s ease-out;
+      -webkit-app-region: drag;
+    }
+
+    #hud-card:active {
+      cursor: grabbing;
+    }
+
+    #hud-card.locked {
+      cursor: default;
+      -webkit-app-region: no-drag;
+    }
+
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 350px;
+      height: 76px;
+      pointer-events: none;
+    }
+
+    /* Interactive hit-targets */
+    #lock-hit {
+      position: absolute;
+      top: 8px;
+      right: 5px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      z-index: 1000;
+      -webkit-app-region: no-drag;
+    }
+
+    #slider-hit {
+      position: absolute;
+      top: 38px;
+      left: 80px;
+      width: 168px;
+      height: 32px;
+      cursor: pointer;
+      display: none;
+      z-index: 1000;
+      -webkit-app-region: no-drag;
+    }
+
+    /* Context menu for unlocked state */
+    #context-menu {
+      position: absolute;
+      background: #141A23;
+      border: 1px solid #2A3547;
+      border-radius: 6px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.7);
+      padding: 4px 0;
+      z-index: 3000;
+      font-size: 11px;
+      color: #E2E8F0;
+      min-width: 125px;
+      display: none;
+      -webkit-app-region: no-drag;
+    }
+
+    .menu-item {
+      padding: 6px 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .menu-item:hover {
+      background: #1E293B;
+      color: #38BDF8;
+    }
+  </style>
+</head>
+<body>
+  <div id="hud-card" data-tauri-drag-region>
+    <canvas id="hud-canvas" width="350" height="76"></canvas>
+    <div id="lock-hit" data-tauri-drag-region="false" title="Toggle Lock / Drag Mode"></div>
+    <div id="slider-hit" data-tauri-drag-region="false" title="Replay Volume"></div>
+    <div id="context-menu" data-tauri-drag-region="false">
+      <div class="menu-item" id="menu-lock">🔒 Lock Position</div>
+      <div class="menu-item" id="menu-reset">🎯 Reset Position</div>
+    </div>
+  </div>
+
+  <script>
+    // GradeX Waveform Constants & Harmonics matching Python LeagueOverlay exactly
+    const TRACK_START_X = 88.0;
+    const TRACK_END_X = 240.0;
+    const TRACK_WIDTH = 152.0;
+    const NUM_BARS = 36;
+    const REPLAY_TRACK_START_X = 16.0;
+    const REPLAY_TRACK_END_X = 240.0;
+    const REPLAY_TRACK_WIDTH = 224.0;
+    const REPLAY_NUM_BARS = 52;
+    const DIVIDER_X = 250;
+    const SLIDER_X1 = 88.0;
+    const SLIDER_X2 = 240.0;
+    const SLIDER_WIDTH = 152.0;
+    const LOCK_X = 332;
+    const LOCK_Y = 22;
+    const TIMER_X = 300;
+    const TIMER_Y = 52;
+
+    const COLOR_BORDER = "#232B37";
+    const COLOR_DIVIDER = "#232B37";
+    const COLOR_LABEL = "#9CA3AF";
+    const COLOR_TIMER = "#F2F5F9";
+    const COLOR_TEAL = "#3DDCC4";
+    const COLOR_PERIWINKLE = "#8B93FF";
+    const COLOR_RED = "#EB6372";
+    const COLOR_AMBER = "#F59E0B";
+    const COLOR_UPCOMING_WAVE = "#3C4655";
+    const COLOR_TRACK = "#232B37";
+
+    const step = TRACK_WIDTH / (NUM_BARS - 1);
+    const ACTIVE_BAR_CONSTANTS = [];
+    for (let i = 0; i < NUM_BARS; i++) {
+      const norm = i / (NUM_BARS - 1);
+      ACTIVE_BAR_CONSTANTS.push({
+        x: TRACK_START_X + i * step,
+        f1: norm * 4.2 * Math.PI,
+        f2: norm * 8.4 * Math.PI,
+        f3: norm * 12.6 * Math.PI,
+        envBoost: (0.40 + 0.60 * Math.pow(Math.sin(norm * Math.PI), 0.6)) * 7.5
+      });
+    }
+
+    const replayStep = REPLAY_TRACK_WIDTH / (REPLAY_NUM_BARS - 1);
+    const REPLAY_BASE_BARS = [];
+    const REPLAY_HARMONICS = [];
+    for (let i = 0; i < REPLAY_NUM_BARS; i++) {
+      const norm = i / (REPLAY_NUM_BARS - 1);
+      const envelope = Math.pow(Math.sin(norm * Math.PI), 0.85);
+      const profile = Math.sin(norm * 4.0 * Math.PI) * 0.45
+                    + Math.sin(norm * 9.0 * Math.PI) * 0.35
+                    + Math.cos(norm * 2.0 * Math.PI) * 0.20;
+      let h = 2.0 + Math.abs(profile) * envelope * 5.6;
+      h = Math.min(7.5, Math.max(1.8, h));
+      REPLAY_BASE_BARS.push({
+        x: REPLAY_TRACK_START_X + i * replayStep,
+        h: h
+      });
+      REPLAY_HARMONICS.push({
+        envBoost: (0.40 + 0.60 * Math.pow(Math.sin(norm * Math.PI), 0.6)) * 4.5,
+        f1: norm * 5.0 * Math.PI,
+        f2: norm * 10.0 * Math.PI
+      });
+    }
+
+    let hudMode = "RECORD";
+    let timeStr = "00:00";
+    let micLevel = 0.0;
+    let discordLevel = 0.0;
+    let isPaused = false;
+    let isMuted = false;
+    let isDiscordMuted = false;
+    let currentTime = 0.0;
+    let totalDuration = 1800.0;
+    let replaySpeed = 1.0;
+    let replayVolume = 80;
+    let isLocked = false;
+    let opacity = 0.85;
+    let wavePhase = 0.0;
+    let smoothMic = 0.0;
+    let smoothDiscord = 0.0;
+
+    function scaleAudio(peak) {
+      if (!peak || peak <= 0.0003) return 0.0;
+      const norm = Math.max(0.0, (peak - 0.0003) / 0.9997);
+      return Math.max(0.0, Math.min(1.0, Math.pow(norm, 0.42)));
+    }
+
+    const canvas = document.getElementById("hud-canvas");
+    const ctx = canvas.getContext("2d");
+    const card = document.getElementById("hud-card");
+    const lockHit = document.getElementById("lock-hit");
+    const sliderHit = document.getElementById("slider-hit");
+    const contextMenu = document.getElementById("context-menu");
+
+    function hideContextMenu() {
+      if (contextMenu) contextMenu.style.display = "none";
+    }
+
+    function showContextMenu(x, y) {
+      if (!contextMenu) return;
+      const menuW = 130;
+      const menuH = 65;
+      const posX = Math.min(350 - menuW - 4, Math.max(4, x));
+      const posY = Math.min(76 - menuH - 4, Math.max(4, y));
+      contextMenu.style.left = `${posX}px`;
+      contextMenu.style.top = `${posY}px`;
+      contextMenu.style.display = "block";
+    }
+
+    // Disable default browser context menu everywhere
+    document.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+    });
+
+    async function invokeTauri(cmd, args = {}) {
+      const invoker = (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) ||
+                      (window.__TAURI__ && window.__TAURI__.invoke) ||
+                      (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke);
+      if (invoker) {
+        try {
+          return await invoker(cmd, args);
+        } catch (e) {}
+      }
+      return null;
+    }
+
+    let lastForwardTime = 0;
+
+    // Right-click handling:
+    // When locked: Right-click panel is permanently disabled!
+    // Forwards right-click directly into the game beneath so player movement is never blocked!
+    card.addEventListener("contextmenu", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (isLocked) {
+        hideContextMenu();
+        const now = Date.now();
+        if (now - lastForwardTime > 30) {
+          lastForwardTime = now;
+          await invokeTauri("overlay_forward_click", { button: "right" });
+        }
+        return;
+      }
+      showContextMenu(e.clientX, e.clientY);
+    });
+
+    // Left-click handling:
+    card.addEventListener("mousedown", async (e) => {
+      hideContextMenu();
+
+      // If clicked on lock icon or slider:
+      if (e.target.id === "lock-hit") return;
+      if (e.target.id === "slider-hit") return;
+
+      if (isLocked) {
+        if (e.button === 0) {
+          const now = Date.now();
+          if (now - lastForwardTime > 30) {
+            lastForwardTime = now;
+            await invokeTauri("overlay_forward_click", { button: "left" });
+          }
+        }
+        return;
+      }
+
+      // Unlocked mode: left-click starts dragging
+      if (e.button === 0) {
+        await invokeTauri("overlay_start_dragging");
+      }
+    });
+
+    // Lock icon hit button events
+    lockHit.addEventListener("mousedown", (e) => {
+      e.stopPropagation();
+    });
+
+    lockHit.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    lockHit.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      hideContextMenu();
+      isLocked = !isLocked;
+      card.classList.toggle("locked", isLocked);
+      if (isLocked) {
+        card.removeAttribute("data-tauri-drag-region");
+      } else {
+        card.setAttribute("data-tauri-drag-region", "");
+      }
+      await invokeTauri("overlay_set_locked", { locked: isLocked });
+    });
+
+    // Context menu actions
+    document.getElementById("menu-lock").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      hideContextMenu();
+      isLocked = true;
+      card.classList.add("locked");
+      card.removeAttribute("data-tauri-drag-region");
+      await invokeTauri("overlay_set_locked", { locked: true });
+    });
+
+    document.getElementById("menu-reset").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      hideContextMenu();
+      await invokeTauri("overlay_reset_position");
+    });
+
+    window.addEventListener("click", (e) => {
+      if (contextMenu && !contextMenu.contains(e.target)) {
+        hideContextMenu();
+      }
+    });
+
+    // Replay Volume Slider events
+    let isDraggingSlider = false;
+
+    function updateVolumeFromClientX(clientX) {
+      const rect = card.getBoundingClientRect();
+      const canvasX = clientX - rect.left;
+      const pct = Math.max(0, Math.min(1, (canvasX - SLIDER_X1) / SLIDER_WIDTH));
+      replayVolume = Math.round(pct * 100);
+      invokeTauri("set_replay_volume", { volume: replayVolume });
+    }
+
+    sliderHit.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      isDraggingSlider = true;
+      updateVolumeFromClientX(e.clientX);
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      if (isDraggingSlider) {
+        updateVolumeFromClientX(e.clientX);
+      }
+    });
+
+    window.addEventListener("mouseup", () => {
+      isDraggingSlider = false;
+    });
+
+    window.addEventListener("blur", () => {
+      isDraggingSlider = false;
+    });
+
+    // FPS Capping & Idle Throttling (30 FPS max active, 3 FPS idle/silence)
+    const TARGET_FPS = 30;
+    const FRAME_INTERVAL = 1000 / TARGET_FPS; // ~33.3ms
+    let lastRenderTime = 0;
+
+    function render(timestamp) {
+      if (!timestamp) timestamp = performance.now();
+
+      if (document.hidden) {
+        setTimeout(() => requestAnimationFrame(render), 250);
+        return;
+      }
+
+      const elapsed = timestamp - lastRenderTime;
+      const isActive = (hudMode === "RECORD" && (micLevel > 0.002 || discordLevel > 0.002)) ||
+                       (hudMode === "REPLAY" && (!isPaused || isDraggingSlider));
+
+      // When completely silent or paused, throttle down to ~3 FPS just to keep clock fresh
+      const minInterval = isActive ? FRAME_INTERVAL : 300;
+      if (elapsed < minInterval) {
+        requestAnimationFrame(render);
+        return;
+      }
+
+      lastRenderTime = timestamp - (elapsed % minInterval);
+
+      // Advance replay needle smoothly between IPC updates
+      if (hudMode === "REPLAY" && !isPaused && replaySpeed > 0) {
+        currentTime = Math.min(totalDuration, currentTime + (elapsed / 1000.0) * replaySpeed);
+      }
+
+      wavePhase = (wavePhase + 0.14) % (Math.PI * 200.0);
+      ctx.clearRect(0, 0, 350, 76);
+
+      // Card Opacity: applies universally to card background, visualizers, scales, borders and texts
+      card.style.opacity = Math.max(0.3, Math.min(1.0, opacity));
+
+      // Vertical divider
+      ctx.beginPath();
+      ctx.moveTo(DIVIDER_X, 10);
+      ctx.lineTo(DIVIDER_X, 66);
+      ctx.strokeStyle = COLOR_DIVIDER;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Lock Button
+      const lockBg = isLocked ? "#261E14" : "#131B2E";
+      const lockBorder = isLocked ? "#78350F" : "#2A3547";
+      const lockIcon = isLocked ? "🔒" : "🔓";
+      const lockColor = isLocked ? "#F59E0B" : "#38BDF8";
+
+      ctx.beginPath();
+      ctx.arc(LOCK_X, LOCK_Y, 11, 0, Math.PI * 2);
+      ctx.fillStyle = lockBg;
+      ctx.fill();
+      ctx.strokeStyle = lockBorder;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.font = "11px 'Segoe UI', sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = lockColor;
+      ctx.fillText(lockIcon, LOCK_X, LOCK_Y);
+
+      // Digital Match Timer
+      ctx.font = "bold 19px 'Segoe UI', monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = COLOR_TIMER;
+      ctx.fillText(timeStr, TIMER_X, TIMER_Y);
+
+      if (hudMode === "RECORD") {
+        sliderHit.style.display = "none";
+        renderRecorder();
+      } else {
+        sliderHit.style.display = "block";
+        renderReplay();
+      }
+
+      requestAnimationFrame(render);
+    }
+
+    function renderRecorder() {
+      // 1. Labels
+      ctx.font = "bold 10px 'Segoe UI', sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = COLOR_LABEL;
+      ctx.fillText("MIC", 16, 22);
+      ctx.fillText("DISCORD", 16, 54);
+
+      // 2. REC Status Badge
+      const statusColor = isPaused ? COLOR_AMBER : COLOR_RED;
+      const statusText = isPaused ? "PAUSED" : "REC";
+
+      ctx.beginPath();
+      ctx.arc(262, 22, 4, 0, Math.PI * 2);
+      ctx.fillStyle = statusColor;
+      ctx.fill();
+
+      ctx.font = isPaused ? "bold 9px 'Segoe UI', sans-serif" : "bold 10px 'Segoe UI', sans-serif";
+      ctx.fillStyle = statusColor;
+      ctx.fillText(statusText, 270, 22);
+
+      // 3. Microphone Waveform
+      const effectiveMic = (isMuted || isDiscordMuted) ? 0.0 : micLevel;
+      const micColor = (isMuted || isDiscordMuted) ? "#EF4444" : COLOR_TEAL;
+      drawWaveform(22.0, effectiveMic, wavePhase, 0.0, micColor);
+
+      // 4. Discord Waveform
+      drawWaveform(54.0, discordLevel, wavePhase * 1.15, 2.5, COLOR_PERIWINKLE);
+    }
+
+    function drawWaveform(centerY, level, phase, seed, color) {
+      const clamped = Math.max(0.0, Math.min(1.0, level));
+      const effLevel = clamped > 0.005 ? Math.min(1.0, Math.pow(clamped, 0.45) * 1.65) : 0.0;
+      const p1 = phase + seed;
+      const p2 = -phase * 0.9 + seed * 1.6;
+      const p3 = phase * 1.4;
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.2;
+      ctx.lineCap = "round";
+
+      for (const bar of ACTIVE_BAR_CONSTANTS) {
+        let h = 1.8;
+        if (effLevel > 0.0) {
+          const w1 = Math.sin(bar.f1 + p1);
+          const w2 = Math.cos(bar.f2 + p2) * 0.45;
+          const w3 = Math.sin(bar.f3 + p3) * 0.25;
+          const variation = 0.35 + 0.38235 * Math.abs(w1 + w2 + w3);
+          h = Math.min(9.2, 1.8 + effLevel * bar.envBoost * variation);
+        }
+        ctx.beginPath();
+        ctx.moveTo(bar.x, centerY - h);
+        ctx.lineTo(bar.x, centerY + h);
+        ctx.stroke();
+      }
+    }
+
+    function renderReplay() {
+      // 1. Status Text
+      const statusColor = isPaused ? COLOR_AMBER : COLOR_TEAL;
+      const speedStr = replaySpeed === 1.0 ? "REPLAY" : `${replaySpeed.toFixed(1)}x`;
+      const statusText = isPaused ? "⏸ PAUSED" : `▶ ${speedStr}`;
+
+      ctx.font = "bold 9px 'Segoe UI', sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = statusColor;
+      ctx.fillText(statusText, 258, 22);
+
+      // 2. Waveform with playhead
+      const progress = Math.max(0.0, Math.min(1.0, currentTime / (totalDuration || 1800.0)));
+      const cursorX = REPLAY_TRACK_START_X + progress * REPLAY_TRACK_WIDTH;
+      const modPhase = wavePhase;
+      const negPhase = -modPhase * 0.8;
+
+      ctx.lineWidth = 2.2;
+      ctx.lineCap = "round";
+      for (let i = 0; i < REPLAY_BASE_BARS.length; i++) {
+        const bar = REPLAY_BASE_BARS[i];
+        let h = bar.h;
+        if (bar.x <= cursorX) {
+          ctx.strokeStyle = COLOR_TEAL;
+          if (!isPaused) {
+            const harm = REPLAY_HARMONICS[i];
+            const bounce = Math.sin(harm.f1 + modPhase) * 0.6 + Math.cos(harm.f2 + negPhase) * 0.4;
+            h = Math.min(9.2, Math.max(1.8, h + Math.abs(bounce) * harm.envBoost * 0.35));
+          }
+        } else {
+          ctx.strokeStyle = COLOR_UPCOMING_WAVE;
+        }
+        ctx.beginPath();
+        ctx.moveTo(bar.x, 22.0 - bar.h);
+        ctx.lineTo(bar.x, 22.0 + bar.h);
+        ctx.stroke();
+      }
+
+      // Playhead cursor
+      ctx.strokeStyle = "#FFFFFF";
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(cursorX, 13);
+      ctx.lineTo(cursorX, 31);
+      ctx.stroke();
+
+      // 3. Volume Label & Slider
+      ctx.font = "bold 10px 'Segoe UI', sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = COLOR_LABEL;
+      ctx.fillText("VOLUME", 16, 54);
+
+      // Background Track
+      ctx.beginPath();
+      ctx.moveTo(SLIDER_X1, 54);
+      ctx.lineTo(SLIDER_X2, 54);
+      ctx.strokeStyle = COLOR_TRACK;
+      ctx.lineWidth = 7;
+      ctx.lineCap = "round";
+      ctx.stroke();
+
+      // Active Track
+      const volFraction = Math.max(0, Math.min(1, replayVolume / 100));
+      const knobX = SLIDER_X1 + volFraction * SLIDER_WIDTH;
+      if (knobX > SLIDER_X1) {
+        ctx.beginPath();
+        ctx.moveTo(SLIDER_X1, 54);
+        ctx.lineTo(knobX, 54);
+        ctx.strokeStyle = isMuted ? "#64748B" : COLOR_TEAL;
+        ctx.lineWidth = 7;
+        ctx.lineCap = "round";
+        ctx.stroke();
+      }
+
+      // Knob
+      ctx.beginPath();
+      ctx.arc(knobX, 54, 6.5, 0, Math.PI * 2);
+      ctx.fillStyle = isMuted ? "#64748B" : COLOR_TEAL;
+      ctx.fill();
+    }
+
+    // Polling loop for state sync
+    async function syncState() {
+      try {
+        const data = await invokeTauri("get_hud_data");
+        if (data) {
+          hudMode = data.mode || "RECORD";
+          timeStr = data.time_str || "00:00";
+
+          const rawMic = typeof data.mic_level === "number" ? data.mic_level : 0.0;
+          const rawDiscord = typeof data.discord_level === "number" ? data.discord_level : 0.0;
+
+          const targetMic = scaleAudio(rawMic);
+          const targetDiscord = scaleAudio(rawDiscord);
+
+          // Snappy attack, smooth silky decay
+          if (targetMic > smoothMic) {
+            smoothMic = smoothMic * 0.3 + targetMic * 0.7;
+          } else {
+            smoothMic = Math.max(0.0, smoothMic * 0.82);
+          }
+
+          if (targetDiscord > smoothDiscord) {
+            smoothDiscord = smoothDiscord * 0.3 + targetDiscord * 0.7;
+          } else {
+            smoothDiscord = Math.max(0.0, smoothDiscord * 0.82);
+          }
+
+          micLevel = smoothMic;
+          discordLevel = smoothDiscord;
+
+          isPaused = Boolean(data.is_paused);
+          isMuted = Boolean(data.is_muted);
+          isDiscordMuted = Boolean(data.is_discord_muted);
+          currentTime = data.current_time || 0.0;
+          totalDuration = data.total_duration || 1800.0;
+          replaySpeed = data.speed || 1.0;
+          if (!isDraggingSlider) {
+            replayVolume = typeof data.volume === "number" ? data.volume : 80;
+          }
+          isLocked = Boolean(data.locked);
+          opacity = typeof data.opacity === "number" ? data.opacity : 0.85;
+
+          card.classList.toggle("locked", isLocked);
+          if (isLocked) {
+            card.removeAttribute("data-tauri-drag-region");
+          } else {
+            card.setAttribute("data-tauri-drag-region", "");
+          }
+          card.style.opacity = opacity;
+        }
+      } catch (e) {}
+    }
+
+    // Adaptive State Sync (60ms when live sound/match active, 250ms when idle in lobby)
+    let syncTimer = null;
+    async function scheduleSync() {
+      if (!document.hidden) {
+        await syncState();
+      }
+      const isLive = (hudMode === "RECORD" && (micLevel > 0.002 || discordLevel > 0.002 || timeStr !== "00:00")) ||
+                     (hudMode === "REPLAY" && (!isPaused || isDraggingSlider));
+      const delay = isLive ? 60 : 250;
+      syncTimer = setTimeout(scheduleSync, delay);
+    }
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) {
+        clearTimeout(syncTimer);
+        scheduleSync();
+        requestAnimationFrame(render);
+      }
+    });
+
+    scheduleSync();
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>

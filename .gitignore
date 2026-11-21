@@ -45,6 +45,7 @@ MANIFEST
 # ==========================================
 target/
 gen/
+.cargo/
 **/*.rs.bk
 Cargo.lock.dist
 

@@ -1,7 +1,7 @@
 {
     "__language_name__": "English",
     "app": {
-        "title": "🎮 LEAGUE VOICE RECORDER",
+        "title": "LEAGUE VOICE RECORDER",
         "subtitle": "Automated Discord Voice Capture & In-Game Replay Audio Sync",
         "window_title": "League Voice Recorder & Replay Synchronizer",
         "active_rec_warning": "A match recording is currently in progress!\nAre you sure you want to exit and stop recording?"

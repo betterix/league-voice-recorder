@@ -5,7 +5,7 @@ title Build League Voice Recorder with Cargo (Rust)
 
 echo ========================================================
 echo   League Voice Recorder - Native Rust Release Builder
-echo   Rust Edition 2021 ^| Windows x64 Standalone
+echo   Rust Edition 2024 ^| Windows x64 Standalone
 echo ========================================================
 echo.
 
@@ -24,11 +24,34 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo.
 echo [2/3] Staging distribution directory...
-if not exist "dist" mkdir "dist"
-copy /y "target\release\league-voice-recorder.exe" "dist\LeagueVoiceRecorder.exe"
+if not exist "dist\LeagueVoiceRecorder" mkdir "dist\LeagueVoiceRecorder"
+if not exist "dist\LeagueVoiceRecorder\assets" mkdir "dist\LeagueVoiceRecorder\assets"
+copy /y "assets\icon.ico" "dist\LeagueVoiceRecorder\assets\icon.ico" >nul
+
+if exist "D:\cargo_target\league-voice-recorder\release\league-voice-recorder.exe" (
+    copy /y "D:\cargo_target\league-voice-recorder\release\league-voice-recorder.exe" "dist\LeagueVoiceRecorder\LeagueVoiceRecorder.exe"
+    copy /y "D:\cargo_target\league-voice-recorder\release\league-voice-recorder.exe" "dist\LeagueVoiceRecorder.exe"
+) else (
+    copy /y "target\release\league-voice-recorder.exe" "dist\LeagueVoiceRecorder\LeagueVoiceRecorder.exe"
+    copy /y "target\release\league-voice-recorder.exe" "dist\LeagueVoiceRecorder.exe"
+)
 
 echo.
-echo [3/3] Build complete!
-echo Binary output: dist\LeagueVoiceRecorder.exe
+echo [3/4] Compiling NSIS Setup Wizard...
+set "MAKENSIS="
+if exist "C:\Program Files (x86)\NSIS\makensis.exe" set "MAKENSIS=C:\Program Files (x86)\NSIS\makensis.exe"
+if exist "C:\Program Files\NSIS\makensis.exe" set "MAKENSIS=C:\Program Files\NSIS\makensis.exe"
+
+if defined MAKENSIS (
+    "%MAKENSIS%" installer.nsi
+    echo [OK] NSIS Installer: dist\LeagueVoiceRecorder_0.6.0_x64-setup.exe
+) else (
+    echo [SKIP] makensis.exe not found. Standalone binary is ready.
+)
+
+echo.
+echo [4/4] Build complete!
+echo Binary output:    dist\LeagueVoiceRecorder.exe
+if defined MAKENSIS echo Installer output: dist\LeagueVoiceRecorder_0.6.0_x64-setup.exe
 echo.
 pause

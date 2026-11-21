@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const CURRENT_VERSION: &str = "0.5.1";
+pub const CURRENT_VERSION: &str = "0.6.0";
 pub const GITHUB_REPO: &str = "betterix/league-voice-recorder";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,7 +33,7 @@ pub fn is_newer_version(latest: &str, current: &str) -> bool {
 pub async fn check_for_update(current: &str) -> Result<UpdateInfo, String> {
     let url = format!("https://api.github.com/repos/{}/releases/latest", GITHUB_REPO);
     let client = reqwest::Client::builder()
-        .user_agent("LeagueVoiceRecorder-Rust/0.5.1")
+        .user_agent("LeagueVoiceRecorder-Updater")
         .timeout(std::time::Duration::from_secs(5))
         .build()
         .map_err(|e| e.to_string())?;
@@ -55,12 +55,20 @@ pub async fn check_for_update(current: &str) -> Result<UpdateInfo, String> {
     if let Some(assets) = json.get("assets").and_then(|v| v.as_array()) {
         for asset in assets {
             if let Some(name) = asset.get("name").and_then(|v| v.as_str()) {
-                if name.ends_with(".zip") || name.ends_with(".exe") {
+                let name_lower = name.to_lowercase();
+                // Prioritize NSIS setup installer (.exe), falling back to .zip or standalone .exe
+                if name_lower.contains("setup") && name_lower.ends_with(".exe") {
                     if let Some(url) = asset.get("browser_download_url").and_then(|v| v.as_str()) {
                         download_url = Some(url.to_string());
-                        if name.ends_with(".zip") {
-                            break;
-                        }
+                        break;
+                    }
+                } else if name_lower.ends_with(".zip") && download_url.is_none() {
+                    if let Some(url) = asset.get("browser_download_url").and_then(|v| v.as_str()) {
+                        download_url = Some(url.to_string());
+                    }
+                } else if name_lower.ends_with(".exe") && download_url.is_none() {
+                    if let Some(url) = asset.get("browser_download_url").and_then(|v| v.as_str()) {
+                        download_url = Some(url.to_string());
                     }
                 }
             }
