@@ -9,6 +9,8 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/betterix/league-voice-recorder/actions/workflows/ci.yml"><img src="https://github.com/betterix/league-voice-recorder/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI Status" /></a>
+  <a href="https://github.com/betterix/league-voice-recorder/actions/workflows/codeql.yml"><img src="https://github.com/betterix/league-voice-recorder/actions/workflows/codeql.yml/badge.svg?branch=main" alt="CodeQL Status" /></a>
   <img src="https://img.shields.io/badge/rust-2024%20edition-orange?logo=rust&logoColor=white" alt="Rust 2024" />
   <img src="https://img.shields.io/badge/framework-Tauri%20v2-24C8D8?logo=tauri&logoColor=white" alt="Tauri v2" />
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%2064--bit-0078D6?logo=windows&logoColor=white" alt="Platform" />
@@ -46,9 +48,9 @@ Detailed architectural and operational documentation is available in the [`docs/
 
 ## 🚀 Quick Start
 
-### Standalone Executable
-1. Download the latest `LeagueVoiceRecorder.exe` from [Releases](https://github.com/betterix/league-voice-recorder/releases).
-2. Run the application. Both the **Recording Watcher** and **Replay Auto-Sync** start automatically in hands-free mode.
+### Standalone Executable & Installer
+1. Download the latest `LeagueVoiceRecorder.exe` or `LeagueVoiceRecorder_0.6.0_x64-setup.exe` from [Releases](https://github.com/betterix/league-voice-recorder/releases).
+2. Launch the application or install via setup wizard. Both the **Recording Watcher** and **Replay Auto-Sync** start automatically in hands-free mode.
 3. Minimize to system tray; the app will monitor matches quietly in the background.
 
 ### Building from Source
@@ -57,6 +59,7 @@ Detailed architectural and operational documentation is available in the [`docs/
 - Windows 10 or 11 (64-bit)
 - [Rust](https://rustup.rs/) (1.78+)
 - [Node.js](https://nodejs.org/) (v18+)
+- [NSIS](https://nsis.sourceforge.io/) (optional, for building the Windows installer)
 
 ```bash
 # Clone the repository
@@ -68,6 +71,9 @@ cargo tauri dev
 
 # Compile standalone release executable
 cargo build --release
+
+# (Optional) Build NSIS Setup Wizard installer
+makensis installer.nsi
 ```
 
 ---

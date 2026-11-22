@@ -26,40 +26,60 @@ league-voice-recorder/
 │
 ├── Cargo.toml               # Rust dependencies (Rust 2024 Edition), workspace profile, and Tauri features
 ├── tauri.conf.json          # Tauri v2 application configuration, multi-window definitions
+├── installer.nsi            # NSIS Modern Setup Wizard script (Unicode, x64, autostart, uninstall)
 │
 ├── src/                     # Core Native Rust Application Engine
 │   ├── main.rs              # Application entrypoint, Tauri commands, system tray setup
+│   ├── lib.rs               # Library root exporting modules for unit and integration tests
+│   │
+│   ├── audio/               # Hardware Audio Capture & Streaming Engine
+│   │   ├── mod.rs           # Module exports & shared audio types
+│   │   ├── capture.rs       # CPAL WASAPI loopback & microphone capture with headless VM fallback
+│   │   ├── encoder.rs       # Streaming MP3 mixer & pure-Rust encoder (rusty_mp3)
+│   │   └── timeline.rs      # Sample-accurate match alignment & in-place pause lag truncation
 │   │
 │   ├── config/              # Configuration & DPAPI secret management
-│   │   ├── mod.rs           # Config module exports
-│   │   ├── manager.rs       # config.json load/save & path resolver
-│   │   └── dpapi.rs         # Windows CryptProtectData / CryptUnprotectData encryption
+│   │   ├── mod.rs           # config.json load/save & path resolver
+│   │   └── secret.rs        # Windows CryptProtectData / CryptUnprotectData encryption
 │   │
 │   ├── record/              # Live Scrim Recording Engine
-│   │   ├── mod.rs           # Module exports & shared recording types
-│   │   ├── engine.rs        # LiveClientData polling loop & zero-latency trigger
-│   │   ├── wasapi.rs        # Native WASAPI loopback and microphone capture (cpal)
-│   │   ├── wav_streamer.rs  # Zero-RAM disk-streaming PCM writer & pause lag truncation
-│   │   ├── lcu.rs           # LCU lockfile parser & lol-gameflow Game ID query
-│   │   └── encoder.rs       # Background MP3 mixer and encoder
+│   │   ├── mod.rs           # Module exports & recording state structures
+│   │   └── engine.rs        # Zero-latency trigger, auto-stop, and recording watcher loop
 │   │
 │   ├── replay/              # Frame-Accurate Replay Synchronization
 │   │   ├── mod.rs           # Module exports & replay state structures
-│   │   ├── sync.rs          # Replay API (:2999/replay/playback) polling & Rodio sync
-│   │   ├── process.rs       # psutil-style process detection for League of Legends .rofl
-│   │   └── player.rs        # Rodio audio player wrapper (seek, speed, volume, mute)
+│   │   ├── engine.rs        # Replay synchronization watcher and state machine
+│   │   ├── api.rs           # Targeted League Replay API polling (:2999/replay/playback)
+│   │   ├── player.rs        # Rodio audio player wrapper (instant seek, speed, volume, mute)
+│   │   ├── process.rs       # sysinfo command-line inspector for .rofl process detection
+│   │   └── config.rs        # game.cfg EnableReplayApi 1-click auto-configurator
 │   │
-│   ├── discord/             # Discord Local IPC
+│   ├── lcu/                 # League Client Update & Live API
 │   │   ├── mod.rs           # Module exports
-│   │   └── client.rs        # Named pipe client (\\.\pipe\discord-ipc-*) for live mute sync
+│   │   ├── live_api.rs      # Targeted LiveClientData polling (:2999/liveclientdata/allgamedata)
+│   │   └── lockfile.rs      # LCU lockfile parser & lol-gameflow Game ID query
 │   │
-│   ├── cloud/               # Scrim Cloud Synchronization
+│   ├── discord_ipc/         # Discord Local IPC
+│   │   └── mod.rs           # Named pipe client (\\.\pipe\discord-ipc-*) for live mute/deafen sync
+│   │
+│   ├── cloud_sync/          # Scrim Cloud Synchronization
+│   │   └── mod.rs           # REST client for league-voice-recorder-backend with DPAPI & RBAC
+│   │
+│   ├── overlay/             # In-Game Floating HUD Controller
+│   │   └── mod.rs           # Multi-window HUD overlay controller, Win32 transparency & dragging
+│   │
+│   ├── scrim_meta/          # Scrim Metadata Management
 │   │   ├── mod.rs           # Module exports
-│   │   └── client.rs        # REST client for league-voice-recorder-backend
+│   │   └── id3.rs           # Studio-grade ID3v2 metadata chunking & custom frame tagging
 │   │
-│   └── overlay/             # In-Game Floating HUD Controller
-│       ├── mod.rs           # Module exports
-│       └── win32.rs         # Win32 SetWindowLongW WS_EX_TRANSPARENT hit-testing
+│   ├── tray/                # System Tray Controller
+│   │   └── mod.rs           # Tray icon, dynamic tooltips, and window visibility toggles
+│   │
+│   ├── updater/             # Auto-Update Checker
+│   │   └── mod.rs           # GitHub release version comparison & update notification
+│   │
+│   └── i18n/                # Embedded Localization
+│       └── mod.rs           # Zero-overhead embedded JSON translations (English & Hungarian)
 │
 ├── ui/                      # Tauri Frontend Webview Layer
 │   ├── index.html           # Desktop application interface
@@ -87,49 +107,58 @@ league-voice-recorder/
 │   └── icon.svg             # Scalable vector logo
 │
 ├── tests/                   # Automated Rust Integration & Unit Tests
-│   └── engine_tests.rs      # Engine unit tests & alignment verification
+│   └── engine_tests.rs      # Audio timeline & alignment verification
+│
+├── .github/                 # GitHub CI/CD & Security Workflows
+│   ├── workflows/
+│   │   ├── ci.yml           # Cargo check, automated test suite (39 tests), release build
+│   │   ├── codeql.yml       # Advanced CodeQL security analysis (Rust & JS/TS)
+│   │   ├── release.yml      # Multi-artifact automated release packager with VirusTotal scan
+│   │   └── pages.yml        # GitHub Pages showcase website deployment
+│   └── dependabot.yml       # Automated dependency security updates (Cargo & Actions)
 │
 └── dist/                    # Compiled distribution binaries (staged releases)
-    └── LeagueVoiceRecorder.exe
+    ├── LeagueVoiceRecorder.exe
+    └── LeagueVoiceRecorder_0.6.0_x64-setup.exe
 ```
 
 ---
 
 ## 3. System Architecture & Component Reference
 
-### 3.1 Recording Engine (`src/record/`)
-- **Zero-Latency Match Start**: Uses a persistent HTTP keep-alive connection polling `https://127.0.0.1:2999/liveclientdata/allgamedata`. When the match begins, audio recording starts in under 1ms.
+### 3.1 Recording Engine (`src/record/` & `src/audio/`)
+- **Zero-Latency Match Start**: Uses a persistent HTTP keep-alive connection polling `https://127.0.0.1:2999/liveclientdata/allgamedata` with optimized, targeted JSON key parsing (`src/lcu/live_api.rs`). When the match begins, audio recording starts in under 1ms.
 - **Sample-Accurate Audio Alignment**:
   - `first_game_time` is recorded at the exact moment capture begins.
   - If recording starts after `00:00:00`, exact silence frames are prepended.
   - If recording starts before `00:00:00` during pre-game countdown, the initial frames are trimmed.
   - Result: `00:00:00` in the exported MP3 matches in-game `game_time = 0.000` frame-by-frame.
-- **Zero-Drift Pause Detection & WAV Lag Truncation**:
+- **Zero-Drift Pause Detection & Disk Lag Truncation (`src/audio/timeline.rs`)**:
   - Live client data API polling detects match pause freezes.
-  - The ~450ms detection lag is permanently sliced out by seeking both Discord and mic WAV streams back to `44 + target_frame * frame_size` and truncating the files in-place (`truncate_to_game_time`).
+  - The ~280ms detection lag is permanently sliced out by truncating both loopback and mic raw disk streams in-place (`pause_and_truncate_lag`).
 - **Hands-Free Match Auto-Stop**: When the match finishes and `<GameID>.mp3` is saved, the engine automatically signals completion and resets UI state.
 
 ### 3.2 Replay Synchronizer (`src/replay/`)
-- **ROFL Detection & Game ID Parsing**: Inspects active processes for `League of Legends.exe` containing `.rofl` command lines, parses the Game ID (e.g. `EUW1-8052864504.rofl`), and loads `<GameID>.mp3`.
-- **Replay API Polling (`:2999/replay/playback`)**:
-  - Polls replay time, speed, and pause state every 50ms.
+- **ROFL Detection & Game ID Parsing**: Inspects active processes for `League of Legends.exe` containing `.rofl` command lines (`src/replay/process.rs`), parses the Game ID (e.g. `EUW1-8052864504.rofl`), and loads `<GameID>.mp3`.
+- **Targeted Replay API Polling (`:2999/replay/playback`)**:
+  - Polls replay time, speed, and pause state every 50ms using targeted deserialization (`src/replay/api.rs`).
   - **Zero-Latency Unpause**: If unpausing at the same timestamp (`abs(game_time - paused_game_time) < 0.25`), calls `player.play()` immediately without an unnecessary pipeline seek.
-  - **Scrubbing & Drift Compensation**: Re-syncs on scrubs or drift (>1.0s) with an 800ms cooldown to avoid seek storms.
-  - **Replay Volume & Mute (`M` Hotkey)**: Allows live volume adjustment and toggling mute via the `M` hotkey inside the League client.
+  - **Scrubbing & Drift Compensation**: Re-syncs on scrubs or drift (>0.8s) with cooldown guards to avoid seek storms.
+  - **Replay Volume & Mute**: Allows live volume adjustment and toggling mute with smooth needle tracking.
 
 ### 3.3 In-Game Floating Overlay (`src/overlay/`, `ui/overlay.html`)
 - **Hardware-Accelerated Dual Mode**:
   - **Recorder HUD Mode**: Pulsing REC pill, match timer, dual-channel audio visualizers using 24-step GradeX harmonic modulation.
-  - **Replay HUD Mode**: Needle waveform canvas, interactive volume slider, and playback status pill.
+  - **Replay HUD Mode**: Needle waveform canvas tracking playback progress, interactive volume slider, and playback status pill.
 - **Anti-Bleed Focus Isolation**: Overlay is only visible when actively recording or syncing AND `League of Legends.exe` is the active foreground window. Alt-tabbing hides it immediately.
 - **Native Dragging & Click-Through**: Supports Windows `WS_EX_TRANSPARENT` for complete click-through into the game, while preserving dedicated hit targets for the lock toggle and volume slider.
 
-### 3.4 System Tray (`src/main.rs`)
+### 3.4 System Tray (`src/tray/`, `src/main.rs`)
 - Left-click toggles app window visibility.
 - Minimizing cloaks the window, plays a native `MessageBeep(0x00000040)` chime, and sends a Windows toast/balloon notification.
 - Dynamic hover tooltip reflects live recording or syncing state and game clock.
 
-### 3.5 Remote Scrim Cloud Sync (`src/cloud/`, `docs/cloud_sync.md`)
+### 3.5 Remote Scrim Cloud Sync (`src/cloud_sync/`, `docs/cloud_sync.md`)
 - Seamless client for [league-voice-recorder-backend](https://github.com/betterix/league-voice-recorder-backend).
 - Encrypts API keys using Windows DPAPI (`CryptProtectData`).
 - Role-based UI adaptation (hiding upload controls for `pull` keys).
@@ -139,6 +168,6 @@ league-voice-recorder/
 ## 4. Engineering Invariants & Coding Guidelines
 
 1. **Vanguard Safety**: NEVER read or inject into League of Legends process memory. NEVER use virtual audio drivers. Only query official localhost endpoints (`:2999`) and Windows WASAPI.
-2. **Audio Timing Integrity**: NEVER alter the sample-accurate match alignment formulas in `src/record/engine.rs` or `src/record/wav_streamer.rs`.
-3. **Zero-RAM Streaming**: Audio capture must always stream directly to disk chunks (`.raw_audio/`); never accumulate uncompressed audio buffers in system RAM.
+2. **Audio Timing Integrity**: NEVER alter the sample-accurate match alignment formulas in `src/audio/timeline.rs` or `src/record/engine.rs`.
+3. **Zero-RAM Streaming**: Audio capture must always stream directly to disk chunks (`.raw_audio/` or `%LOCALAPPDATA%/Temp/`); never accumulate uncompressed audio buffers in system RAM.
 4. **Git Safety**: Never push or commit without explicit user authorization. Never include secrets in `config.json`.

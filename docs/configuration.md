@@ -29,7 +29,7 @@ League Voice Recorder stores all settings, device preferences, and cloud credent
 
 ```json
 {
-  "record_folder": "C:\\Users\\Zsolt\\Documents\\League Voice Recorder\\recordings",
+  "record_folder": "C:\\Users\\Username\\Documents\\League Voice Recorder\\recordings",
   "vlc_path": "C:\\Program Files\\VideoLAN\\VLC",
   "selected_mic": "Default Microphone (System)",
   "selected_loopback": "Default Output (System)",
