@@ -9,7 +9,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/betterix/league-voice-recorder/actions/workflows/ci.yml"><img src="https://github.com/betterix/league-voice-recorder/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI Status" /></a>
   <a href="https://github.com/betterix/league-voice-recorder/actions/workflows/codeql.yml"><img src="https://github.com/betterix/league-voice-recorder/actions/workflows/codeql.yml/badge.svg?branch=main" alt="CodeQL Status" /></a>
   <img src="https://img.shields.io/badge/rust-2024%20edition-orange?logo=rust&logoColor=white" alt="Rust 2024" />
   <img src="https://img.shields.io/badge/framework-Tauri%20v2-24C8D8?logo=tauri&logoColor=white" alt="Tauri v2" />

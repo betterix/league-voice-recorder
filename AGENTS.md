@@ -111,7 +111,6 @@ league-voice-recorder/
 │
 ├── .github/                 # GitHub CI/CD & Security Workflows
 │   ├── workflows/
-│   │   ├── ci.yml           # Cargo check, automated test suite (39 tests), release build
 │   │   ├── codeql.yml       # Advanced CodeQL security analysis (Rust & JS/TS)
 │   │   ├── release.yml      # Multi-artifact automated release packager with VirusTotal scan
 │   │   └── pages.yml        # GitHub Pages showcase website deployment
