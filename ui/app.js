@@ -1324,41 +1324,120 @@ async function triggerEnableReplayApi() {
   }
 }
 
-async function checkForUpdates() {
+function dismissUpdateAnnouncement() {
+  const bar = document.getElementById("update-announcement-bar");
+  if (bar) bar.style.display = "none";
+}
+
+let latestDownloadUrl = null;
+
+async function checkForUpdates(silent = false) {
   const msg = document.getElementById("update-status-msg");
-  if (msg) msg.innerText = "Checking GitHub Releases...";
+  if (!silent && msg) msg.innerText = "Checking GitHub Releases...";
   const info = await invokeTauri("check_for_updates");
   if (info) {
     if (info.available) {
-      if (info.download_url) {
-        msg.innerHTML = `🌟 <b>New version available: ${info.latest_version}</b> (Current: ${info.current_version}) <button id="btn-apply-update" class="btn-small" onclick="applyUpdate('${info.download_url}')" style="margin-left: 8px; background: var(--accent-gold); color: #000; font-weight: bold;">⬇️ Download & Install Update</button>`;
-      } else {
-        msg.innerHTML = `🌟 <b>New version available: ${info.latest_version}</b> (Current: ${info.current_version}) <a href="https://github.com/betterix/league-voice-recorder/releases/latest" target="_blank" style="color: var(--accent-gold); margin-left: 8px; text-decoration: underline; font-weight: bold;">🔗 View Release</a>`;
+      latestDownloadUrl = info.download_url;
+      const verText = info.latest_version.startsWith("v") ? info.latest_version : `v${info.latest_version}`;
+
+      // 1. Show Top Announcement Bar
+      const annBar = document.getElementById("update-announcement-bar");
+      const annText = document.getElementById("update-announcement-text");
+      const annBtn = document.getElementById("btn-banner-update");
+      if (annBar && annText && annBtn) {
+        annText.innerHTML = `<b>New Version Available: ${verText}</b> — An update is ready to install!`;
+        annBar.style.display = "block";
+        if (info.download_url) {
+          annBtn.style.display = "inline-flex";
+          annBtn.onclick = () => applyUpdate(info.download_url);
+        } else {
+          annBtn.style.display = "none";
+        }
       }
+
+      // 2. Show Header Badge
+      const badge = document.getElementById("btn-header-update-badge");
+      if (badge) {
+        badge.innerText = `🚀 Update: ${verText}`;
+        badge.style.display = "inline-flex";
+      }
+
+      // 3. Settings Card Message
+      if (msg) {
+        if (info.download_url) {
+          msg.innerHTML = `🌟 <b>New version available: ${info.latest_version}</b> (Current: ${info.current_version}) <button id="btn-apply-update" class="btn-update-apply" onclick="applyUpdate('${info.download_url}')">⬇️ Download & Install Update</button>`;
+        } else {
+          msg.innerHTML = `🌟 <b>New version available: ${info.latest_version}</b> (Current: ${info.current_version}) <a href="https://github.com/betterix/league-voice-recorder/releases/latest" target="_blank" style="color: var(--accent-gold); margin-left: 8px; text-decoration: underline; font-weight: bold;">🔗 View Release</a>`;
+        }
+      }
+
+      appendLog(`🚀 New version available: ${verText} (Current: ${info.current_version})`);
     } else {
-      if (msg) msg.innerText = `✓ You are using the latest version (${info.current_version}).`;
+      if (!silent && msg) {
+        msg.innerText = `✓ You are using the latest version (${info.current_version}).`;
+      }
     }
   } else {
-    if (msg) msg.innerText = "⚠️ Could not check for updates (offline or rate limited).";
+    if (!silent && msg) {
+      msg.innerText = "⚠️ Could not check for updates (offline or rate limited).";
+    }
   }
 }
 
 async function applyUpdate(downloadUrl) {
+  const targetUrl = downloadUrl || latestDownloadUrl;
+  if (!targetUrl) return;
+
   const btn = document.getElementById("btn-apply-update");
-  if (btn) {
-    btn.disabled = true;
-    btn.innerText = "⏳ Downloading update...";
-  }
-  const msg = document.getElementById("update-status-msg");
-  if (msg) msg.innerText = "Downloading installer and restarting application...";
-  try {
-    await invokeTauri("apply_update", { downloadUrl });
-  } catch (err) {
-    if (msg) msg.innerText = `⚠️ Update failed: ${err}`;
-    if (btn) {
-      btn.disabled = false;
-      btn.innerText = "⬇️ Download & Install Update";
+  const bannerBtn = document.getElementById("btn-banner-update");
+  [btn, bannerBtn].forEach(b => {
+    if (b) {
+      b.disabled = true;
+      b.innerText = "⏳ Initializing download...";
+      b.style.opacity = "0.7";
     }
+  });
+
+  const progressContainers = [
+    document.getElementById("update-progress-container"),
+    document.getElementById("banner-update-progress-container")
+  ];
+  progressContainers.forEach(c => { if (c) c.style.display = "block"; });
+
+  const progressFills = [
+    document.getElementById("update-progress-bar-fill"),
+    document.getElementById("banner-update-progress-bar-fill")
+  ];
+  progressFills.forEach(f => {
+    if (f) {
+      f.classList.remove("installing");
+      f.style.width = "0%";
+    }
+  });
+
+  const statusEls = [
+    document.getElementById("update-progress-status"),
+    document.getElementById("banner-update-progress-status")
+  ];
+  statusEls.forEach(s => { if (s) s.innerText = "Starting download..."; });
+
+  const byteEls = [
+    document.getElementById("update-progress-bytes"),
+    document.getElementById("banner-update-progress-bytes")
+  ];
+  byteEls.forEach(b => { if (b) b.innerText = "Connecting..."; });
+
+  try {
+    await invokeTauri("apply_update", { downloadUrl: targetUrl });
+  } catch (err) {
+    statusEls.forEach(s => { if (s) s.innerText = `⚠️ Update failed: ${err}`; });
+    [btn, bannerBtn].forEach(b => {
+      if (b) {
+        b.disabled = false;
+        b.innerText = "⬇️ Download & Install Update";
+        b.style.opacity = "1";
+      }
+    });
   }
 }
 
@@ -1645,8 +1724,62 @@ window.addEventListener("DOMContentLoaded", async () => {
     applyTranslations();
   } catch (e) {}
 
-  // 2b. Listen for reactive events from Tauri backend (overlay volume changes, hotkeys)
+  // 2b. Listen for reactive events from Tauri backend (overlay volume changes, hotkeys, update progress)
   if (window.__TAURI__ && window.__TAURI__.event) {
+    window.__TAURI__.event.listen("update-download-progress", (event) => {
+      const data = event.payload;
+      const progressContainers = [
+        document.getElementById("update-progress-container"),
+        document.getElementById("banner-update-progress-container")
+      ];
+      progressContainers.forEach(c => { if (c) c.style.display = "block"; });
+
+      const progressFills = [
+        document.getElementById("update-progress-bar-fill"),
+        document.getElementById("banner-update-progress-bar-fill")
+      ];
+      const statusEls = [
+        document.getElementById("update-progress-status"),
+        document.getElementById("banner-update-progress-status")
+      ];
+      const byteEls = [
+        document.getElementById("update-progress-bytes"),
+        document.getElementById("banner-update-progress-bytes")
+      ];
+
+      if (data.status === "downloading") {
+        progressFills.forEach(f => {
+          if (f) {
+            f.classList.remove("installing");
+            f.style.width = `${data.percentage}%`;
+          }
+        });
+        statusEls.forEach(s => {
+          if (s) s.innerText = `Downloading update... ${data.percentage}%`;
+        });
+        if (data.total > 0) {
+          const dlMb = (data.downloaded / (1024 * 1024)).toFixed(1);
+          const totalMb = (data.total / (1024 * 1024)).toFixed(1);
+          byteEls.forEach(b => {
+            if (b) b.innerText = `${dlMb} MB / ${totalMb} MB`;
+          });
+        }
+      } else if (data.status === "installing") {
+        progressFills.forEach(f => {
+          if (f) {
+            f.classList.add("installing");
+            f.style.width = "100%";
+          }
+        });
+        statusEls.forEach(s => {
+          if (s) s.innerText = "Installing update & restarting application...";
+        });
+        byteEls.forEach(b => {
+          if (b) b.innerText = "Finalizing...";
+        });
+      }
+    });
+
     window.__TAURI__.event.listen("volume-updated", (event) => {
       const vol = event.payload;
       const qVol = document.getElementById("quick-vol");
@@ -1706,6 +1839,11 @@ window.addEventListener("DOMContentLoaded", async () => {
       if (role && role !== "unknown") cloudRole = role;
     } catch (e) {}
   }, 500);
+
+  // 4b. Automatic update announcement (matching Python CustomTkinter 3-second background check)
+  setTimeout(() => {
+    checkForUpdates(true);
+  }, 3000);
 
   // 5. Start log and audio polling loops
   setInterval(pollLogs, 500);

@@ -91,10 +91,15 @@ pub async fn check_for_update(current: &str) -> Result<UpdateInfo, String> {
     })
 }
 
-/// Downloads the standalone update executable into %TEMP%, spawns a background updater script,
-/// copies it over the running binary once exited, relaunches the updated app,
-/// and deletes the temporary update file.
-pub async fn download_and_apply_update(download_url: &str) -> Result<(), String> {
+pub type ProgressCallback = Box<dyn Fn(u64, u64, u32, &str) + Send + Sync>;
+
+/// Downloads the standalone update executable into %TEMP%, streams progress,
+/// spawns a background updater script, copies it over the running binary once exited,
+/// relaunches the updated app, and deletes the temporary update file.
+pub async fn download_and_apply_update(
+    download_url: &str,
+    progress_callback: Option<ProgressCallback>,
+) -> Result<(), String> {
     if download_url.is_empty() {
         return Err("Download URL is empty".to_string());
     }
@@ -105,15 +110,12 @@ pub async fn download_and_apply_update(download_url: &str) -> Result<(), String>
         .build()
         .map_err(|e| format!("Client build error: {}", e))?;
 
-    let resp = client.get(download_url).send().await
+    let mut resp = client.get(download_url).send().await
         .map_err(|e| format!("Failed to download update: {}", e))?;
 
     if !resp.status().is_success() {
         return Err(format!("Download failed with status: {}", resp.status()));
     }
-
-    let bytes = resp.bytes().await
-        .map_err(|e| format!("Failed to read update stream: {}", e))?;
 
     let temp_dir = std::env::temp_dir();
     let timestamp = std::time::SystemTime::now()
@@ -122,8 +124,38 @@ pub async fn download_and_apply_update(download_url: &str) -> Result<(), String>
         .unwrap_or(0);
 
     let download_path = temp_dir.join(format!("lvr_update_{}.exe", timestamp));
-    std::fs::write(&download_path, &bytes)
-        .map_err(|e| format!("Failed to save update file: {}", e))?;
+
+    let total_size = resp.content_length().unwrap_or(0);
+    let mut downloaded: u64 = 0;
+
+    use std::io::Write;
+    let mut out_file = std::fs::File::create(&download_path)
+        .map_err(|e| format!("Failed to create update file: {}", e))?;
+
+    if let Some(ref cb) = progress_callback {
+        cb(0, total_size, 0, "downloading");
+    }
+
+    while let Some(chunk) = resp.chunk().await.map_err(|e| format!("Stream error: {}", e))? {
+        out_file.write_all(&chunk)
+            .map_err(|e| format!("Failed to write update chunk: {}", e))?;
+        downloaded += chunk.len() as u64;
+
+        if let Some(ref cb) = progress_callback {
+            let pct = if total_size > 0 {
+                ((downloaded as f64 / total_size as f64) * 100.0).clamp(0.0, 100.0) as u32
+            } else {
+                0
+            };
+            cb(downloaded, total_size, pct, "downloading");
+        }
+    }
+
+    drop(out_file);
+
+    if let Some(ref cb) = progress_callback {
+        cb(downloaded, total_size, 100, "installing");
+    }
 
     let current_exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("LeagueVoiceRecorder.exe"));
     let target_dir = current_exe.parent().unwrap_or_else(|| std::path::Path::new("."));

@@ -28,6 +28,7 @@
         </div>
       </div>
       <div class="health-ribbon">
+        <button id="btn-header-update-badge" class="btn-update-badge" style="display: none;" onclick="switchTab('settings')">🚀 Update Available</button>
         <div class="health-pill" id="pill-discord">
           <span class="dot"></span>
           <span class="text" id="pill-discord-text">Discord: ⚪ Checking...</span>
@@ -40,6 +41,25 @@
         <button class="btn-refresh-health" onclick="refreshHealth()" data-i18n="health.refresh" title="Refresh System Health">🔄 Refresh</button>
       </div>
     </header>
+
+    <!-- Top Announcement Bar for New Version (matching Python auto-check) -->
+    <div id="update-announcement-bar" class="update-announcement-bar" style="display: none;">
+      <div class="update-announcement-content">
+        <span class="update-announcement-icon">🚀</span>
+        <span id="update-announcement-text"><b>New Version Available: v0.6.1</b> — An update is ready to install!</span>
+        <button id="btn-banner-update" class="btn-update-apply" style="margin-left: 12px; padding: 4px 14px; font-size: 11px;">⬇️ Download & Install Update</button>
+        <button class="btn-update-dismiss" onclick="dismissUpdateAnnouncement()" title="Dismiss announcement">✕</button>
+      </div>
+      <div id="banner-update-progress-container" class="update-progress-container" style="display: none; margin-top: 8px;">
+        <div class="update-progress-header">
+          <span id="banner-update-progress-status">Downloading update... 0%</span>
+          <span id="banner-update-progress-bytes">0 MB / 0 MB</span>
+        </div>
+        <div class="update-progress-bar-bg">
+          <div id="banner-update-progress-bar-fill" class="update-progress-bar-fill" style="width: 0%;"></div>
+        </div>
+      </div>
+    </div>
 
     <!-- 2-Card Main Action Section matching CustomTkinter action_frame -->
     <section class="action-frame">
@@ -420,6 +440,15 @@
             <span></span>
           </div>
           <div id="update-status-msg" style="font-size: 11px; color: var(--text-muted); padding-top: 2px;"></div>
+          <div id="update-progress-container" class="update-progress-container" style="display: none;">
+            <div class="update-progress-header">
+              <span id="update-progress-status">Downloading update... 0%</span>
+              <span id="update-progress-bytes">0 MB / 0 MB</span>
+            </div>
+            <div class="update-progress-bar-bg">
+              <div id="update-progress-bar-fill" class="update-progress-bar-fill" style="width: 0%;"></div>
+            </div>
+          </div>
         </div>
 
       </div>

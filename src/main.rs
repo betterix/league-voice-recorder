@@ -1557,9 +1557,23 @@ async fn check_for_updates(state: tauri::State<'_, Arc<AppState>>) -> Result<lea
 }
 
 #[tauri::command]
-async fn apply_update(download_url: String, state: tauri::State<'_, Arc<AppState>>) -> Result<(), String> {
-    state.log("⬇️ Downloading update installer and preparing application restart...");
-    league_voice_recorder::updater::download_and_apply_update(&download_url).await
+async fn apply_update(
+    download_url: String,
+    state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    state.log("⬇️ Downloading update and preparing application restart...");
+    use tauri::Emitter;
+    let app_handle = app.clone();
+    let cb = Box::new(move |downloaded: u64, total: u64, pct: u32, status: &str| {
+        let _ = app_handle.emit("update-download-progress", serde_json::json!({
+            "downloaded": downloaded,
+            "total": total,
+            "percentage": pct,
+            "status": status,
+        }));
+    });
+    league_voice_recorder::updater::download_and_apply_update(&download_url, Some(cb)).await
 }
 
 #[tauri::command]
