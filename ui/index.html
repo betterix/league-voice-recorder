@@ -397,7 +397,7 @@
 
           <div class="setting-grid-row">
             <span class="setting-lbl" data-i18n="settings.cloud_api_key">API Secret Key:</span>
-            <input type="password" id="cfg-cloud-key" class="setting-input" placeholder="Paste your UPLOAD_KEY or PULL_KEY" onchange="autoSaveSettings()">
+            <input type="password" id="cfg-cloud-key" class="setting-input" placeholder="Paste your UPLOAD_KEY or PULL_KEY" oninput="onApiKeyInput()" onchange="autoSaveSettings()">
             <span></span>
           </div>
 
@@ -414,7 +414,7 @@
           <div class="setting-grid-row">
             <span class="setting-lbl">App Version:</span>
             <div style="display: flex; align-items: center; gap: 12px;">
-              <span style="font-size: 12px; font-weight: bold; color: var(--text-muted);">v0.6.0</span>
+              <span id="settings-app-version" style="font-size: 12px; font-weight: bold; color: var(--text-muted);">v0.6.0</span>
               <button class="btn-small" onclick="checkForUpdates()">Check for Updates</button>
             </div>
             <span></span>

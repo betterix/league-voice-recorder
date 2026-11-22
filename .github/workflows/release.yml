@@ -180,6 +180,7 @@ jobs:
           }
           $tag = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { (Get-Content $env:GITHUB_EVENT_PATH | ConvertFrom-Json).release.tag_name }
           Write-Host "Running automated VirusTotal verification for release tag: $tag"
+          $setupExe = (Get-ChildItem -Path "dist/*setup*.exe" | Select-Object -First 1).FullName
           python scripts/virustotal_scan.py `
-            --files "dist/LeagueVoiceRecorder/LeagueVoiceRecorder.exe" "dist/LeagueVoiceRecorder_0.6.0_x64-setup.exe" `
+            --files "dist/LeagueVoiceRecorder/LeagueVoiceRecorder.exe" "$setupExe" `
             --tag "$tag"

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const CURRENT_VERSION: &str = "0.6.0";
+pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const GITHUB_REPO: &str = "betterix/league-voice-recorder";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -142,7 +142,14 @@ if not errorlevel 1 (
     if %RETRIES% lss 10 goto WAIT_PID
 )
 
-copy /y "{download_path}" "{target_exe}" >nul
+set COPY_RETRIES=0
+:RETRY_COPY
+copy /y "{download_path}" "{target_exe}" >nul 2>&1
+if errorlevel 1 (
+    timeout /t 1 /nobreak >nul
+    set /a COPY_RETRIES+=1
+    if %COPY_RETRIES% lss 10 goto RETRY_COPY
+)
 
 timeout /t 1 /nobreak >nul
 

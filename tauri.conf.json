@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "League Voice Recorder & Replay Synchronizer v0.6.0",
+        "title": "League Voice Recorder & Replay Synchronizer",
         "width": 1100,
         "height": 960,
         "minWidth": 920,

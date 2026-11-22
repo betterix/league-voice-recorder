@@ -94,7 +94,7 @@ pub struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         let initial_logs = vec![
-            format!("[{}] 🎮 League Voice Recorder v0.6.0 initialized.", get_timestamp()),
+            format!("[{}] 🎮 League Voice Recorder v{} initialized.", get_timestamp(), env!("CARGO_PKG_VERSION")),
             format!("[{}] 🎙️ WASAPI Audio Engine ready: High-resolution hardware loopback active.", get_timestamp()),
             format!("[{}] 🎬 Replay Synchronizer ready: Watching for League replay API (:2999).", get_timestamp()),
             format!("[{}] ⚡ Auto-Detect Monitor active: Monitoring LCU gameflow phases.", get_timestamp()),
@@ -1412,9 +1412,16 @@ fn overlay_reset_position(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 async fn test_cloud_connection(
     url: String,
-    key: String,
+    mut key: String,
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<league_voice_recorder::cloud_sync::CloudHealthStatus, String> {
+    if key.is_empty() {
+        if let Ok(cfg) = AppConfig::load() {
+            if !cfg.remote_api_key.is_empty() {
+                key = cfg.remote_api_key;
+            }
+        }
+    }
     state.log(&format!("☁️ Testing remote scrim server connection to {}...", url));
     let client = league_voice_recorder::cloud_sync::CloudSyncClient::new(&url, &key);
     match client.check_health().await {
@@ -1526,6 +1533,11 @@ async fn cloud_delete_recording(game_id: String, state: tauri::State<'_, Arc<App
 }
 
 #[tauri::command]
+fn get_app_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
+#[tauri::command]
 async fn check_for_updates(state: tauri::State<'_, Arc<AppState>>) -> Result<league_voice_recorder::updater::UpdateInfo, String> {
     state.log("🔄 Checking GitHub Releases for newer versions...");
     match league_voice_recorder::updater::check_for_update(league_voice_recorder::updater::CURRENT_VERSION).await {
@@ -1600,7 +1612,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with(log_layer)
         .try_init();
 
-    info!("🎮 League Voice Recorder v0.6.0");
+    info!("🎮 League Voice Recorder v{}", env!("CARGO_PKG_VERSION"));
 
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|arg| arg == "--headless" || arg == "--cli") {
@@ -1977,6 +1989,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             apply_update,
             get_available_languages,
             get_translations,
+            get_app_version,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

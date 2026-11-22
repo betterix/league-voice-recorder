@@ -22,7 +22,7 @@ ManifestDPIAware true
 Name "${APP_NAME}"
 
 ; Output filename matching standard NSIS naming
-OutFile "dist\LeagueVoiceRecorder_0.6.0_x64-setup.exe"
+OutFile "dist\LeagueVoiceRecorder_${APP_VERSION}_x64-setup.exe"
 InstallDir "$LOCALAPPDATA\Programs\League Voice Recorder"
 InstallDirRegKey HKCU "Software\${APP_ID}" "InstallDir"
 RequestExecutionLevel user
@@ -77,7 +77,7 @@ VIAddVersionKey /LANG=${LANG_ENGLISH} "CompanyName" "${APP_PUBLISHER}"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "LegalCopyright" "Copyright (C) 2026 ${APP_PUBLISHER}. All rights reserved."
 VIAddVersionKey /LANG=${LANG_ENGLISH} "FileDescription" "${APP_NAME} Setup"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "FileVersion" "${APP_VERSION}.0"
-VIAddVersionKey /LANG=${LANG_ENGLISH} "OriginalFilename" "LeagueVoiceRecorder_0.6.0_x64-setup.exe"
+VIAddVersionKey /LANG=${LANG_ENGLISH} "OriginalFilename" "LeagueVoiceRecorder_${APP_VERSION}_x64-setup.exe"
 
 VIAddVersionKey /LANG=${LANG_HUNGARIAN} "ProductName" "${APP_NAME}"
 VIAddVersionKey /LANG=${LANG_HUNGARIAN} "ProductVersion" "${APP_VERSION}"
@@ -85,7 +85,7 @@ VIAddVersionKey /LANG=${LANG_HUNGARIAN} "CompanyName" "${APP_PUBLISHER}"
 VIAddVersionKey /LANG=${LANG_HUNGARIAN} "LegalCopyright" "Copyright (C) 2026 ${APP_PUBLISHER}. Minden jog fenntartva."
 VIAddVersionKey /LANG=${LANG_HUNGARIAN} "FileDescription" "${APP_NAME} Telepítő"
 VIAddVersionKey /LANG=${LANG_HUNGARIAN} "FileVersion" "${APP_VERSION}.0"
-VIAddVersionKey /LANG=${LANG_HUNGARIAN} "OriginalFilename" "LeagueVoiceRecorder_0.6.0_x64-setup.exe"
+VIAddVersionKey /LANG=${LANG_HUNGARIAN} "OriginalFilename" "LeagueVoiceRecorder_${APP_VERSION}_x64-setup.exe"
 
 ; ------------------------------------------------------------------------------
 ; Language Initialization & Pre-Install Detection
@@ -94,7 +94,7 @@ Function .onInit
     !insertmacro MUI_LANGDLL_DISPLAY
 
     ; Gracefully request any active running instance to close
-    FindWindow $0 "" "League Voice Recorder & Replay Synchronizer v0.6.0"
+    FindWindow $0 "" "${APP_NAME} & Replay Synchronizer v${APP_VERSION}"
     IntCmp $0 0 +3
     SendMessage $0 16 0 0 ; WM_CLOSE
     Sleep 500
@@ -123,9 +123,13 @@ Function .onInit
         ${EndIf}
     ${EndIf}
 
-    ; If a previous version is detected, prompt the user and execute uninstaller before continuing
+    ; If a previous version is detected, prompt the user in the selected language and execute uninstaller before continuing
     ${If} $R0 != ""
-        MessageBox MB_YESNO|MB_ICONQUESTION $(PreviousVersionFound) IDNO +3
+        ${If} $LANGUAGE == ${LANG_ENGLISH}
+            MessageBox MB_YESNO|MB_ICONQUESTION "A previous version of League Voice Recorder was detected.$\r$\n$\r$\nWould you like to uninstall it first before installing v${APP_VERSION}?" IDNO +3
+        ${Else}
+            MessageBox MB_YESNO|MB_ICONQUESTION "A League Voice Recorder korábbi verziója található a gépen.$\r$\n$\r$\nSzeretnéd eltávolítani a régebbi verziót a v${APP_VERSION} telepítése előtt?" IDNO +3
+        ${EndIf}
         ExecWait '$R0'
         Sleep 1000
     ${EndIf}
@@ -143,7 +147,7 @@ Section "MainProgram" SecMain
     SetOutPath "$INSTDIR"
 
     ; Gracefully close any existing instance via clean WM_CLOSE window message
-    FindWindow $0 "" "League Voice Recorder & Replay Synchronizer v0.6.0"
+    FindWindow $0 "" "${APP_NAME} & Replay Synchronizer v${APP_VERSION}"
     IntCmp $0 0 +3
     SendMessage $0 16 0 0 ; WM_CLOSE
     Sleep 500
@@ -205,7 +209,7 @@ Section "Uninstall"
     SetShellVarContext current
 
     ; Gracefully request the application to close if running
-    FindWindow $0 "" "League Voice Recorder & Replay Synchronizer v0.6.0"
+    FindWindow $0 "" "${APP_NAME} & Replay Synchronizer v${APP_VERSION}"
     IntCmp $0 0 +3
     SendMessage $0 16 0 0 ; WM_CLOSE
     Sleep 500

@@ -544,6 +544,12 @@ function onConfigOffsetChange(val) {
 // -------------------------------------------------------------
 // SETTINGS AUTO-SAVE (Matching Python _on_settings_entry_debounced)
 // -------------------------------------------------------------
+let isApiKeyDirty = false;
+
+function onApiKeyInput() {
+  isApiKeyDirty = true;
+}
+
 function autoSaveSettings() {
   if (saveDebounceTimer) clearTimeout(saveDebounceTimer);
   saveDebounceTimer = setTimeout(performSaveSettings, 400);
@@ -565,8 +571,11 @@ async function performSaveSettings() {
   const cloudUrl = document.getElementById("cfg-cloud-url");
   const cloudKey = document.getElementById("cfg-cloud-key");
 
-  const rawKey = cloudKey ? cloudKey.value.trim() : "";
-  const effectiveKey = rawKey || (currentConfig ? currentConfig.remote_api_key || "" : "");
+  let effectiveKey = "";
+  if (isApiKeyDirty && cloudKey) {
+    const trimmed = cloudKey.value.trim();
+    effectiveKey = trimmed.length === 0 ? "__CLEAR__" : trimmed;
+  }
 
   const newConfig = {
     ...(currentConfig || {}),
@@ -589,6 +598,7 @@ async function performSaveSettings() {
     audio_format: "mp3",
     remote_server_url: cloudUrl ? cloudUrl.value.trim() : (currentConfig ? currentConfig.remote_server_url : ""),
     remote_api_key: effectiveKey,
+    remote_api_key_encrypted: (effectiveKey === "__CLEAR__") ? "" : ((currentConfig && currentConfig.remote_api_key_encrypted) ? currentConfig.remote_api_key_encrypted : ""),
     discord_ipc_token: (currentConfig && currentConfig.discord_ipc_token) ? currentConfig.discord_ipc_token : "",
     target_audio_pid: -1,
     target_audio_name: "Discord",
@@ -598,6 +608,9 @@ async function performSaveSettings() {
 
   currentConfig = newConfig;
   await invokeTauri("save_config", { config: newConfig });
+  if (effectiveKey !== "") {
+    isApiKeyDirty = false;
+  }
   if (hudLocked) {
     invokeTauri("overlay_set_locked", { locked: hudLocked.checked });
   }
@@ -1162,9 +1175,11 @@ async function changeLanguage(lang) {
   autoSaveSettings();
 }
 
+let currentAppVersion = "0.6.0";
+
 function applyTranslations() {
   // Update dynamic window title matching Python: self.title(f"{t('app.window_title')} v{__version__}")
-  const appVersion = "0.6.0";
+  const appVersion = currentAppVersion;
   const windowTitle = `${t("app.window_title")} v${appVersion}`;
   document.title = windowTitle;
   const currentWin = (window.__TAURI__ && window.__TAURI__.window && window.__TAURI__.window.getCurrentWindow) ?
@@ -1253,9 +1268,12 @@ async function testCloudConnection() {
   }
 
   const url = document.getElementById("cfg-cloud-url")?.value.trim() || "";
-  const key = document.getElementById("cfg-cloud-key")?.value.trim() || "";
+  let key = document.getElementById("cfg-cloud-key")?.value.trim() || "";
+  if (!key && currentConfig?.remote_api_key) {
+    key = currentConfig.remote_api_key;
+  }
 
-  if (!url || !key) {
+  if (!url || (!key && !currentConfig?.remote_api_key_encrypted)) {
     if (statusLbl) {
       statusLbl.innerText = "⚠️ Server URL and API Key required.";
       statusLbl.style.color = "#F87171";
@@ -1594,10 +1612,33 @@ window.addEventListener("DOMContentLoaded", async () => {
       if (opacityLbl) opacityLbl.innerText = `HUD Opacity (${opacityPct}%):`;
 
       if (document.getElementById("cfg-cloud-url")) document.getElementById("cfg-cloud-url").value = currentConfig.remote_server_url || "";
-      if (document.getElementById("cfg-cloud-key")) document.getElementById("cfg-cloud-key").value = currentConfig.remote_api_key || "";
+      const cloudKeyEl = document.getElementById("cfg-cloud-key");
+      if (cloudKeyEl) {
+        if (currentConfig.remote_api_key) {
+          cloudKeyEl.value = currentConfig.remote_api_key;
+        } else if (currentConfig.remote_api_key_encrypted) {
+          cloudKeyEl.value = "";
+          cloudKeyEl.placeholder = "•••••••••••••••• (Encrypted key saved)";
+        } else {
+          cloudKeyEl.value = "";
+          cloudKeyEl.placeholder = "Paste your UPLOAD_KEY or PULL_KEY";
+        }
+      }
       if (document.getElementById("cfg-replay-offset")) document.getElementById("cfg-replay-offset").value = currentConfig.replay_sync_offset || 0.0;
       updateReplayOffsetDisplay(currentConfig.replay_sync_offset || 0.0);
     }
+
+    // Fetch dynamic app version from backend
+    try {
+      const ver = await invokeTauri("get_app_version");
+      if (ver) {
+        currentAppVersion = ver;
+        const dbgVer = document.getElementById("dbg-app-version");
+        if (dbgVer) dbgVer.innerText = `v${ver}`;
+        const settingsVer = document.getElementById("settings-app-version");
+        if (settingsVer) settingsVer.innerText = `v${ver}`;
+      }
+    } catch (e) {}
 
     // Await translations load BEFORE anything renders text to prevent any code names!
     await loadTranslations(currentLanguage);

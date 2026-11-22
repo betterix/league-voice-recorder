@@ -132,7 +132,12 @@ impl AppConfig {
             let content = std::fs::read_to_string(&path)?;
             let mut config: Self = serde_json::from_str(&content)?;
             if !config.remote_api_key_encrypted.is_empty() {
-                config.remote_api_key = decrypt_secret(&config.remote_api_key_encrypted);
+                let decrypted = decrypt_secret(&config.remote_api_key_encrypted);
+                if !decrypted.is_empty() {
+                    config.remote_api_key = decrypted;
+                }
+                // Keep config.remote_api_key_encrypted intact in memory even if decryption
+                // failed so subsequent saves never accidentally drop an existing encrypted key.
             }
             if !config.record_folder.exists() {
                 let _ = std::fs::create_dir_all(&config.record_folder);
@@ -164,7 +169,7 @@ impl AppConfig {
                             }
                         }
                     }
-                    if to_save.remote_api_key.is_empty() {
+                    if to_save.remote_api_key.is_empty() && to_save.remote_api_key_encrypted.is_empty() {
                         if let Some(enc) = disk_val.get("remote_api_key_encrypted").and_then(|v| v.as_str()) {
                             if !enc.is_empty() {
                                 to_save.remote_api_key_encrypted = enc.to_string();
@@ -175,8 +180,10 @@ impl AppConfig {
             }
         }
 
-        // 2. Encrypt secret API key if provided
-        if !to_save.remote_api_key.is_empty() {
+        // 2. Encrypt or explicitly clear secret API key
+        if to_save.remote_api_key == "__CLEAR__" {
+            to_save.remote_api_key_encrypted = String::new();
+        } else if !to_save.remote_api_key.is_empty() {
             to_save.remote_api_key_encrypted = encrypt_secret(&to_save.remote_api_key);
         }
 
@@ -251,6 +258,15 @@ mod tests {
         assert_eq!(reloaded.replay_volume, 75);
         assert_eq!(reloaded.discord_ipc_token, "discord_auth_token_xyz", "Discord token was erased on partial save!");
         assert_eq!(reloaded.remote_api_key, "super_secret_pull_key", "API key was erased on partial save!");
+
+        // 4. Explicit user clear action using __CLEAR__ sentinel: must clear encrypted key
+        let mut cleared = reloaded.clone();
+        cleared.remote_api_key = "__CLEAR__".to_string();
+        cleared.save().unwrap();
+
+        let after_clear = AppConfig::load().unwrap();
+        assert_eq!(after_clear.remote_api_key, "");
+        assert_eq!(after_clear.remote_api_key_encrypted, "");
 
         let _ = std::fs::remove_file(&temp_path);
         unsafe { std::env::remove_var("LVR_CONFIG_PATH") };
