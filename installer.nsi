@@ -114,6 +114,10 @@ Section "MainProgram" SecMain
     File "dist\LeagueVoiceRecorder.exe"
     File "assets\WebView2Loader.dll"
 
+    SetOutPath "$INSTDIR\locales"
+    File "locales\en.json"
+    File "locales\hu.json"
+
     SetOutPath "$INSTDIR\assets"
     File "assets\icon.ico"
     File "assets\icon.png"
@@ -163,6 +167,9 @@ Section "Uninstall"
     ; Delete Installed Files & Assets
     Delete "$INSTDIR\${APP_EXE}"
     Delete "$INSTDIR\WebView2Loader.dll"
+    Delete "$INSTDIR\locales\en.json"
+    Delete "$INSTDIR\locales\hu.json"
+    RMDir "$INSTDIR\locales"
     Delete "$INSTDIR\assets\icon.ico"
     Delete "$INSTDIR\assets\icon.png"
     RMDir "$INSTDIR\assets"
