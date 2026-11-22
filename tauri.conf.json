@@ -1,0 +1,66 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "LeagueVoiceRecorder",
+  "version": "0.6.0",
+  "identifier": "com.betterix.leaguevoicerecorder",
+  "build": {
+    "frontendDist": "ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "League Voice Recorder & Replay Synchronizer v0.6.0",
+        "width": 1100,
+        "height": 960,
+        "minWidth": 920,
+        "minHeight": 750,
+        "resizable": true,
+        "center": true,
+        "visible": false,
+        "backgroundColor": [11, 17, 32, 255]
+      },
+      {
+        "label": "overlay",
+        "title": "League Overlay",
+        "url": "overlay.html",
+        "width": 350,
+        "height": 76,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "visible": false,
+        "shadow": false
+      },
+      {
+        "label": "toast",
+        "title": "League Voice Recorder Notification",
+        "url": "toast.html",
+        "width": 360,
+        "height": 76,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "visible": false,
+        "shadow": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ]
+  }
+}

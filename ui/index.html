@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>League Voice Recorder & Replay Synchronizer v0.6.0</title>
+  <style>
+    html, body {
+      background-color: #0B1120 !important;
+      color: #F1F5F9 !important;
+      margin: 0;
+      padding: 0;
+    }
+  </style>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header Frame matching CustomTkinter header_frame -->
+    <header class="app-header">
+      <div class="brand">
+        <img src="assets/icon.png" class="brand-logo-img" alt="League Voice Recorder">
+        <div>
+          <div class="title-row">
+            <h1 id="txt-app-title" data-i18n="app.title">LEAGUE VOICE RECORDER</h1>
+          </div>
+          <p class="subtitle" id="txt-app-subtitle" data-i18n="app.subtitle">Automated Discord Voice Capture & In-Game Replay Audio Sync</p>
+        </div>
+      </div>
+      <div class="health-ribbon">
+        <div class="health-pill" id="pill-discord">
+          <span class="dot"></span>
+          <span class="text" id="pill-discord-text">Discord: ⚪ Checking...</span>
+        </div>
+        <div class="health-pill" id="pill-league">
+          <span class="dot"></span>
+          <span class="text" id="pill-league-text">League Client: ⚪ Checking...</span>
+        </div>
+        <button class="btn-theme" id="btn-theme-toggle" onclick="toggleTheme()" data-i18n-title="settings.theme" title="Toggle Theme">🌙</button>
+        <button class="btn-refresh-health" onclick="refreshHealth()" data-i18n="health.refresh" title="Refresh System Health">🔄 Refresh</button>
+      </div>
+    </header>
+
+    <!-- 2-Card Main Action Section matching CustomTkinter action_frame -->
+    <section class="action-frame">
+      <div class="action-cards-grid">
+        <!-- Card 1: Scrim Recorder -->
+        <div class="action-card rec-card">
+          <div class="action-card-header">
+            <span class="action-card-title" data-i18n="record.title">🎙️ SCRIM RECORDER</span>
+            <span class="action-card-status" id="rec-status-pill" data-i18n="record.status_idle">● IDLE (Click Start to monitor)</span>
+          </div>
+          <button id="btn-rec" class="btn-action rec-btn" onclick="toggleRecordingWatcher()">
+            <span class="btn-text" id="btn-rec-text" data-i18n="record.start_btn">🔴 Start Recording Watcher</span>
+          </button>
+          <div class="action-row selectors-row">
+            <div class="selector-box">
+              <span class="selector-label" data-i18n="record.target_app">🎯 Target:</span>
+              <select id="quick-target" class="styled-select" disabled>
+                <option value="auto" data-i18n="record.auto_discord">Discord Audio (Loopback) 🎯</option>
+              </select>
+            </div>
+            <div class="selector-box">
+              <span class="selector-label" data-i18n="record.mic_input">🎤 Mic:</span>
+              <select id="quick-mic" class="styled-select" onchange="onQuickMicChange(this.value)">
+                <option value="default" data-i18n="record.mic_default">Default Microphone (System) 🎯</option>
+              </select>
+              <button class="btn-small" onclick="loadAudioDevices()" title="Refresh Mics">🔄</button>
+            </div>
+          </div>
+          <!-- Live VU Meters (Discord + Mic) -->
+          <div class="meter-box">
+            <div class="meter-row">
+              <span class="meter-label" data-i18n="record.app_sound">🔊 Discord:</span>
+              <div class="meter-track"><div class="meter-fill app" id="meter-app"></div></div>
+            </div>
+            <div class="meter-row">
+              <span class="meter-label" id="lbl-meter-mic" data-i18n="record.microphone">🎤 Mic:</span>
+              <div class="meter-track" id="track-meter-mic"><div class="meter-fill mic" id="meter-mic"></div></div>
+            </div>
+          </div>
+          <div class="action-hint-row">
+            <span class="hint-text" id="rec-hint-text">🎯 Auto-detects match clock & pauses with sample accuracy</span>
+          </div>
+        </div>
+
+        <!-- Card 2: Replay Auto-Sync -->
+        <div class="action-card rep-card">
+          <div class="action-card-header">
+            <span class="action-card-title" data-i18n="replay.title">🎬 REPLAY AUTO-SYNC</span>
+            <span class="action-card-status" id="rep-status-pill" data-i18n="replay.status_idle">● IDLE (Click Start to detect .rofl)</span>
+          </div>
+          <button id="btn-rep" class="btn-action rep-btn" onclick="toggleReplayWatcher()">
+            <span class="btn-text" id="btn-rep-text" data-i18n="replay.start_btn">▶ Start Replay Auto-Sync</span>
+          </button>
+          <div class="action-row">
+            <div class="selector-box vol-box">
+              <span class="selector-label" data-i18n="replay.volume">🔊 Volume:</span>
+              <input type="range" id="quick-vol" min="0" max="200" value="80" oninput="updateVolume(this.value)" class="vol-slider">
+              <span id="quick-vol-display" class="vol-display">80%</span>
+              <button class="btn-small" id="btn-quick-mute" onclick="toggleMute()" data-i18n-title="replay.hotkey_hint" title="Toggle Mute (Hotkey M)">🔊</button>
+            </div>
+            <div class="selector-box offset-box">
+              <span class="selector-label" title="Audio timing sync offset relative to replay clock">⏱ Sync Offset:</span>
+              <button class="btn-micro" onclick="adjustReplayOffset(-1.0)" title="Shift voice 1.0s earlier (-1s)">-1s</button>
+              <span id="replay-offset-val" class="offset-display">+0.0s</span>
+              <button class="btn-micro" onclick="adjustReplayOffset(1.0)" title="Shift voice 1.0s later (+1s)">+1s</button>
+              <button class="btn-micro btn-reset-offset" onclick="adjustReplayOffset(0.0, true)" title="Reset offset to 0.0s">Reset</button>
+            </div>
+          </div>
+          <!-- 1-Click Replay API Auto-Configuration matching Python replay_api_row -->
+          <div class="meter-box api-box">
+            <div class="api-box-row">
+              <span class="meter-label" data-i18n="settings.replay_api_title">⚡ Replay API:</span>
+              <span id="card-api-status" class="api-card-pill">● Checking...</span>
+              <button class="btn-small btn-enable-api" onclick="triggerEnableReplayApi()" data-i18n="settings.enable_replay_api_btn" title="1-Click Auto Configure game.cfg">Enable API</button>
+            </div>
+          </div>
+          <div class="action-hint-row">
+            <span class="hint-text" id="rep-hint-text" data-i18n="replay.hotkey_hint">💡 Press <b>M</b> in-game to Mute/Unmute replay voice</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tabbed Navigation matching CustomTkinter Notebook -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" id="tab-btn-log" onclick="switchTab('log')" data-i18n="tabs.log">📋 Activity Log</button>
+      <button class="tab-btn" id="tab-btn-recordings" onclick="switchTab('recordings')" data-i18n="tabs.recordings">📁 Scrim Recordings</button>
+      <button class="tab-btn" id="tab-btn-settings" onclick="switchTab('settings')" data-i18n="tabs.settings">⚙️ Settings</button>
+    </nav>
+
+    <!-- Tab 1: Activity Log matching CustomTkinter _setup_tab_log -->
+    <main class="tab-content active" id="tab-log">
+      <div class="log-container-split">
+        <!-- Main Log Box (Consolas, word-wrap, autoscroll) -->
+        <div class="log-main-box">
+          <div class="terminal-box" id="terminal"></div>
+        </div>
+        <!-- Collapsible Telemetry & Debug Panel matching CustomTkinter _setup_debug_telemetry_panel -->
+        <aside class="debug-panel" id="debug-panel" style="display: none;">
+          <div class="debug-panel-header">
+            <span class="debug-title">🔬 Telemetry & Debug Panel</span>
+          </div>
+          <div class="debug-panel-body">
+
+            <!-- 1. MATCH & RECORDER ENGINE CARD -->
+            <div class="debug-card">
+              <div class="debug-card-title match-title">🎮 Match & Recorder Engine</div>
+              <div class="debug-row">
+                <span class="k">Match State:</span>
+                <span class="v" id="dbg-match-state">IDLE</span>
+              </div>
+              <div class="debug-row">
+                <span class="k">Game Time:</span>
+                <span class="v highlight-time" id="dbg-game-time">Inactive</span>
+              </div>
+              <div class="debug-row">
+                <span class="k">Base Time:</span>
+                <span class="v" id="dbg-base-time">—</span>
+              </div>
+              <div class="debug-row">
+                <span class="k">Match Game ID:</span>
+                <span class="v" id="dbg-game-id">—</span>
+              </div>
+              <div class="debug-row">
+                <span class="k">Game Patch:</span>
+                <span class="v" id="dbg-game-patch">—</span>
+              </div>
+            </div>
+
+            <!-- 2. REPLAY SYNC ENGINE CARD -->
+            <div class="debug-card">
+              <div class="debug-card-title replay-title">🎬 Replay Sync Engine</div>
+              <div class="debug-row">
+                <span class="k">Active Replay:</span>
+                <span class="v" id="dbg-replay-file">—</span>
+              </div>
+              <div class="debug-row">
+                <span class="k">Replay Time:</span>
+                <span class="v highlight-rep" id="dbg-replay-time">Inactive</span>
+              </div>
+              <div class="debug-row">
+                <span class="k">Player Time:</span>
+                <span class="v" id="dbg-player-time">—</span>
+              </div>
+              <div class="debug-row">
+                <span class="k">Sync Drift:</span>
+                <span class="v" id="dbg-replay-drift">—</span>
+              </div>
+              <div class="debug-row">
+                <span class="k">Playback Speed:</span>
+                <span class="v" id="dbg-replay-speed">—</span>
+              </div>
+              <div class="debug-row">
+                <span class="k">Matched Scrim Audio:</span>
+                <span class="v" id="dbg-replay-audio">—</span>
+              </div>
+            </div>
+
+            <!-- 3. SYSTEM USAGE & APP VERSION CARD -->
+            <div class="debug-card">
+              <div class="debug-card-title system-title">📊 System & Process Stats</div>
+              <div class="debug-row">
+                <span class="k">RAM Usage:</span>
+                <span class="v" id="dbg-ram-usage">0.0 MB</span>
+              </div>
+              <div class="debug-row">
+                <span class="k">CPU Usage:</span>
+                <span class="v" id="dbg-cpu-usage">0.0%</span>
+              </div>
+              <div class="debug-row">
+                <span class="k">App Version:</span>
+                <span class="v highlight-ver" id="dbg-app-version">v0.6.0</span>
+              </div>
+            </div>
+
+          </div>
+        </aside>
+      </div>
+
+      <!-- Control Bar below log matching CustomTkinter log_ctrl_frame -->
+      <div class="log-control-bar">
+        <label class="control-check">
+          <input type="checkbox" id="cb-autoscroll" checked onchange="toggleAutoscroll(this.checked)">
+          <span data-i18n="log.autoscroll">Auto-scroll to latest</span>
+        </label>
+        <label class="control-check" style="margin-left: 16px;">
+          <input type="checkbox" id="cb-debug-panel" onchange="toggleDebugPanel(this.checked)">
+          <span>Show Telemetry & Debug Panel</span>
+        </label>
+        <div class="log-btn-group">
+          <button class="btn-small" onclick="copyLog()" data-i18n="log.copy">📋 Copy Log</button>
+          <button class="btn-small" onclick="clearLog()" data-i18n="log.clear">🗑 Clear Log</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- Tab 2: Scrim Recordings matching CustomTkinter _setup_tab_recordings -->
+    <main class="tab-content" id="tab-recordings">
+      <div class="recordings-toolbar">
+        <span id="recordings-count-text">Recordings in folder: 0 files (0.0 MB)</span>
+        <div class="recordings-toolbar-actions">
+          <button id="btn-download-all" class="btn-small btn-download-all" style="display: none;" onclick="downloadAllMissingRecordings()">⬇ Download All Missing (0)</button>
+          <button id="btn-sync-remote" class="btn-small btn-sync-remote" onclick="syncRemoteRecordings()" data-i18n="recordings.sync_remote">☁ Sync Remote</button>
+          <button class="btn-small btn-open-folder" onclick="openRecordingsFolder()" data-i18n="recordings.open_folder">📂 Open Folder in Explorer</button>
+          <button class="btn-small btn-refresh-rec" onclick="loadRecordings()" data-i18n="recordings.refresh">🔄 Refresh</button>
+        </div>
+      </div>
+      <div class="recordings-list" id="recordings-list">
+        <div class="empty-state" data-i18n="recordings.empty">No recordings found yet in recordings folder.</div>
+      </div>
+    </main>
+
+    <!-- Tab 3: Settings matching CustomTkinter _setup_tab_settings (6 Cards, Auto-save) -->
+    <main class="tab-content" id="tab-settings">
+      <div class="settings-scroll-container">
+        
+        <!-- CARD 1: DIRECTORIES & STORAGE (Paths & System Settings) -->
+        <div class="settings-card">
+          <div class="card-title" data-i18n="settings.paths_title">📁 Paths & System Settings</div>
+          
+          <div class="setting-grid-row">
+            <span class="setting-lbl" data-i18n="settings.rec_folder">Recordings Folder:</span>
+            <input type="text" id="cfg-folder" class="setting-input" onchange="autoSaveSettings()">
+            <button class="btn-small" onclick="openRecordingsFolder()" data-i18n="settings.browse">Browse...</button>
+          </div>
+
+          <div class="setting-grid-row">
+            <span class="setting-lbl" data-i18n="settings.replay_volume">Replay Volume (%):</span>
+            <input type="number" id="cfg-volume" min="0" max="200" class="setting-input" style="width: 100px;" onchange="autoSaveSettings()">
+            <span></span>
+          </div>
+        </div>
+
+        <!-- CARD 2: INTERFACE & AUDIO INPUT -->
+        <div class="settings-card">
+          <div class="card-title" data-i18n="settings.interface_title">🌐 Interface & Audio Input</div>
+
+          <div class="setting-grid-row">
+            <span class="setting-lbl" data-i18n="settings.language">Interface Language:</span>
+            <select id="cfg-lang" class="setting-select" onchange="changeLanguage(this.value)">
+              <option value="en">English</option>
+              <option value="hu">Magyar (Hungarian)</option>
+            </select>
+            <span></span>
+          </div>
+
+          <div class="setting-grid-row">
+            <span class="setting-lbl" data-i18n="settings.theme">Appearance Theme:</span>
+            <select id="cfg-theme" class="setting-select" onchange="onThemeChanged(this.value)">
+              <option value="dark" data-i18n="settings.theme_dark">Dark 🌙</option>
+              <option value="light" data-i18n="settings.theme_light">Light ☀️</option>
+              <option value="system" data-i18n="settings.theme_system">System Default 💻</option>
+            </select>
+            <span></span>
+          </div>
+
+          <div class="setting-grid-row">
+            <span class="setting-lbl" data-i18n="settings.mic_device">Microphone Input:</span>
+            <select id="cfg-mic" class="setting-select" onchange="onSettingsMicChange(this.value)">
+              <option value="default" data-i18n="record.mic_default">Default Microphone (System) 🎯</option>
+            </select>
+            <span></span>
+          </div>
+        </div>
+
+        <!-- CARD 3: MATCH AUTOMATION & WORKFLOW -->
+        <div class="settings-card">
+          <div class="card-title" data-i18n="settings.automation_title">⚡ Match Automation & Workflow</div>
+
+          <div class="setting-switch-row">
+            <span class="setting-lbl" data-i18n="settings.auto_start_champ_select">Auto-Start in Champ Select:</span>
+            <label class="switch-container">
+              <input type="checkbox" id="cfg-auto-champ" checked onchange="autoSaveSettings()">
+              <span class="switch-slider"></span>
+              <span class="switch-desc" data-i18n="settings.auto_start_champ_select_info">Automatically starts recording watcher when entering Champion Select</span>
+            </label>
+          </div>
+
+          <div class="setting-switch-row">
+            <span class="setting-lbl" data-i18n="settings.auto_start_replay">Auto-Start Replay Sync:</span>
+            <label class="switch-container">
+              <input type="checkbox" id="cfg-auto-replay" checked onchange="autoSaveSettings()">
+              <span class="switch-slider"></span>
+              <span class="switch-desc" data-i18n="settings.auto_start_replay_info">Automatically starts Replay Auto-Sync when a .rofl replay is opened in League</span>
+            </label>
+          </div>
+
+          <div class="setting-switch-row">
+            <span class="setting-lbl" data-i18n="settings.minimize_to_tray">Minimize to System Tray:</span>
+            <label class="switch-container">
+              <input type="checkbox" id="cfg-minimize-tray" checked onchange="autoSaveSettings()">
+              <span class="switch-slider"></span>
+              <span class="switch-desc" data-i18n="settings.minimize_to_tray_info">Keep running in background when minimized with titlebar button</span>
+            </label>
+          </div>
+
+          <div class="setting-grid-row" style="margin-top: 6px;">
+            <span class="setting-lbl">⏱ Replay Voice Offset:</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="number" id="cfg-replay-offset" step="0.5" min="-30" max="30" value="0.0" class="setting-input" style="width: 80px;" onchange="onConfigOffsetChange(this.value)">
+              <span class="setting-unit" style="font-size: 11px; color: var(--text-muted);">seconds (shift audio e.g. +1.0s or -1.0s)</span>
+            </div>
+            <span></span>
+          </div>
+        </div>
+
+        <!-- CARD 4: IN-GAME FLOATING HUD OVERLAY -->
+        <div class="settings-card">
+          <div class="card-title" data-i18n="settings.hud_section_title">🎮 In-Game Floating HUD Overlay</div>
+
+          <div class="setting-switch-row">
+            <span class="setting-lbl" data-i18n="settings.hud_overlay_enabled">Enable In-Game Overlay:</span>
+            <label class="switch-container">
+              <input type="checkbox" id="cfg-hud-enabled" checked onchange="autoSaveSettings()">
+              <span class="switch-slider"></span>
+              <span class="switch-desc" data-i18n="settings.hud_overlay_info">Show real-time floating audio visualizer over League of Legends</span>
+            </label>
+          </div>
+
+          <div class="setting-switch-row">
+            <span class="setting-lbl" data-i18n="settings.hud_locked">Lock Position / Click-Through:</span>
+            <label class="switch-container">
+              <input type="checkbox" id="cfg-hud-locked" onchange="autoSaveSettings()">
+              <span class="switch-slider"></span>
+              <span class="switch-desc" data-i18n="settings.hud_locked_info">Allow mouse clicks to pass through HUD directly into the game</span>
+            </label>
+          </div>
+
+          <div class="setting-grid-row">
+            <span class="setting-lbl" id="lbl-hud-opacity">HUD Opacity (85%):</span>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <input type="range" id="cfg-hud-opacity" min="40" max="100" value="85" oninput="onOpacityInput(this.value)" onchange="autoSaveSettings()" style="flex: 1;">
+              <span id="hud-opacity-display" style="font-size: 11px; font-weight: 600; width: 35px;">85%</span>
+            </div>
+            <span></span>
+          </div>
+
+          <div class="hud-buttons-row">
+            <button class="btn-small" onclick="previewRecHud()" data-i18n="settings.hud_preview_rec_btn">Preview Rec HUD</button>
+            <button class="btn-small" onclick="previewReplayHud()" data-i18n="settings.hud_preview_replay_btn">Preview Replay HUD</button>
+            <button class="btn-small" onclick="hideHudPreview()" data-i18n="settings.hud_hide_preview_btn">Hide Preview</button>
+            <button class="btn-small" onclick="resetHudPosition()" data-i18n="settings.hud_reset_pos_btn">Reset Position</button>
+          </div>
+        </div>
+
+        <!-- CARD 5: REMOTE SCRIM SERVER (DIRECT PORT) -->
+        <div class="settings-card">
+          <div class="card-title" data-i18n="settings.cloud_title">☁️ Remote Scrim Server (Direct Port)</div>
+
+          <div class="setting-grid-row">
+            <span class="setting-lbl" data-i18n="settings.cloud_url">Server URL:</span>
+            <input type="text" id="cfg-cloud-url" class="setting-input" placeholder="https://your-server-ip-or-domain:8443" onchange="autoSaveSettings()">
+            <span></span>
+          </div>
+
+          <div class="setting-grid-row">
+            <span class="setting-lbl" data-i18n="settings.cloud_api_key">API Secret Key:</span>
+            <input type="password" id="cfg-cloud-key" class="setting-input" placeholder="Paste your UPLOAD_KEY or PULL_KEY" onchange="autoSaveSettings()">
+            <span></span>
+          </div>
+
+          <div class="cloud-actions-row">
+            <button class="btn-indigo" onclick="testCloudConnection()" data-i18n="settings.cloud_test_btn">Test Connection</button>
+            <span id="cloud-test-status" class="cloud-status-text"></span>
+          </div>
+        </div>
+
+        <!-- CARD 6: SOFTWARE & UPDATES -->
+        <div class="settings-card">
+          <div class="card-title">🔄 Software & Updates</div>
+
+          <div class="setting-grid-row">
+            <span class="setting-lbl">App Version:</span>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span style="font-size: 12px; font-weight: bold; color: var(--text-muted);">v0.6.0</span>
+              <button class="btn-small" onclick="checkForUpdates()">Check for Updates</button>
+            </div>
+            <span></span>
+          </div>
+          <div id="update-status-msg" style="font-size: 11px; color: var(--text-muted); padding-top: 2px;"></div>
+        </div>
+
+      </div>
+    </main>
+
+    <!-- Footer Frame matching CustomTkinter -->
+    <footer class="app-footer">
+      <span>League Voice Recorder &bull; Scrimmage Voice &amp; Replay Synchronizer</span>
+      <span id="match-clock">Match Time: --:--</span>
+    </footer>
+  </div>
+
+  <!-- Edit Scrim Details Modal Dialog (matching CustomTkinter _open_edit_details_dialog) -->
+  <div id="modal-details" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h2 id="modal-title" class="modal-title" data-i18n="recordings.details_title">📝 Edit Scrim Details</h2>
+          <p class="modal-subtitle" data-i18n="recordings.details_subtitle">Organize scrim metadata, opponent team (VS), and match notes.</p>
+        </div>
+        <button class="modal-close-btn" onclick="closeEditDetailsModal()">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <input type="hidden" id="modal-filename">
+        <input type="hidden" id="modal-game-id">
+
+        <div class="modal-form-row">
+          <label class="modal-label" for="modal-date" data-i18n="recordings.field_date">Date Recorded:</label>
+          <input type="text" id="modal-date" class="setting-input" placeholder="YYYY-MM-DD">
+        </div>
+
+        <div class="modal-form-row">
+          <label class="modal-label" for="modal-patch" data-i18n="recordings.field_patch">Game Patch:</label>
+          <input type="text" id="modal-patch" class="setting-input" placeholder="e.g. 14.23, 26.11">
+        </div>
+
+        <div class="modal-form-row">
+          <label class="modal-label" for="modal-team" data-i18n="recordings.field_team">VS Opponent Team:</label>
+          <input type="text" id="modal-team" class="setting-input" placeholder="e.g. DEO, FNC, G2">
+        </div>
+
+        <div class="modal-form-row" style="align-items: flex-start;">
+          <label class="modal-label" for="modal-notes" style="padding-top: 6px;" data-i18n="recordings.field_notes">Scrim Notes:</label>
+          <textarea id="modal-notes" class="setting-input" rows="4" placeholder="Enter match notes, draft thoughts, key timestamps..."></textarea>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-small" onclick="closeEditDetailsModal()" data-i18n="recordings.cancel">Cancel</button>
+        <button class="btn-small btn-save-details" onclick="saveDetailsFromModal(false)" data-i18n="recordings.save_details">💾 Save Details</button>
+        <button id="btn-modal-save-upload" class="btn-small btn-save-and-upload" onclick="saveDetailsFromModal(true)" data-i18n="recordings.save_and_upload" style="display: none;">💾 Save & Upload</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

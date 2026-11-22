@@ -1,0 +1,12 @@
+pub mod audio;
+pub mod cloud_sync;
+pub mod config;
+pub mod discord_ipc;
+pub mod i18n;
+pub mod lcu;
+pub mod overlay;
+pub mod record;
+pub mod replay;
+pub mod scrim_meta;
+pub mod tray;
+pub mod updater;

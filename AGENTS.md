@@ -1,450 +1,173 @@
-# AGENTS.md — League Voice Recorder & Replay Synchronizer
+# AGENTS.md — League Voice Recorder Architecture & Operations Manual
 
-Welcome to the **League Voice Recorder** project documentation. This document is designed for AI agents and developers to understand the architecture, data flows, APIs, and operational nuances of the entire codebase.
+Welcome to the **League Voice Recorder** developer and AI agent manual. This document explains the architecture, data flows, APIs, operational nuances, and engineering invariants of the native Rust + Tauri v2 implementation.
 
 ---
 
 ## 1. Project Purpose & Core Concept
 
-In competitive League of Legends scrimmages and team matches, reviewing gameplay with synchronized team communications is critical. 
+In competitive League of Legends scrimmages and tournament matches, reviewing gameplay with synchronized team communications is critical for team improvement.
 
 This project solves two primary problems:
-1. **Automated Scrim Voice Recording (`record.py`)**: Monitors the active League of Legends client. When a match starts, it automatically captures team Discord voice chat (via WASAPI loopback) along with the player's microphone and records them directly via native WASAPI loopback. It dynamically pauses/unpauses recording if the game pauses, stops when the game ends, extracts the official Riot Game ID, and converts the recording into a compressed `.mp3` file named `<GameID>.mp3`.
-2. **Automated Replay Audio Synchronization (`play_replay.py`)**: When the user opens any `.rofl` replay in the League client, it detects the running replay, parses the Game ID from the file name, locates the matching `<GameID>.mp3`, and plays the audio in VLC while continuously synchronizing playback time and playback speed (0.5x, 1x, 2x, 4x, etc.) with the League replay playback API.
+1. **Automated Scrim Voice Recording (`src/record/`)**: Monitors the active League of Legends client. When a match starts, it automatically captures team Discord voice chat (via WASAPI loopback) along with the player's microphone, dynamically handles in-game pauses, stops when the game ends, extracts the official Riot Game ID, and converts the recording into a compressed `.mp3` file named `<GameID>.mp3`.
+2. **Automated Replay Audio Synchronization (`src/replay/`)**: When the user opens any `.rofl` replay in the League client, it detects the running replay, parses the Game ID from the file name, locates the matching `<GameID>.mp3`, and plays the audio via the embedded Rodio audio engine while continuously synchronizing playback time and playback speed (0.5x, 1x, 2x, 4x, etc.) with the League replay playback API.
 
-The project provides both:
-- A modern dark-mode desktop GUI (`main.py` using `customtkinter`) with **2 primary buttons** ("Start Recording Watcher" and "Start Replay Auto-Sync").
-- Standalone CLI execution for headless or script-based workflows.
+The project provides:
+- A modern desktop GUI built with **Tauri v2** and vanilla HTML/CSS/JS with zero heavy frontend framework bloat.
+- An in-game floating HUD overlay (`ui/overlay.html`) supporting click-through transparency (`WS_EX_TRANSPARENT`), native window dragging, and dual visualization modes.
+- System tray minimization with native Windows alerts (`MessageBeep`, balloon notifications).
 
 ---
 
 ## 2. Repository & Package Structure
 
 ```text
-League Voice Recorder/
+league-voice-recorder/
 │
-├── main.py                 # Primary Desktop GUI application entrypoint
-├── installer.iss           # Inno Setup 6 dual-language Windows installer script
-├── scripts/                # Windows automation & build scripts
-│   ├── start_ui.bat        # Windows quick-launcher for the GUI
-│   ├── run_tests.bat       # Automated test suite runner batch script
-│   ├── build_exe.bat       # Standalone Windows .exe compiler batch script
-│   └── virustotal_scan.py  # Automated VirusTotal API v3 scanner & release verification reporter
+├── Cargo.toml               # Rust dependencies (Rust 2024 Edition), workspace profile, and Tauri features
+├── tauri.conf.json          # Tauri v2 application configuration, multi-window definitions
+├── installer.nsi            # NSIS Modern Setup Wizard script (Unicode, x64, autostart, uninstall)
 │
-├── app/                    # Core Python application package
-│   ├── __init__.py         # Package marker
-│   ├── cloud_sync.py       # CloudSyncClient (direct-port remote scrim sync & downloads)
-│   ├── config.py           # Configuration loader, DPAPI secret encryption, and path resolver
-│   ├── discord_ipc.py      # Discord Local IPC client (live mute/deafen tracking)
-│   ├── i18n.py             # Internationalization and community translation loader
-│   ├── record.py           # LeagueRecorder engine (WASAPI capture & FFmpeg alignment)
-│   ├── native_audio.py     # Native WASAPI audio capture (Discord loopback & mic)
-│   ├── overlay.py          # In-Game floating overlay (translucent live & replay overlay)
-│   ├── play_replay.py      # ReplaySynchronizer engine (process watcher & VLC sync)
-│   ├── replay_config.py    # 1-Click Replay API Auto-Configuration (game.cfg parser & backup)
-│   ├── tray.py             # System Tray Manager (background icon, tooltip & minimize to tray)
-│   └── updater.py          # Auto-updater (GitHub releases, zip extraction, in-place replace)
+├── src/                     # Core Native Rust Application Engine
+│   ├── main.rs              # Application entrypoint, Tauri commands, system tray setup
+│   ├── lib.rs               # Library root exporting modules for unit and integration tests
+│   │
+│   ├── audio/               # Hardware Audio Capture & Streaming Engine
+│   │   ├── mod.rs           # Module exports & shared audio types
+│   │   ├── capture.rs       # CPAL WASAPI loopback & microphone capture with headless VM fallback
+│   │   ├── encoder.rs       # Streaming MP3 mixer & pure-Rust encoder (rusty_mp3)
+│   │   └── timeline.rs      # Sample-accurate match alignment & in-place pause lag truncation
+│   │
+│   ├── config/              # Configuration & DPAPI secret management
+│   │   ├── mod.rs           # config.json load/save & path resolver
+│   │   └── secret.rs        # Windows CryptProtectData / CryptUnprotectData encryption
+│   │
+│   ├── record/              # Live Scrim Recording Engine
+│   │   ├── mod.rs           # Module exports & recording state structures
+│   │   └── engine.rs        # Zero-latency trigger, auto-stop, and recording watcher loop
+│   │
+│   ├── replay/              # Frame-Accurate Replay Synchronization
+│   │   ├── mod.rs           # Module exports & replay state structures
+│   │   ├── engine.rs        # Replay synchronization watcher and state machine
+│   │   ├── api.rs           # Targeted League Replay API polling (:2999/replay/playback)
+│   │   ├── player.rs        # Rodio audio player wrapper (instant seek, speed, volume, mute)
+│   │   ├── process.rs       # sysinfo command-line inspector for .rofl process detection
+│   │   └── config.rs        # game.cfg EnableReplayApi 1-click auto-configurator
+│   │
+│   ├── lcu/                 # League Client Update & Live API
+│   │   ├── mod.rs           # Module exports
+│   │   ├── live_api.rs      # Targeted LiveClientData polling (:2999/liveclientdata/allgamedata)
+│   │   └── lockfile.rs      # LCU lockfile parser & lol-gameflow Game ID query
+│   │
+│   ├── discord_ipc/         # Discord Local IPC
+│   │   └── mod.rs           # Named pipe client (\\.\pipe\discord-ipc-*) for live mute/deafen sync
+│   │
+│   ├── cloud_sync/          # Scrim Cloud Synchronization
+│   │   └── mod.rs           # REST client for league-voice-recorder-backend with DPAPI & RBAC
+│   │
+│   ├── overlay/             # In-Game Floating HUD Controller
+│   │   └── mod.rs           # Multi-window HUD overlay controller, Win32 transparency & dragging
+│   │
+│   ├── scrim_meta/          # Scrim Metadata Management
+│   │   ├── mod.rs           # Module exports
+│   │   └── id3.rs           # Studio-grade ID3v2 metadata chunking & custom frame tagging
+│   │
+│   ├── tray/                # System Tray Controller
+│   │   └── mod.rs           # Tray icon, dynamic tooltips, and window visibility toggles
+│   │
+│   ├── updater/             # Auto-Update Checker
+│   │   └── mod.rs           # GitHub release version comparison & update notification
+│   │
+│   └── i18n/                # Embedded Localization
+│       └── mod.rs           # Zero-overhead embedded JSON translations (English & Hungarian)
 │
-├── assets/                 # Visual branding assets (icons, logos)
-│   ├── icon.ico            # Windows executable multi-resolution icon
-│   ├── icon.png            # PNG logo graphic
-│   └── icon.svg            # Scalable vector logo
+├── ui/                      # Tauri Frontend Webview Layer
+│   ├── index.html           # Desktop application interface
+│   ├── style.css            # Hextech Dark esports design system
+│   ├── app.js               # Reactive state bindings, event listeners, Tauri IPC calls
+│   └── overlay.html         # Borderless floating HUD with GradeX waveform canvas
 │
-├── locales/                # Community and built-in i18n translation JSON files
-│   ├── en.json             # English (default fallback)
-│   └── hu.json             # Hungarian
+├── docs/                    # Exhaustive Architectural Documentation
+│   ├── architecture.md      # System architecture, memory model, and tech stack
+│   ├── recording.md         # Zero-latency match start, pause lag slicing, sample alignment
+│   ├── replay_sync.md       # Replay process detection, Game ID extraction, Rodio player
+│   ├── overlay.md           # In-game floating HUD overlay, dual modes, click-through
+│   ├── cloud_sync.md        # FastAPI backend integration, DPAPI encryption, RBAC
+│   ├── system_tray.md       # Tray minimization, tooltip states, alert sound
+│   ├── configuration.md     # config.json schema, storage directory hierarchy
+│   └── api_reference.md     # Tauri IPC commands and DTO payloads
 │
-├── web/                    # Official landing page & interactive desktop app simulator
-│   ├── assets/             # Web logos and visual assets
-│   ├── css/style.css       # Hextech esports design system & responsive styling
-│   ├── js/app.js           # Particle canvas, i18n dictionary, interactive app simulator
-│   ├── index.html          # Semantic showcase landing page
-│   └── README.md           # Web documentation & local preview guide
+├── locales/                 # Community i18n JSON translation files
+│   ├── en.json              # English (default fallback)
+│   └── hu.json              # Hungarian
 │
-├── tests/                  # Automated test suite (140 unittests)
-│   ├── __init__.py
-│   ├── test_cloud_sync.py  # Remote scrim sync, chunked downloads, and health diagnostics
-│   ├── test_config.py      # Config defaults, DPAPI secret encryption, and path resolution
-│   ├── test_discord_ipc.py # Discord Local IPC & mute silence injection
-│   ├── test_i18n.py        # Locale discovery, translation lookup, and key parity
-│   ├── test_overlay.py     # In-game floating HUD overlay & click-through hit-testing
-│   ├── test_recorder.py    # FFmpeg sample-accurate offset alignment & replay guard
-│   ├── test_replay_config.py # 1-Click game.cfg Replay API detection & safe backup
-│   ├── test_replay_sync.py # ROFL Game ID extraction & volume clamping
-│   ├── test_timing_accuracy.py # Zero-latency timing & sample-accurate match alignment
-│   ├── test_tray.py        # System tray icon lifecycle, dynamic status & minimize event
-│   ├── test_ui.py          # CustomTkinter headless UI & live language switching
-│   └── test_updater.py     # Release asset check, zip extraction, and in-place update
+├── assets/                  # High-resolution branding assets
+│   ├── icon.ico             # Windows multi-resolution icon
+│   ├── icon.png             # UI branding logo
+│   └── icon.svg             # Scalable vector logo
 │
-├── .github/
-│   ├── ISSUE_TEMPLATE/     # Structured GitHub Issue Form templates
-│   │   ├── bug_report.yml  # Interactive bug report form
-│   │   ├── feature_request.yml # Feature & scrim enhancement request form
-│   │   └── config.yml      # Issue template configuration & security redirect
+├── tests/                   # Automated Rust Integration & Unit Tests
+│   └── engine_tests.rs      # Audio timeline & alignment verification
+│
+├── .github/                 # GitHub CI/CD & Security Workflows
 │   ├── workflows/
-│   │   └── release.yml     # Automated GitHub Actions release compilation
-│   ├── dependabot.yml      # Automated dependency vulnerability alerts
-│   └── pull_request_template.md # GitHub Pull Request checklist template
+│   │   ├── ci.yml           # Cargo check, automated test suite (39 tests), release build
+│   │   ├── codeql.yml       # Advanced CodeQL security analysis (Rust & JS/TS)
+│   │   ├── release.yml      # Multi-artifact automated release packager with VirusTotal scan
+│   │   └── pages.yml        # GitHub Pages showcase website deployment
+│   └── dependabot.yml       # Automated dependency security updates (Cargo & Actions)
 │
-├── .gitattributes          # Cross-platform LF/CRLF normalization
-├── CODE_OF_CONDUCT.md     # Community guidelines (Contributor Covenant v2.1)
-├── CONTRIBUTING.md        # Contribution guide (workflow, setup, invariants)
-├── SECURITY.md             # Security policy & private vulnerability reporting
-├── pyproject.toml          # Project dependencies and tool configurations
-├── ruff.toml               # Linter rules and exclusions
-└── requirements.txt        # Frozen dependencies export
+└── dist/                    # Compiled distribution binaries (staged releases)
+    ├── LeagueVoiceRecorder.exe
+    └── LeagueVoiceRecorder_0.6.0_x64-setup.exe
 ```
 
 ---
 
-## 3. System Architecture
+## 3. System Architecture & Component Reference
 
-```mermaid
-flowchart TD
-    subgraph UI_Layer ["User Interface (main.py)"]
-        GUI["CustomTkinter App"]
-        RecBtn["🔴 Start/Stop Recording Watcher"]
-        RepBtn["▶ Start/Stop Replay Auto-Sync"]
-        LogBox["Activity Log (Thread-safe Queue)"]
-        HealthRibbon["System Health Diagnostics"]
-        RecExplorer["Recordings Browser & Player"]
-    end
+### 3.1 Recording Engine (`src/record/` & `src/audio/`)
+- **Zero-Latency Match Start**: Uses a persistent HTTP keep-alive connection polling `https://127.0.0.1:2999/liveclientdata/allgamedata` with optimized, targeted JSON key parsing (`src/lcu/live_api.rs`). When the match begins, audio recording starts in under 1ms.
+- **Sample-Accurate Audio Alignment**:
+  - `first_game_time` is recorded at the exact moment capture begins.
+  - If recording starts after `00:00:00`, exact silence frames are prepended.
+  - If recording starts before `00:00:00` during pre-game countdown, the initial frames are trimmed.
+  - Result: `00:00:00` in the exported MP3 matches in-game `game_time = 0.000` frame-by-frame.
+- **Zero-Drift Pause Detection & Disk Lag Truncation (`src/audio/timeline.rs`)**:
+  - Live client data API polling detects match pause freezes.
+  - The ~280ms detection lag is permanently sliced out by truncating both loopback and mic raw disk streams in-place (`pause_and_truncate_lag`).
+- **Hands-Free Match Auto-Stop**: When the match finishes and `<GameID>.mp3` is saved, the engine automatically signals completion and resets UI state.
 
-    subgraph Config_Layer ["Configuration (app/config.py & config.json)"]
-        Cfg["Config Loader / Saver"]
-        FFmpegHelper["FFmpeg Path Resolver"]
-    end
+### 3.2 Replay Synchronizer (`src/replay/`)
+- **ROFL Detection & Game ID Parsing**: Inspects active processes for `League of Legends.exe` containing `.rofl` command lines (`src/replay/process.rs`), parses the Game ID (e.g. `EUW1-8052864504.rofl`), and loads `<GameID>.mp3`.
+- **Targeted Replay API Polling (`:2999/replay/playback`)**:
+  - Polls replay time, speed, and pause state every 50ms using targeted deserialization (`src/replay/api.rs`).
+  - **Zero-Latency Unpause**: If unpausing at the same timestamp (`abs(game_time - paused_game_time) < 0.25`), calls `player.play()` immediately without an unnecessary pipeline seek.
+  - **Scrubbing & Drift Compensation**: Re-syncs on scrubs or drift (>0.8s) with cooldown guards to avoid seek storms.
+  - **Replay Volume & Mute**: Allows live volume adjustment and toggling mute with smooth needle tracking.
 
-    subgraph Recorder_Engine ["Recorder Engine (app/record.py & app/native_audio.py)"]
-        LeagueRec["LeagueRecorder"]
-        LiveAPI["Live Client Data (:2999)"]
-        LCULockfile["LCU Lockfile / Gameflow API"]
-        DiscordIPC["Discord Local IPC (Live Mute/Deafen Sync)"]
-        NativeWASAPI["Native WASAPI (Discord Loopback + Mic)"]
-        FFmpegProc["FFmpeg MP3 Converter"]
-    end
+### 3.3 In-Game Floating Overlay (`src/overlay/`, `ui/overlay.html`)
+- **Hardware-Accelerated Dual Mode**:
+  - **Recorder HUD Mode**: Pulsing REC pill, match timer, dual-channel audio visualizers using 24-step GradeX harmonic modulation.
+  - **Replay HUD Mode**: Needle waveform canvas tracking playback progress, interactive volume slider, and playback status pill.
+- **Anti-Bleed Focus Isolation**: Overlay is only visible when actively recording or syncing AND `League of Legends.exe` is the active foreground window. Alt-tabbing hides it immediately.
+- **Native Dragging & Click-Through**: Supports Windows `WS_EX_TRANSPARENT` for complete click-through into the game, while preserving dedicated hit targets for the lock toggle and volume slider.
 
-    subgraph Replay_Engine ["Replay Engine (app/play_replay.py)"]
-        ReplaySync["ReplaySynchronizer"]
-        ProcIter["psutil Process Inspector (rofl detector)"]
-        ReplayAPI["League Replay API (:2999/replay/playback)"]
-        VLC["VLC Player Engine (python-vlc)"]
-    end
+### 3.4 System Tray (`src/tray/`, `src/main.rs`)
+- Left-click toggles app window visibility.
+- Minimizing cloaks the window, plays a native `MessageBeep(0x00000040)` chime, and sends a Windows toast/balloon notification.
+- Dynamic hover tooltip reflects live recording or syncing state and game clock.
 
-    subgraph Storage ["Storage (recordings/)"]
-        AudioFiles["<GameID>.mp3"]
-    end
-
-    GUI --> RecBtn & RepBtn & LogBox & HealthRibbon & RecExplorer
-    RecBtn --> LeagueRec
-    RepBtn --> ReplaySync
-    Cfg --> LeagueRec & ReplaySync & GUI
-
-    LeagueRec --> LiveAPI
-    LeagueRec --> LCULockfile
-    DiscordIPC --> NativeWASAPI
-    LeagueRec --> NativeWASAPI
-    LeagueRec --> FFmpegProc
-    FFmpegProc --> AudioFiles
-
-    ReplaySync --> ProcIter
-    ReplaySync --> ReplayAPI
-    ReplaySync --> VLC
-    AudioFiles --> VLC
-```
+### 3.5 Remote Scrim Cloud Sync (`src/cloud_sync/`, `docs/cloud_sync.md`)
+- Seamless client for [league-voice-recorder-backend](https://github.com/betterix/league-voice-recorder-backend).
+- Encrypts API keys using Windows DPAPI (`CryptProtectData`).
+- Role-based UI adaptation (hiding upload controls for `pull` keys).
 
 ---
 
-## 3. Component Reference
+## 4. Engineering Invariants & Coding Guidelines
 
-### 3.1 `main.py`
-The desktop GUI application built using `customtkinter`.
-- **Window Startup Geometry**:
-  - Automatically calculates display geometry and centers the desktop window cleanly in the middle of the user's primary monitor on launch (`(screen_w - win_w) // 2`, `(screen_h - win_h) // 2`).
-- **Primary Controls**:
-  - `🔴 Start Recording Watcher` / `⏹ Stop Recording Watcher`: Toggles the recording watcher thread (`LeagueRecorder.run_loop()`).
-  - `▶ Start Replay Auto-Sync` / `⏹ Stop Replay Auto-Sync`: Toggles the replay sync watcher thread (`ReplaySynchronizer.run_loop()`). No manual file selection is needed; it detects and synchronizes automatically.
-- **Header & System Health**:
-  - Real-time diagnostics for Discord voice capture, League Client process, VLC 64-bit engine, and FFmpeg binary.
-- **Tabbed Center Area**:
-  - **Activity Log**: Thread-safe monospace log terminal displaying live events with timestamps and auto-scroll.
-  - **Scrim Recordings**: File manager showing recorded `.mp3` files, sizes, creation timestamps, with "Play in VLC" and "Open in Explorer" actions.
-  - **Settings**: Configuration editor for recording folder, VLC directory, microphone device, polling intervals, replay volume, interface language, and In-Game Floating HUD settings (HUD preview, opacity, click-through toggle, reset position).
-
-### 3.2 `record.py` (`LeagueRecorder`)
-Responsible for live match detection, native WASAPI voice capture, and audio export.
-- **League Match Detection & Pre-Roll Zero-Latency Start**:
-  - Uses a persistent HTTP keep-alive session (`requests.Session()`) polling `https://127.0.0.1:2999/liveclientdata/allgamedata`.
-  - **Pre-Roll Capture Buffer (`AudioPreRollBuffer`)**: Pre-arms Discord loopback and microphone capture into a 30-second thread-safe circular in-memory buffer while the watcher is running (ChampSelect, loading screen, or countdown).
-  - **Sample-Accurate Match Zero Slicing (`t_match_zero`)**:
-    - When match start is detected (`gameTime > 0.0`), `t_match_zero = ((t_poll_start + t_poll_finish) / 2.0) - game_time` is calculated.
-    - If pre-roll covers `t_match_zero`, `extract_from(t_match_zero)` slices the audio at the exact frame of 00:00:000, discarding pre-game countdown frames and transferring match audio directly into `TimelineWavWriter` with `effective_offset = 0.0`.
-    - Guarantees sample 0 in the output represents League match clock 00:00:000 with **zero lost voice communication** and **zero artificial silence padding**.
-  - **Single Source of Truth for Late Starts**:
-    - If recording starts late into a live match (e.g. 7.0s, 15.0s, 60.0s) and pre-roll does not cover 00:00, `effective_offset` equals the actual late start timestamp.
-    - Exactly that duration of silence is prepended **once and only once** via FFmpeg `-af adelay=delays={delay_ms}:all=1`.
-    - Eliminates arbitrary time thresholds (e.g. 15s clamping) and strictly prevents double-padding between WAV writers and FFmpeg.
-  - **Replay Protection (`check_if_game_is_replay`)**: Checks process command-line arguments and cached PID for `.rofl` files. If a replay is active, live match recording is aborted/prevented.
-  - **Zero-Drift Aggressive Pause Detection & WAV Lag Truncation (`truncate_to_game_time`)**:
-    - High-speed 20ms (50Hz) responsive polling during active gameplay and pauses.
-    - When Riot's Live Client Data API detects that `gameTime == last_game_time` (elapsed >= 0.28s or >= 8 consecutive unchanged polls), an in-game pause is confirmed aggressively.
-    - Slices out detection lag audio by seeking both Discord and microphone streams back to `44 + target_frame * frame_size` (accounting for `start_offset`), truncates the files in-place, and immediately commits disk buffers via `self.file.flush()`.
-    - **Anchored Pause Monotonic Clock (`pause_mono_time = self.last_advance_time`)**: Anchors `_pause_mono_time` to the exact monotonic instant the match clock froze, completely eliminating the 280ms–450ms monotonic clock leakage that previously caused delays after unpausing.
-    - High-precision monotonic clock tracking (`time.monotonic()`) accumulates pause durations (`total_paused_duration`) to maintain sample-accurate sync across long scrim matches with zero network polling jitter.
-    - Instantaneous unpause detection (< 20ms) the moment `gameTime > last_game_time`.
-  - Match end: When the game client closes, the request raises `RequestException`, which triggers `stop_recording_and_rename()`.
-  - **Hands-Free Match Auto-Stop**: When the scrim finishes and `<GameID>.mp3` is saved, the watcher automatically signals completion, exits the listening loop, and resets the UI button back to `Start Recording Watcher` without requiring manual intervention.
-- **Game ID Extraction**:
-  - Uses `find_league_install_dir()` (prioritizing fast `psutil` lookup of `LeagueClientUx`, falling back to PowerShell and common drive paths).
-  - Reads `lockfile` (`<name>:<pid>:<port>:<password>:<protocol>`).
-  - Authenticates with Basic Auth `riot:<password>` to query `https://127.0.0.1:{port}/lol-gameflow/v1/session` to obtain `gameData.gameId`.
-- **Native WASAPI Capture (`native_audio.py`)**:
-  - Captures Discord voice chat directly via Windows WASAPI Process Loopback.
-  - Captures player microphone via native WASAPI (pyaudiowpatch) with dynamic input device selection and live VU visualizers.
-  - Tracks Discord mute & deafen state in real time via local IPC (`\\.\pipe\discord-ipc-*`). When muted, feeds synchronized silence bytes to keep timeline aligned.
-  - Monotonic gap tracking (`last_discord_mono`) accounts for idle periods between team calls without ratchet drift.
-  - Automatically mixes both streams into sample-accurate studio-grade `<GameID>.mp3` via FFmpeg.
-
-### 3.3 `play_replay.py` (`ReplaySynchronizer`)
-Responsible for detecting opened `.rofl` replays and synchronizing audio playback in VLC.
-- **Replay Process Detection (`detect_running_rofl_file`)**:
-  - Scans active processes using `psutil.process_iter(["name", "cmdline"])`.
-  - Looks for `League of Legends.exe` containing command-line arguments ending in `.rofl`.
-- **Game ID Parsing (`parse_rofl_game_id`)**:
-  - Parses replay filenames such as `EUW1-8018190134.rofl` or `8018190134.rofl` to extract `8018190134`.
-  - Matches the file directly to `recordings/8018190134.mp3`.
-- **Volume Control & Mute Hotkey (`set_volume`, `set_mute`, `toggle_mute`)**:
-  - Exposes dynamic volume control (0% to 100%) controllable via the UI slider.
-  - Automatically updates VLC player volume in real-time (`player.audio_set_volume(self.volume)`).
-  - Preserves user preference in `REPLAY_VOLUME` (`config.json`).
-  - **Press `M` Hotkey**: Allows toggling replay voice mute directly by pressing `M` (both within the League replay client and in the desktop app), debounced and foreground-window guarded to prevent interfering with typing in external apps.
-- **Replay Playback API Polling (`run_sync_loop`)**:
-  - Polls `https://127.0.0.1:2999/replay/playback` every 50ms.
-  - JSON payload fields:
-    - `time`: Current replay playback time in seconds (float).
-    - `paused`: Boolean flag indicating if replay is currently paused.
-    - `speed`: Playback rate multiplier (e.g. 0.5, 1.0, 2.0, 4.0).
-  - Sync actions:
-    - Rate change: Calls `player.set_rate(replay_speed)`.
-    - Zero-Latency Unpause: If unpausing at the same timestamp (`abs(game_time - paused_game_time) < 0.25`), calls `player.play()` and `player.set_rate(replay_speed)` immediately without issuing a pipeline-flushing `set_time()` seek.
-    - Smooth Drift Correction & Audio Stability: Automatically corrects audio drift when `drift > 0.5s` (500ms) with a 250ms seek cooldown, eliminating VLC pipeline buffer flushing and audio cracking during replay playback.
-    - Rewind handling: If `player.get_state() == vlc.State.Ended`, automatically reloads media before seeking.
-    - Pause: If `paused == True` or `game_time <= 0.5`, calls `player.pause()`.
-  - Auto-exit: If the Replay API fails 8 consecutive times (replay closed), it stops VLC and returns to the watcher loop.
-
-### 3.4 Configuration & Storage (`config.py`, `config.json`)
-- **Configuration Storage**:
-  - `config.json` is stored cleanly in standard Windows `Documents/League Voice Recorder/config.json` alongside `recordings/`.
-  - Automatically migrates existing configuration files to the Documents directory on first run.
-  - Zero third-party cloud/OneDrive redirection dependencies.
-- **Config Manager (`config.py`)**:
-  - Pure JSON-backed settings persisted to `Documents/League Voice Recorder/config.json`.
-  - Exposes `load_config()`, `save_config(dict)`, and `get_ffmpeg_path()`.
-- **Git Ignore Policy (`.gitignore`)**:
-  - Ignores secrets (`config.json`, `.env`).
-  - Ignores large local binaries (`ffmpeg.exe`, `redist/` installer).
-  - Ignores local recordings (`recordings/`).
-  - Ignores local private agent tooling and configs (`.agents/`, `.serena/`).
-
-### 3.5 Internationalization & Community Translations (`i18n.py` & `locales/`)
-- **Default Language**: English (`en.json`) is the default language.
-- **Built-in Translations**:
-  - English (`locales/en.json`)
-  - Hungarian (`locales/hu.json`)
-- **Extensible Architecture for Community Contributions**:
-  - Anyone can contribute a new translation simply by adding a new `<code_name>.json` file inside `locales/` (e.g. `locales/de.json`, `locales/fr.json`, `locales/es.json`).
-  - Each JSON file should define `"__language_name__": "<Native Name>"` (e.g., `"Deutsch"`, `"Français"`, `"Español"`).
-  - The application automatically scans the `locales/` directory on startup and populates the **Interface Language** dropdown menu in Settings with all detected languages—**no Python code modifications required**.
-- **Dynamic Language Switching**:
-  - Changing the language dropdown immediately translates all widgets, status pills, health badges, button labels, and tabs in real-time via `on_language_change` listeners.
-  - Automatically persists the language preference to `config.json` (`"language": "<code_name>"`).
-- **Safe Fallback**:
-  - `t(key, **kwargs)` resolves nested dot-notated keys (e.g. `record.start_btn`).
-  - If a key is missing in a community translation, it automatically falls back to English (`en.json`). If missing in both, it returns the raw key.
-
-### 3.6 Automatic Updates & Packaging (`updater.py`)
-- **GitHub Releases Integration**:
-  - Checks GitHub Releases API for newer semantic version tags (`check_for_update`).
-  - Prioritizes `.zip` release distribution packages (`LeagueVoiceRecorder-Windows-x64.zip`), falling back to standalone `.exe` binaries.
-- **Stream Download with Progress Callback**:
-  - Downloads release assets into a temporary directory while reporting real-time percentage progress (0–100%) to the UI.
-- **Distribution Package Unpacking**:
-  - Uses standard library `zipfile` to unpack archives and find the target executable and updated dependencies (DLLs, `locales/`, assets).
-- **Silent Background In-Place Replacement**:
-  - In compiled Windows binary mode: spawns a detached background updater script (`cmd.exe /c updater.bat` with `CREATE_NO_WINDOW`) that waits for the active application process to exit, copies all updated files cleanly via `robocopy` into the app directory, relaunches `LeagueVoiceRecorder.exe`, and cleans up temporary archives.
-  - In development mode: returns extracted target directory without modifying the local Python runtime environment.
-
-### 3.7 In-Game Floating Overlay (`app/overlay.py`)
-- **Game-Exclusive Display & Anti-Bleed Isolation**:
-  - The HUD overlay **ONLY** appears when actively recording a live scrim match (`RECORDING` or `PAUSED`) or actively synchronizing a replay (`SYNCING` or `PAUSED`) AND the foreground window is the actual League game engine (`League of Legends.exe`).
-  - **ChampSelect Pre-Warming & Loading Screen Launch**: Pre-warms resources in memory during ChampSelect with 0 CPU hitch; stays 100% hidden through ChampSelect, lobby, Discord, browser, or desktop, and automatically appears the exact moment `League of Legends.exe` displays the Loading Screen.
-  - **Alt-Tab Smart Focus Guard**: Instantly hides when Alt-Tabbing away from `League of Legends.exe`, and immediately restores visibility upon refocusing back into the game.
-- **Translucent & Non-Intrusive Design**:
-  - Implements a 350x76 borderless floating HUD with semi-transparent layered opacity (`-alpha 0.85` by default) matching esports Hextech design specifications.
-  - Floats topmost over League of Legends in Borderless or Windowed display modes.
-- **Dual Mode Operation**:
-  - **Recorder HUD Mode**: Renders dynamic animated oscilloscopes with boosted sensitivity for player Microphone (`#3DDCC4` mint/teal) and Discord team chat (`#8B93FF` periwinkle) modulated by real-time WASAPI audio levels, with a pulsing red REC badge and digital match clock.
-  - **Replay HUD Mode**: Displays an audio waveform with a moving playhead needle (`#FFFFFF` cursor, `#3DDCC4` played audio, `#3C4655` upcoming audio), an interactive replay volume slider with real-time VLC volume sync, and playback state indicator (`▶ REPLAY` / `⏸ PAUSED`).
-- **Native Click-Through & Dedicated Interactive Hit Targets**:
-  - Draggable with mouse when unlocked; automatically persists `hud_x` and `hud_y` coordinates to `config.json`.
-  - Supports Windows `WS_EX_TRANSPARENT` Click-Through mode so 100% of mouse clicks pass straight through into League of Legends during matches.
-  - Dedicated transparent hit windows keep the **Lock icon** clickable to toggle drag mode and the **Replay Volume slider** draggable even when click-through is enabled!
-  - Settings UI includes preview controls ("Preview Rec HUD", "Preview Replay HUD"), opacity slider (40%-100%), and position reset.
-
-### 3.8 1-Click Replay API Auto-Configuration (`app/replay_config.py`)
-- **Automated Configuration**:
-  - Automatically locates `League of Legends/Config/game.cfg` via `find_league_install_dir()`.
-  - Backs up the original configuration safely to `game.cfg.bak`.
-  - Parses and injects `EnableReplayApi=1` under the `[General]` section via `configparser`.
-  - Accessible via a dedicated 1-click button in the Settings interface with instant user feedback.
-
-### 3.9 Automated VirusTotal CI Scanner & Security Verification (`scripts/virustotal_scan.py`)
-- **Automated Antivirus CI Pipeline**:
-  - Automatically invoked during GitHub Actions release compilation (`.github/workflows/release.yml`) whenever a new release or version tag is built.
-  - Interacts with **VirusTotal API v3** (`https://www.virustotal.com/api/v3`) to analyze both the standalone compiled binary (`LeagueVoiceRecorder.exe`) and the Inno Setup installer wizard (`LeagueVoiceRecorder-Setup-*.exe`).
-- **Streaming SHA256 Checksum Calculation**:
-  - Computes chunked (1MB blocks) SHA256 hashes of build artifacts to query existing VirusTotal analyses prior to upload (`GET /api/v3/files/{sha256}`).
-- **Large Binary Upload Handling**:
-  - Automatically discriminates between binaries ≤ 32 MB and large packages > 32 MB. For large installers, requests a dedicated high-capacity upload URL (`GET /api/v3/files/upload_url`).
-- **Rate-Limit Guard**:
-  - Implements a built-in 16-second sleep delay between submissions to stay strictly within the VirusTotal free tier quota (4 requests/minute) without hitting HTTP 429 rate limits.
-- **GitHub Release Markdown Decoration**:
-  - Uses the `gh` CLI (`gh release view` / `gh release edit`) to automatically append a verified security section (`### 🛡️ VirusTotal Clean Security Verification`) with engine detection ratios (e.g. `0/72 Clean`), public report URLs, and cryptographic SHA256 hashes.
-
-### 3.10 Remote Scrim Cloud Sync & Role-Based Access Control (`app/cloud_sync.py`)
-- **Direct-Port FastAPI Backend Integration**:
-  - Connects to self-hosted team backend server ([league-voice-recorder-backend](https://github.com/betterix/league-voice-recorder-backend)).
-  - Endpoints: `GET /api/v1/health`, `GET /api/v1/recordings`, `GET /api/v1/recordings/{game_id}/download`, `POST /api/v1/recordings/{game_id}`, `DELETE /api/v1/recordings/{game_id}`.
-- **Windows DPAPI API Key Encryption**:
-  - Never stores plain-text API secrets on disk in `config.json`.
-  - Automatically encrypts keys via native Windows `CryptProtectData` (`remote_api_key_encrypted`) and decrypts in memory on boot.
-- **Role-Based UI Permissions (Upload / Pull / Admin)**:
-  - **Pull Key (`pull`)**: Read-only access for analysts, players, or coaches who only download scrims. The `⬆ Upload` button is strictly hidden to prevent HTTP 403 Forbidden errors.
-  - **Upload Key (`upload`)**: Enables local recording upload (`⬆ Upload` button rendered for unsynced files) and scrim metadata editing.
-  - **Admin Key (`admin`)**: Grants full capabilities, including the special red `🗑 Delete` button to permanently unlink and purge remote scrim audio from the server.
-
-### 3.11 Scrim Metadata Organizer & Direct MP3 ID3 Tag Embedding (`app/scrim_meta.py`)
-- **Direct MP3 Storage (Zero Sidecar JSON)**:
-  - All scrim metadata (Match ID, VS Opponent Team, Scrim Notes, Game Patch, and Recorded Date) is stored directly inside the `.mp3` audio files as standard ID3v2 tags.
-  - Zero separate JSON sidecar files (`scrim_metadata.json` eliminated). If an MP3 is copied, shared, or moved, 100% of its metadata travels with it.
-- **In-Place ID3 Tag Embedding & Fast In-Memory Parser**:
-  - Embeds standard ID3v2 tags (`title=Game <ID>`, `artist=<VSOpponentTeam>`, `album=Patch <Patch>`, `comment=<Notes>`, `date=<RecordedAt>`) directly in-place.
-  - Fast in-memory byte parser reads tags in <0.1 milliseconds with zero subprocess overhead, with FFmpeg fallback.
-  - Preserves original file modification times (`os.utime`).
-- **Automatic Patch Version Detection (Method 2)**:
-  - Detects the active League patch when a match begins using LCU `/lol-patch/v1/game-version` (formatted strictly as `major.minor`, e.g. `14.22` or `26.11`).
-  - Embedded into ID3 album tags (`Patch <major.minor>`), and rendered directly next to the date in the Scrim Recordings explorer list.
-- **Interactive UI Organizer Dialog (Upload & Admin Only)**:
-  - Only accessible to users with upload or admin roles (`self._can_upload_to_cloud()`).
-  - Accessible either by clicking the `📝 Details` button or clicking the `.mp3` title directly in the Scrim Recordings list.
-  - Allows editing the opponent team faced (e.g. `DEO`, `FNC`), game patch, match notes, and prefilled recorded date, with one-click `💾 Save Details` and `💾 Save & Upload` actions.
-  - Automatically displays `[Local] • vs <Opponent>` in the recording explorer badge.
-
----
-
-## 4. League of Legends APIs Reference
-
-| API | URL / Protocol | Authentication | Purpose |
-| :--- | :--- | :--- | :--- |
-| **Live Client Data API** | `https://127.0.0.1:2999/liveclientdata/allgamedata` | None (SSL verify=False) | Read `gameData.gameTime` during live games |
-| **Replay Playback API** | `https://127.0.0.1:2999/replay/playback` | None (SSL verify=False) | Read `time`, `paused`, `speed` during replay (requires `EnableReplayApi=1` in `Config\game.cfg`) |
-| **LCU Gameflow API** | `https://127.0.0.1:{port}/lol-gameflow/v1/session` | Basic Auth (`riot:<lockfile_pw>`) | Retrieve real match `gameId` from client |
-| **LCU Patch Version API** | `https://127.0.0.1:{port}/lol-patch/v1/game-version` | Basic Auth (`riot:<lockfile_pw>`) | Retrieve installed game patch version (e.g. `14.22`) |
-
-> [!NOTE]
-> Port `2999` uses a self-signed Riot Games SSL certificate. All HTTP requests must set `verify=False` and disable `urllib3` warnings.
-
----
-
-## 5. Development & Execution Guide
-
-### 5.1 Environment & Package Manager
-The project uses `uv` for Python virtual environment and dependency management.
-
-```powershell
-# Run the UI application
-uv run main.py
-
-# Or run via launcher script
-.\scripts\start_ui.bat
-
-# Run the recorder standalone (CLI)
-uv run python -m app.record
-
-# Run the replay synchronizer standalone (CLI)
-uv run python -m app.play_replay
-```
-
-### 5.2 Dependency Management
-Dependencies are defined in `pyproject.toml` and locked in `uv.lock`. `requirements.txt` is exported via:
-```powershell
-uv export --no-dev --no-hashes -o requirements.txt
-```
-
-Core libraries:
-- `customtkinter`: Modern dark-themed UI components.
-- `psutil`: High-performance cross-platform process management.
-- `python-vlc`: libvlc bindings for audio playback and rate synchronization.
-- `requests` & `urllib3`: HTTPS communication with League local APIs.
-
-### 5.3 Automated Testing & Code Quality
-The project includes a comprehensive suite of 82 unit tests covering configuration, Discord Local IPC mute/deafen sync (auto-skipped when Discord is offline), microphone input enumeration and selection, i18n key parity and translations, recorder sample-accurate audio alignment, pause detection WAV truncation lag trimming, replay protection, replay synchronizer zero-latency unpausing, seek cooldown protection, game ID parsing, volume clamping and hotkey mute, automatic release checks, zip extraction, in-place binary updater scripts, in-game floating HUD game-exclusive visibility guards, and headless CustomTkinter UI rendering.
-
-```powershell
-# Run the test suite via the Windows batch launcher
-.\scripts\run_tests.bat
-
-# Or run tests directly with uv (Pytest)
-uv run pytest
-
-# Run the Ruff linter (always use 'uv run' with uv, not 'uvx')
-uv run ruff check .
-```
-
-### 5.4 Standalone Executable & Installer Packaging
-The application is compiled into a standalone Windows binary distribution using `Nuitka` in `--standalone` mode and packaged into an installer via `Inno Setup`.
-- Built via batch script: `.\scripts\build_exe.bat`
-- Output artifacts in `dist/`:
-  - `dist/LeagueVoiceRecorder/`: Standalone folder containing `LeagueVoiceRecorder.exe`, Python runtime DLLs, dependency libraries, and `locales/`.
-  - `dist/LeagueVoiceRecorder-Setup-v*.exe`: 1-click Inno Setup Windows installer wizard with dual-language support (English/Hungarian), desktop & Start Menu shortcuts, per-user `%LOCALAPPDATA%` installation, and automatic uninstaller.
-- Automatically cleans up `dist/main.build` after compilation to conserve disk space.
-- Automatically creates `config.json` next to the binary on first run.
-
-### 5.5 Autonomous Performance Profiling & Optimization with GradeX
-The project utilizes **[GradeX](https://github.com/betterix/gradex)** for continuous AI-driven performance profiling, hot-path discovery, and latency benchmark regression tracking.
-
-- **Benchmark Suite (`.gradex/`)**: Contains executable benchmark harnesses (such as `.gradex/benchmark.py`) that profile critical loops including configuration loading, process polling, and audio buffer math.
-- **Key Measured Optimizations**:
-  - `load_config()`: In-memory cache with file modification time (`mtime`) checks achieves `0.01ms` latency (95% speedup).
-  - `is_league_game_running()`: Cached PID check via `psutil.pid_exists()` reduces CPU time by 99.7%.
-  - `scale_vu()` & Audio Peak Math: Vectorized extrema (`max(floats.max(), -floats.min())`) avoid buffer copies, delivering a 36% speedup.
-- **GradeX CLI Commands**:
-  ```powershell
-  # Discover latency targets and capture baseline benchmark score
-  uv run gradex discover
-
-  # Run an autonomous optimization loop on current hot paths
-  uv run gradex optimize
-
-  # Display run statistics, percentile distributions, and timing improvements
-  uv run gradex stats
-
-  # Export a shareable HTML performance report
-  uv run gradex report
-  ```
-- **Agent Guidelines for Performance**:
-  - Before and after modifying tight loops in `native_audio.py`, `record.py`, or `config.py`, verify that changes do not regress baseline latency.
-  - Keep all `.gradex/` benchmark and cache artifacts untracked (enforced via `.gitignore`).
-
----
-
-## 6. Key Invariants & Design Rules
-
-1. **Thread Safety**: Never call Tkinter/CustomTkinter widget manipulation methods directly from background worker threads. Always post updates through `self.msg_queue` and consume them in `_process_queue` on the main GUI thread.
-2. **CLI Executability**: `app/record.py` and `app/play_replay.py` remain directly executable from the command line (`if __name__ == "__main__":` via `python -m app.record` and `python -m app.play_replay`). Never remove standalone support when adding UI capabilities.
-3. **Recording Safety**: When stopping the recorder (either via the UI button or on application close), if an active recording is in progress, `stop_recording_and_rename()` must be called to ensure the recording is finalized and converted to MP3.
-4. **VLC Initialization**: On 64-bit Windows, VLC requires explicit DLL directory registration before importing `vlc`. Always configure `os.add_dll_directory(VLC_DIR)` and ensure fallback audio output drivers (`--quiet`, `--quiet --aout=mmdevice`, `--quiet --aout=directsound`) are handled.
-5. **Fast Process Lookup**: Always use `psutil` before falling back to PowerShell subprocess calls for detecting `LeagueClientUx.exe` and `League of Legends.exe`. `psutil` executes in single-digit milliseconds without spawning console windows.
-
-
-
+1. **Vanguard Safety**: NEVER read or inject into League of Legends process memory. NEVER use virtual audio drivers. Only query official localhost endpoints (`:2999`) and Windows WASAPI.
+2. **Audio Timing Integrity**: NEVER alter the sample-accurate match alignment formulas in `src/audio/timeline.rs` or `src/record/engine.rs`.
+3. **Zero-RAM Streaming**: Audio capture must always stream directly to disk chunks (`.raw_audio/` or `%LOCALAPPDATA%/Temp/`); never accumulate uncompressed audio buffers in system RAM.
+4. **Git Safety**: Never push or commit without explicit user authorization. Never include secrets in `config.json`.

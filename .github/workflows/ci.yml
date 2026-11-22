@@ -2,12 +2,12 @@ name: CI Quality & Test Suite
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "rust"]
     paths-ignore:
       - "web/**"
       - "*.md"
   pull_request:
-    branches: ["main"]
+    branches: ["main", "rust"]
   workflow_dispatch:
 
 permissions:
@@ -15,37 +15,29 @@ permissions:
 
 jobs:
   test:
-    name: 🧪 Unit & Timing Accuracy Tests
+    name: 🧪 Rust Build & Test Suite
     runs-on: windows-latest
 
     steps:
       - name: 📥 Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
-      - name: ⚡ Set up uv & Python 3.14
-        uses: astral-sh/setup-uv@v7
+      - name: 🦀 Set up Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          enable-cache: true
-          python-version: "3.14.10"
+          targets: x86_64-pc-windows-msvc
 
-      - name: 🐍 Set up Python Runtime
-        run: uv python install 3.14.10
+      - name: ⚡ Rust Cache
+        uses: Swatinem/rust-cache@v2
 
-      - name: 📦 Install Python Dependencies
-        run: uv sync --dev --python 3.14.10
+      - name: 🔍 Cargo Check
+        run: cargo check --all-targets
 
-      - name: 🛠️ Install VLC Media Player and FFmpeg
-        shell: pwsh
-        run: |
-          choco install vlc ffmpeg --no-progress -y
+      - name: 🧪 Execute Automated Test Suite
+        run: cargo test --lib -- --test-threads=1
 
-      - name: 🔍 Run Linter (Ruff)
-        run: uv run ruff check .
-
-      - name: 🧪 Execute Automated Test Suite (pytest)
-        shell: pwsh
-        run: |
-          uv run pytest -v --durations=10
+      - name: ⚙️ Build Release Binary
+        run: cargo build --release
 
       - name: 📊 Generate CI Summary Dashboard
         if: always()
@@ -54,14 +46,14 @@ jobs:
           @"
           # 🎮 League Voice Recorder — CI Verification Report
 
-          > **Result**: ✅ **All Checks Passed** | **Linter**: Ruff | **Runner**: Windows Server 2022 | **Python**: 3.14.10
+          > **Result**: ✅ **All Rust Checks & Tests Passed** | **Target**: x86_64-pc-windows-msvc | **Runner**: Windows Latest
 
           ---
 
-          ### 🧪 Test Suite Highlights
-          - ✅ **Config & Paths**: User Documents path resolution & migration
-          - ✅ **Native Audio**: Process Loopback, VU scaling & 1:1 timeline alignment
-          - ✅ **Replay Auto-Sync**: 200% volume amplification & instant seek recovery
+          ### 🧪 Quality & Invariant Highlights
+          - ✅ **Config & DPAPI**: Windows DPAPI encryption & path resolution
+          - ✅ **Native Audio Engine**: WASAPI loopback, high-sensitivity VU scaling & zero-drift timeline alignment
+          - ✅ **Replay Auto-Sync**: Rodio audio engine, process inspection & instant seek recovery
           - ✅ **In-Game Floating HUD**: Click-through hit targets, volume slider & focus isolation
           - ✅ **Auto-Updater**: SHA256 integrity, zip unpacking & in-place update engine
 

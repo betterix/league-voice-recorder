@@ -41,6 +41,15 @@ share/python-wheels/
 MANIFEST
 
 # ==========================================
+# Rust / Cargo Build Artifacts
+# ==========================================
+target/
+gen/
+.cargo/
+**/*.rs.bk
+Cargo.lock.dist
+
+# ==========================================
 # Virtual Environments
 # ==========================================
 .venv/
@@ -70,9 +79,15 @@ Thumbs.db
 .gradex/
 
 # ==========================================
-# Private Roadmaps, Agent Tooling & Local Configs
+# Private Roadmaps & Future Feature Notes
 # ==========================================
 FUTURE_IDEAS.md
 *.local.md
+
+# ==========================================
+# Agents & Serena
+# ==========================================
+agents/
+serena/
 .agents/
 .serena/
