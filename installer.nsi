@@ -18,6 +18,9 @@ ManifestDPIAware true
 !define APP_EXE "LeagueVoiceRecorder.exe"
 !define APP_ID "com.betterix.leaguevoicerecorder"
 
+; Product Name displayed in installer window title and taskbar
+Name "${APP_NAME}"
+
 ; Output filename matching standard NSIS naming
 OutFile "dist\LeagueVoiceRecorder_0.6.0_x64-setup.exe"
 InstallDir "$LOCALAPPDATA\Programs\League Voice Recorder"
@@ -34,6 +37,7 @@ RequestExecutionLevel user
 ; ------------------------------------------------------------------------------
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
+!include "LogicLib.nsh"
 
 ; Language Selection Dialog Settings
 !define MUI_LANGDLL_REGISTRY_ROOT "HKCU"
@@ -61,6 +65,9 @@ RequestExecutionLevel user
 LangString LaunchApp ${LANG_ENGLISH} "Launch League Voice Recorder"
 LangString LaunchApp ${LANG_HUNGARIAN} "League Voice Recorder indítása"
 
+LangString PreviousVersionFound ${LANG_ENGLISH} "A previous version of League Voice Recorder was detected.$\r$\n$\r$\nWould you like to uninstall it first before installing v${APP_VERSION}?"
+LangString PreviousVersionFound ${LANG_HUNGARIAN} "A League Voice Recorder korábbi verziója található a gépen.$\r$\n$\r$\nSzeretnéd eltávolítani a régebbi verziót a v${APP_VERSION} telepítése előtt?"
+
 ; Version Information Resource
 VIProductVersion "${APP_VERSION}.0"
 VIFileVersion "${APP_VERSION}.0"
@@ -81,10 +88,47 @@ VIAddVersionKey /LANG=${LANG_HUNGARIAN} "FileVersion" "${APP_VERSION}.0"
 VIAddVersionKey /LANG=${LANG_HUNGARIAN} "OriginalFilename" "LeagueVoiceRecorder_0.6.0_x64-setup.exe"
 
 ; ------------------------------------------------------------------------------
-; Language Initialization Hooks
+; Language Initialization & Pre-Install Detection
 ; ------------------------------------------------------------------------------
 Function .onInit
     !insertmacro MUI_LANGDLL_DISPLAY
+
+    ; Gracefully request any active running instance to close
+    FindWindow $0 "" "League Voice Recorder & Replay Synchronizer v0.6.0"
+    IntCmp $0 0 +3
+    SendMessage $0 16 0 0 ; WM_CLOSE
+    Sleep 500
+
+    ; Detect previous installation (Inno Setup unins000.exe or previous NSIS uninstaller)
+    StrCpy $R0 ""
+
+    ; 1. Check Inno Setup registry
+    ReadRegStr $R0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\League Voice Recorder_is1" "UninstallString"
+    ${If} $R0 == ""
+        ReadRegStr $R0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\League Voice Recorder_is1" "UninstallString"
+    ${EndIf}
+
+    ; 2. Check default directory for unins000.exe
+    ${If} $R0 == ""
+        ${If} ${FileExists} "$LOCALAPPDATA\Programs\League Voice Recorder\unins000.exe"
+            StrCpy $R0 '"$LOCALAPPDATA\Programs\League Voice Recorder\unins000.exe"'
+        ${EndIf}
+    ${EndIf}
+
+    ; 3. Check previous NSIS uninstaller
+    ${If} $R0 == ""
+        ReadRegStr $R1 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}" "UninstallString"
+        ${If} $R1 != ""
+            StrCpy $R0 $R1
+        ${EndIf}
+    ${EndIf}
+
+    ; If a previous version is detected, prompt the user and execute uninstaller before continuing
+    ${If} $R0 != ""
+        MessageBox MB_YESNO|MB_ICONQUESTION $(PreviousVersionFound) IDNO +3
+        ExecWait '$R0'
+        Sleep 1000
+    ${EndIf}
 FunctionEnd
 
 Function un.onInit
@@ -102,12 +146,14 @@ Section "MainProgram" SecMain
     FindWindow $0 "" "League Voice Recorder & Replay Synchronizer v0.6.0"
     IntCmp $0 0 +3
     SendMessage $0 16 0 0 ; WM_CLOSE
-    Sleep 600
+    Sleep 500
 
-    ; If legacy Inno Setup uninstaller exists from older version, launch it to cleanly remove it
-    IfFileExists "$INSTDIR\unins000.exe" 0 +3
-    DetailPrint "Launching uninstaller for previous version..."
-    ExecWait '"$INSTDIR\unins000.exe"'
+    ; If legacy Inno Setup uninstaller still exists on disk, launch it to ensure clean upgrade
+    ${If} ${FileExists} "$INSTDIR\unins000.exe"
+        DetailPrint "Launching uninstaller for previous version..."
+        ExecWait '"$INSTDIR\unins000.exe"'
+        Sleep 500
+    ${EndIf}
 
     ; Install application binary, WebView2 runtime loader, and visual assets
     DetailPrint "Installing League Voice Recorder v${APP_VERSION}..."
@@ -162,7 +208,7 @@ Section "Uninstall"
     FindWindow $0 "" "League Voice Recorder & Replay Synchronizer v0.6.0"
     IntCmp $0 0 +3
     SendMessage $0 16 0 0 ; WM_CLOSE
-    Sleep 600
+    Sleep 500
 
     ; Delete Installed Files & Assets
     Delete "$INSTDIR\${APP_EXE}"
