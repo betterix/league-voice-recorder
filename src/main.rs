@@ -87,6 +87,8 @@ pub struct AppState {
     pub hud_preview_mode: Arc<Mutex<Option<String>>>,
     pub hud_locked: Arc<AtomicBool>,
     pub hud_overlay_enabled: Arc<AtomicBool>,
+    pub base_game_time: Arc<Mutex<Option<String>>>,
+    pub active_game_patch: Arc<Mutex<Option<String>>>,
 }
 
 impl Default for AppState {
@@ -161,6 +163,8 @@ impl Default for AppState {
             hud_preview_mode: Arc::new(Mutex::new(None)),
             hud_locked: Arc::new(AtomicBool::new(initial_cfg.hud_locked)),
             hud_overlay_enabled: Arc::new(AtomicBool::new(initial_cfg.hud_overlay_enabled)),
+            base_game_time: Arc::new(Mutex::new(None)),
+            active_game_patch: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -188,6 +192,9 @@ impl AppState {
         if let Ok(mut mt) = self.match_time.lock() {
             *mt = None;
         }
+        if let Ok(mut bt) = self.base_game_time.lock() {
+            *bt = None;
+        }
         self.log("🔴 Recording Watcher started. Polling League client LiveData (:2999)...");
 
         let stop_sig = self.rec_stop.clone();
@@ -197,12 +204,22 @@ impl AppState {
         let clock_sig = self.match_time.clone();
         let muted_sig = self.discord_voice.is_muted.clone();
         let prev_cap_sig = self.preview_capture.clone();
+        let base_time_sig = self.base_game_time.clone();
+        let patch_sig = self.active_game_patch.clone();
 
         let cfg_opt = AppConfig::load().ok();
         if let Some(cfg) = cfg_opt {
             tokio::spawn(async move {
                 let recorder = LeagueRecorder::new(cfg);
-                recorder.run_watcher_loop(stop_sig, Some(levels_sig), Some(rec_status_sig.clone()), Some(clock_sig.clone()), Some(muted_sig)).await;
+                recorder.run_watcher_loop(
+                    stop_sig,
+                    Some(levels_sig),
+                    Some(rec_status_sig.clone()),
+                    Some(clock_sig.clone()),
+                    Some(muted_sig),
+                    Some(base_time_sig),
+                    Some(patch_sig),
+                ).await;
                 active_sig.store(false, Ordering::SeqCst);
                 if let Ok(mut st) = rec_status_sig.lock() {
                     *st = ("IDLE".to_string(), "".to_string());
@@ -230,6 +247,9 @@ impl AppState {
         if let Ok(mut mt) = self.match_time.lock() {
             *mt = None;
         }
+        if let Ok(mut bt) = self.base_game_time.lock() {
+            *bt = None;
+        }
         // Resume preview monitor
         let mic_name = AppConfig::load().ok().map(|c| c.mic_device_name).unwrap_or_default();
         let target = if mic_name.is_empty() || mic_name == "default" { None } else { Some(mic_name) };
@@ -251,6 +271,9 @@ impl AppState {
         if let Ok(mut mt) = self.match_time.lock() {
             *mt = None;
         }
+        if let Ok(mut bt) = self.base_game_time.lock() {
+            *bt = None;
+        }
         self.log("▶ Replay Auto-Sync started. Monitoring running .rofl processes...");
 
         let stop_sig = self.rep_stop.clone();
@@ -260,6 +283,7 @@ impl AppState {
         let player_sink = self.current_player.clone();
         let vol_sink = self.replay_volume.clone();
         let time_sink = self.replay_time.clone();
+        let app_handle_sig = self.app_handle.clone();
 
         let cfg_opt = AppConfig::load().ok();
         if let Some(cfg) = cfg_opt {
@@ -283,6 +307,14 @@ impl AppState {
                 if let Ok(mut t) = time_sink.lock() {
                     *t = (0.0, 1800.0, 1.0);
                 }
+                use tauri::Manager;
+                if let Ok(handle_guard) = app_handle_sig.lock() {
+                    if let Some(ref handle) = *handle_guard {
+                        if let Some(win) = handle.get_webview_window("main") {
+                            let _ = win.eval("if (window.onReplayStopped) window.onReplayStopped();");
+                        }
+                    }
+                }
                 info!("⏹ Replay Auto-Sync stopped.");
             });
         }
@@ -297,8 +329,19 @@ impl AppState {
         if let Ok(mut mt) = self.match_time.lock() {
             *mt = None;
         }
+        if let Ok(mut bt) = self.base_game_time.lock() {
+            *bt = None;
+        }
         if let Ok(mut t) = self.replay_time.lock() {
             *t = (0.0, 1800.0, 1.0);
+        }
+        use tauri::Manager;
+        if let Ok(handle_guard) = self.app_handle.lock() {
+            if let Some(ref handle) = *handle_guard {
+                if let Some(win) = handle.get_webview_window("main") {
+                    let _ = win.eval("if (window.onReplayStopped) window.onReplayStopped();");
+                }
+            }
         }
         self.log("⏹ Stopping Replay Auto-Sync...");
     }
@@ -316,6 +359,8 @@ struct StatusDto {
     rep_status: String,
     rep_detail: String,
     match_clock: Option<String>,
+    replay_volume: u32,
+    replay_sync_offset: f64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -354,6 +399,10 @@ async fn get_status(state: tauri::State<'_, Arc<AppState>>) -> Result<StatusDto,
     let rep_stat = state.rep_status.lock().map(|g| g.clone()).unwrap_or_else(|_| ("IDLE".to_string(), "".to_string()));
     let clk = state.match_time.lock().map(|g| g.clone()).unwrap_or(None);
 
+    let vol_norm = state.replay_volume.lock().map(|v| *v).unwrap_or(0.8);
+    let vol_int = (vol_norm * 100.0).round() as u32;
+    let sync_offset = AppConfig::load().map(|c| c.replay_sync_offset).unwrap_or(0.0);
+
     Ok(StatusDto {
         league_running: client_running || game_running,
         in_game: game_running || phase == "InProgress",
@@ -365,6 +414,8 @@ async fn get_status(state: tauri::State<'_, Arc<AppState>>) -> Result<StatusDto,
         rep_status: rep_stat.0,
         rep_detail: rep_stat.1,
         match_clock: clk,
+        replay_volume: vol_int,
+        replay_sync_offset: sync_offset,
     })
 }
 
@@ -581,8 +632,8 @@ fn save_config(config: AppConfig, state: tauri::State<'_, Arc<AppState>>) -> Res
 }
 
 #[tauri::command]
-fn set_replay_volume(volume: u32, state: tauri::State<'_, Arc<AppState>>) {
-    let vol_norm = (volume as f32 / 100.0).clamp(0.0, 1.0);
+fn set_replay_volume(volume: u32, state: tauri::State<'_, Arc<AppState>>, app: tauri::AppHandle) {
+    let vol_norm = (volume as f32 / 100.0).clamp(0.0, 2.0);
     *state.replay_volume.lock().unwrap() = vol_norm;
     if let Some(ref mut p) = *state.current_player.lock().unwrap() {
         p.set_volume(vol_norm);
@@ -592,6 +643,26 @@ fn set_replay_volume(volume: u32, state: tauri::State<'_, Arc<AppState>>) {
             cfg.replay_volume = volume;
             let _ = cfg.save();
         }
+    }
+    use tauri::Manager;
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.eval(&format!("if (window.onVolumeChanged) window.onVolumeChanged({});", volume));
+    }
+}
+
+#[tauri::command]
+fn set_replay_offset(offset: f64, state: tauri::State<'_, Arc<AppState>>, app: tauri::AppHandle) -> Result<f64, String> {
+    if let Ok(mut cfg) = AppConfig::load() {
+        cfg.replay_sync_offset = offset;
+        let _ = cfg.save();
+        state.log(&format!("⏱ Replay sync offset set to {:+.1}s", offset));
+        use tauri::Manager;
+        if let Some(win) = app.get_webview_window("main") {
+            let _ = win.eval(&format!("if (window.onOffsetChanged) window.onOffsetChanged({});", offset));
+        }
+        Ok(offset)
+    } else {
+        Err("Failed to load configuration".to_string())
     }
 }
 
@@ -637,25 +708,27 @@ struct SystemHealthDto {
 
 #[tauri::command]
 fn get_system_health() -> SystemHealthDto {
-    let mut sys = sysinfo::System::new();
-    sys.refresh_processes_specifics(
-        sysinfo::ProcessesToUpdate::All,
-        true,
-        sysinfo::ProcessRefreshKind::nothing(),
-    );
     let mut discord_running = false;
     let mut league_running = false;
 
-    for (_pid, proc) in sys.processes() {
-        let name = proc.name().to_string_lossy().to_lowercase();
-        if name.contains("discord") {
-            discord_running = true;
-        }
-        if name.contains("leagueclient") || name.contains("league of legends") {
-            league_running = true;
-        }
-        if discord_running && league_running {
-            break;
+    if let Ok(mut sys) = sysinfo::System::new() {
+        sys.refresh_processes_specifics(
+            sysinfo::ProcessesToUpdate::All,
+            true,
+            sysinfo::ProcessRefreshKind::nothing(),
+        );
+
+        for (_pid, proc) in sys.processes() {
+            let name = proc.name().to_string_lossy().to_lowercase();
+            if name.contains("discord") {
+                discord_running = true;
+            }
+            if name.contains("leagueclient") || name.contains("league of legends") {
+                league_running = true;
+            }
+            if discord_running && league_running {
+                break;
+            }
         }
     }
 
@@ -699,6 +772,8 @@ fn get_telemetry(state: tauri::State<'_, Arc<AppState>>) -> TelemetryDto {
     let rec_stat = state.rec_status.lock().map(|g| g.clone()).unwrap_or_else(|_| ("IDLE".to_string(), "".to_string()));
     let rep_stat = state.rep_status.lock().map(|g| g.clone()).unwrap_or_else(|_| ("IDLE".to_string(), "".to_string()));
     let clk = state.match_time.lock().map(|g| g.clone()).unwrap_or(None);
+    let base_time_val = state.base_game_time.lock().map(|g| g.clone()).unwrap_or(None).unwrap_or_else(|| "00:00".to_string());
+    let patch_val = state.active_game_patch.lock().map(|g| g.clone()).unwrap_or(None).unwrap_or_else(|| "—".to_string());
 
     // 1. Record Section (Match & Recorder parameters)
     let (match_state, game_time, base_time, audio_offset, game_id, game_patch) = if rec_active {
@@ -713,30 +788,35 @@ fn get_telemetry(state: tauri::State<'_, Arc<AppState>>) -> TelemetryDto {
                 (
                     "RECORDING 🔴".to_string(),
                     format!("Live ({})", time_display),
-                    "API Connected (:2999)".to_string(),
-                    "0.000s".to_string(),
+                    base_time_val,
+                    "—".to_string(),
                     gid,
-                    "In Progress".to_string(),
+                    if patch_val != "—" { patch_val } else { "Detecting...".to_string() },
                 )
             }
             "PAUSED" => {
                 let time_display = clk.clone().unwrap_or_else(|| "00:00".to_string());
+                let gid = if !rec_stat.1.is_empty() && rec_stat.1.contains('#') {
+                    rec_stat.1.split('#').nth(1).and_then(|s| s.split(' ').next()).unwrap_or("Detecting...").to_string()
+                } else {
+                    "Detecting...".to_string()
+                };
                 (
                     "PAUSED ⏸".to_string(),
                     format!("Paused ({})", time_display),
-                    "API Paused".to_string(),
-                    "0.000s".to_string(),
-                    "Detecting...".to_string(),
-                    "In Progress".to_string(),
+                    base_time_val,
+                    "—".to_string(),
+                    gid,
+                    if patch_val != "—" { patch_val } else { "Detecting...".to_string() },
                 )
             }
             _ => (
                 "LISTENING ⏳".to_string(),
                 "Waiting for match...".to_string(),
-                "Waiting for Live API (:2999)...".to_string(),
-                "0.000s".to_string(),
                 "—".to_string(),
                 "—".to_string(),
+                "—".to_string(),
+                if patch_val != "—" { patch_val } else { "—".to_string() },
             )
         }
     } else {
@@ -746,7 +826,7 @@ fn get_telemetry(state: tauri::State<'_, Arc<AppState>>) -> TelemetryDto {
             "—".to_string(),
             "—".to_string(),
             "—".to_string(),
-            "—".to_string(),
+            if patch_val != "—" { patch_val } else { "—".to_string() },
         )
     };
 
@@ -805,13 +885,14 @@ fn get_telemetry(state: tauri::State<'_, Arc<AppState>>) -> TelemetryDto {
     if let Ok(pid) = sysinfo::get_current_pid() {
         if let Ok(mut lk) = SYSTEM_MONITOR.lock() {
             if lk.is_none() {
-                let mut sys = sysinfo::System::new();
-                sys.refresh_processes_specifics(
-                    sysinfo::ProcessesToUpdate::Some(&[pid]),
-                    true,
-                    sysinfo::ProcessRefreshKind::nothing().with_memory().with_cpu(),
-                );
-                *lk = Some((sys, std::time::Instant::now()));
+                if let Ok(mut sys) = sysinfo::System::new() {
+                    sys.refresh_processes_specifics(
+                        sysinfo::ProcessesToUpdate::Some(&[pid]),
+                        true,
+                        sysinfo::ProcessRefreshKind::nothing().with_memory().with_cpu(),
+                    );
+                    *lk = Some((sys, std::time::Instant::now()));
+                }
             } else if let Some((ref mut sys, ref mut last_time)) = *lk {
                 if last_time.elapsed() >= std::time::Duration::from_millis(250) {
                     sys.refresh_processes_specifics(
@@ -911,13 +992,92 @@ fn is_league_foreground() -> bool {
 }
 
 #[cfg(windows)]
+#[repr(C)]
+struct RECT {
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+}
+
+#[cfg(windows)]
 unsafe extern "system" {
     fn GetWindowLongPtrW(hWnd: isize, nIndex: i32) -> isize;
     fn SetWindowLongPtrW(hWnd: isize, nIndex: i32, dwNewLong: isize) -> isize;
+    fn CallWindowProcW(
+        lpPrevWndFunc: isize,
+        hWnd: isize,
+        Msg: u32,
+        wParam: usize,
+        lParam: isize,
+    ) -> isize;
+    fn GetWindowRect(hWnd: isize, lpRect: *mut RECT) -> i32;
     fn mouse_event(dwFlags: u32, dx: u32, dy: u32, dwData: u32, dwExtraInfo: usize);
     fn MessageBeep(uType: u32) -> i32;
     fn ShowWindow(hWnd: isize, nCmdShow: i32) -> i32;
     fn SetForegroundWindow(hWnd: isize) -> i32;
+}
+
+#[cfg(windows)]
+static PREV_MAIN_WND_PROC: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+#[cfg(windows)]
+static MAIN_APP_HANDLE: std::sync::Mutex<Option<tauri::AppHandle>> = std::sync::Mutex::new(None);
+#[cfg(windows)]
+static TITLE_MINIMIZE_CLICKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(windows)]
+unsafe extern "system" fn main_window_subclass_proc(
+    hwnd: isize,
+    msg: u32,
+    wparam: usize,
+    lparam: isize,
+) -> isize {
+    const WM_NCLBUTTONDOWN: u32 = 0x00A1;
+    const WM_NCLBUTTONUP: u32 = 0x00A2;
+    const WM_SYSCOMMAND: u32 = 0x0112;
+    const HTMINBUTTON: usize = 8;
+    const SC_MINIMIZE: usize = 0xF020;
+
+    if msg == WM_NCLBUTTONDOWN || msg == WM_NCLBUTTONUP {
+        if wparam == HTMINBUTTON {
+            TITLE_MINIMIZE_CLICKED.store(true, Ordering::SeqCst);
+        }
+    } else if msg == WM_SYSCOMMAND {
+        if (wparam & 0xFFF0) == SC_MINIMIZE {
+            let was_button_clicked = TITLE_MINIMIZE_CLICKED.swap(false, Ordering::SeqCst);
+            let is_from_min_button = was_button_clicked || {
+                if lparam != 0 {
+                    let x = (lparam & 0xFFFF) as i16 as i32;
+                    let y = ((lparam >> 16) & 0xFFFF) as i16 as i32;
+                    let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                    unsafe { GetWindowRect(hwnd, &mut rect) };
+                    x >= rect.left && x <= rect.right && y >= rect.top && y <= (rect.top + 60)
+                } else {
+                    false
+                }
+            };
+
+            if is_from_min_button {
+                let cfg = AppConfig::load().unwrap_or_default();
+                if cfg.minimize_to_tray {
+                    unsafe { ShowWindow(hwnd, 0) }; // SW_HIDE
+                    if let Ok(guard) = MAIN_APP_HANDLE.lock() {
+                        if let Some(ref handle) = *guard {
+                            show_toast_announcement(handle);
+                        }
+                    }
+                    return 0; // Handled: avoid standard minimize animation to taskbar
+                }
+            }
+        }
+    }
+
+    let prev = PREV_MAIN_WND_PROC.load(Ordering::SeqCst);
+    if prev != 0 {
+        unsafe { CallWindowProcW(prev, hwnd, msg, wparam, lparam) }
+    } else {
+        0
+    }
 }
 
 #[cfg(windows)]
@@ -1217,10 +1377,14 @@ fn overlay_set_locked(app: tauri::AppHandle, state: tauri::State<'_, Arc<AppStat
 }
 
 #[tauri::command]
-fn overlay_set_opacity(opacity: f32) -> Result<(), String> {
+fn overlay_set_opacity(opacity: f32, app: tauri::AppHandle) -> Result<(), String> {
     if let Ok(mut cfg) = AppConfig::load() {
         cfg.hud_opacity = opacity;
         let _ = cfg.save();
+    }
+    use tauri::Manager;
+    if let Some(win) = app.get_webview_window("overlay") {
+        let _ = win.eval(&format!("if (window.setCardOpacity) window.setCardOpacity({});", opacity));
     }
     Ok(())
 }
@@ -1390,39 +1554,30 @@ fn get_translations(lang: String) -> Result<serde_json::Value, String> {
     Ok(league_voice_recorder::i18n::get_translations_for(&lang))
 }
 
-fn cleanup_legacy_python_files() {
-    if let Ok(exe_path) = std::env::current_exe() {
-        if let Some(dir) = exe_path.parent() {
-            let legacy_dirs = ["tcl", "tk", "app", "_internal", "lib"];
-            for d in legacy_dirs {
-                let p = dir.join(d);
-                if p.is_dir() {
-                    let _ = std::fs::remove_dir_all(&p);
-                }
-            }
-            if let Ok(entries) = std::fs::read_dir(dir) {
-                for entry in entries.flatten() {
-                    let p = entry.path();
-                    if let Some(ext) = p.extension().and_then(|s| s.to_str()) {
-                        if ext.eq_ignore_ascii_case("pyd") || ext.eq_ignore_ascii_case("pyc") || ext.eq_ignore_ascii_case("whl") {
-                            let _ = std::fs::remove_file(&p);
-                        }
-                    }
-                    if let Some(name) = p.file_name().and_then(|s| s.to_str()) {
-                        let lower = name.to_lowercase();
-                        if (lower.starts_with("python") || lower.starts_with("vcruntime") || lower.starts_with("msvcp")) && lower.ends_with(".dll") {
-                            let _ = std::fs::remove_file(&p);
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    cleanup_legacy_python_files();
+    #[cfg(windows)]
+    {
+        // Optimize Microsoft Edge WebView2 runtime:
+        // Consolidate renderer processes, disable background telemetry/network,
+        // disable SmartScreen and media router checks, and minimize memory footprint.
+        unsafe {
+            std::env::set_var(
+                "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+                "--disable-features=RendererCodeIntegrity,EdgeSmartScreen,TranslateUI,OptimizationHints,MediaRouter \
+                 --disable-background-networking \
+                 --disable-component-update \
+                 --renderer-process-limit=1 \
+                 --disable-gpu-shader-disk-cache \
+                 --disable-extensions \
+                 --disable-default-apps \
+                 --disable-sync \
+                 --no-default-browser-check \
+                 --disable-breakpad",
+            );
+        }
+    }
+
     let state = Arc::new(AppState::default());
 
     // Register custom AppLogLayer so application info!, warn!, and error! events
@@ -1467,7 +1622,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let rep_stop = stop_signal.clone();
 
         let rec_handle = tokio::spawn(async move {
-            recorder.run_watcher_loop(rec_stop, None, None, None, None).await;
+            recorder.run_watcher_loop(rec_stop, None, None, None, None, None, None).await;
         });
 
         let rep_handle = tokio::spawn(async move {
@@ -1557,6 +1712,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let mut lcu_phase = String::new();
             if client_running {
+                if auto_state.active_game_patch.lock().map(|p| p.is_none()).unwrap_or(false) {
+                    let patch = LcuCredentials::fetch_current_patch().await;
+                    if !patch.is_empty() {
+                        if let Ok(mut lk) = auto_state.active_game_patch.lock() {
+                            *lk = Some(patch);
+                        }
+                    }
+                }
                 if let Some(creds) = LcuCredentials::find_active() {
                     if let Ok(p) = creds.get_gameflow_phase().await {
                         lcu_phase = p;
@@ -1649,24 +1812,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let _ = window.center();
                 }
 
-                // Handle CloseRequested (exit app) & Minimize to tray (only on '_' minimize button)
-                let win_clone = window.clone();
+                #[cfg(windows)]
+                if let Ok(hwnd) = window.hwnd() {
+                    let hwnd_val = hwnd.0 as isize;
+                    if let Ok(mut guard) = MAIN_APP_HANDLE.lock() {
+                        *guard = Some(app.handle().clone());
+                    }
+                    unsafe {
+                        let prev = SetWindowLongPtrW(hwnd_val, -4, main_window_subclass_proc as *const () as isize);
+                        PREV_MAIN_WND_PROC.store(prev, Ordering::SeqCst);
+                    }
+                }
+
+                // Handle CloseRequested (exit app)
                 let app_handle_clone = app.handle().clone();
                 window.on_window_event(move |event| {
                     match event {
                         tauri::WindowEvent::CloseRequested { .. } => {
                             // User clicked 'X': completely terminate and exit the application
                             app_handle_clone.exit(0);
-                        }
-                        tauri::WindowEvent::Resized(_) => {
-                            // User clicked '_' (minimize button): dock to tray if enabled
-                            if let Ok(true) = win_clone.is_minimized() {
-                                let cfg = AppConfig::load().unwrap_or_default();
-                                if cfg.minimize_to_tray {
-                                    let _ = win_clone.hide();
-                                    show_toast_announcement(&app_handle_clone);
-                                }
-                            }
                         }
                         _ => {}
                     }
@@ -1780,6 +1944,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             get_config,
             save_config,
             set_replay_volume,
+            set_replay_offset,
             enable_replay_api,
             check_replay_api_status,
             get_audio_levels,

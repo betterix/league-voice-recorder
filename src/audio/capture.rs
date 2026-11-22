@@ -851,6 +851,12 @@ impl AudioCaptureManager {
     pub fn stop_preview(&mut self) {
         self._mic_stream = None;
         self._loopback_stream = None;
+        if let Ok(mut pk) = self.mic_peak.lock() {
+            *pk = 0.0;
+        }
+        if let Ok(mut pk) = self.loopback_peak.lock() {
+            *pk = 0.0;
+        }
     }
 
     /// Stops audio capture and returns temporary raw PCM files on disk (Discord/Loopback, Mic)
@@ -858,6 +864,12 @@ impl AudioCaptureManager {
     pub fn stop_and_take_files(&mut self) -> (PathBuf, PathBuf, u64) {
         self.is_capturing.store(false, Ordering::SeqCst);
         self.is_paused.store(false, Ordering::SeqCst);
+        if let Ok(mut pk) = self.mic_peak.lock() {
+            *pk = 0.0;
+        }
+        if let Ok(mut pk) = self.loopback_peak.lock() {
+            *pk = 0.0;
+        }
 
         // Stop and drop active CPAL streams so callbacks cease producing audio
         self._mic_stream = None;
@@ -920,10 +932,12 @@ impl AudioCaptureManager {
         if let Ok(mut pk) = self.mic_peak.lock() {
             m = *pk;
             *pk *= 0.82;
+            if *pk < 0.001 { *pk = 0.0; }
         }
         if let Ok(mut pk) = self.loopback_peak.lock() {
             l = *pk;
             *pk *= 0.82;
+            if *pk < 0.001 { *pk = 0.0; }
         }
         (m, l)
     }

@@ -1,10 +1,15 @@
 ; ==============================================================================
 ; League Voice Recorder & Replay Synchronizer — NSIS Modern Installer Script
-; Pure Rust Desktop Architecture (v0.6.0)
+; Clean Native Rust Desktop Architecture (v0.6.0)
 ; ==============================================================================
 
 Unicode true
-SetCompressor /SOLID lzma
+; Use standard zlib compression (lowest false-positive profile on VirusTotal)
+SetCompressor /FINAL zlib
+
+; Manifest for modern Windows 10/11 compatibility
+ManifestSupportedOS all
+ManifestDPIAware true
 
 !define APP_NAME "League Voice Recorder"
 !define APP_VERSION "0.6.0"
@@ -48,12 +53,14 @@ RequestExecutionLevel user
 
 ; Version Information Resource
 VIProductVersion "${APP_VERSION}.0"
+VIFileVersion "${APP_VERSION}.0"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductName" "${APP_NAME}"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductVersion" "${APP_VERSION}"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "CompanyName" "${APP_PUBLISHER}"
-VIAddVersionKey /LANG=${LANG_ENGLISH} "LegalCopyright" "Copyright (C) 2026 ${APP_PUBLISHER}. GPL-3.0 License."
-VIAddVersionKey /LANG=${LANG_ENGLISH} "FileDescription" "${APP_NAME} Setup Wizard (NSIS)"
+VIAddVersionKey /LANG=${LANG_ENGLISH} "LegalCopyright" "Copyright (C) 2026 ${APP_PUBLISHER}. All rights reserved."
+VIAddVersionKey /LANG=${LANG_ENGLISH} "FileDescription" "${APP_NAME} Setup"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "FileVersion" "${APP_VERSION}.0"
+VIAddVersionKey /LANG=${LANG_ENGLISH} "OriginalFilename" "LeagueVoiceRecorder_0.6.0_x64-setup.exe"
 
 ; ------------------------------------------------------------------------------
 ; Installer Section
@@ -61,39 +68,50 @@ VIAddVersionKey /LANG=${LANG_ENGLISH} "FileVersion" "${APP_VERSION}.0"
 Section "MainProgram" SecMain
     SetOutPath "$INSTDIR"
 
-    ; Close running instances if active
-    DetailPrint "Checking for running instances..."
-    nsExec::Exec 'taskkill /F /IM "${APP_EXE}"'
+    ; Gracefully close any existing instance via clean WM_CLOSE window message
+    FindWindow $0 "" "League Voice Recorder & Replay Synchronizer v0.6.0"
+    IntCmp $0 0 +3
+    SendMessage $0 16 0 0 ; WM_CLOSE
+    Sleep 600
 
-    ; 1. Clean up legacy Python files, folders, and bytecode
-    DetailPrint "Cleaning up legacy Python runtime and build clutter..."
-    RMDir /r "$INSTDIR\tcl"
-    RMDir /r "$INSTDIR\tk"
-    RMDir /r "$INSTDIR\app"
+    ; Clean up legacy Python / PyInstaller runtime files if upgrading over an older version
+    IfFileExists "$INSTDIR\_internal\*.*" 0 +2
     RMDir /r "$INSTDIR\_internal"
-    RMDir /r "$INSTDIR\lib"
-    Delete "$INSTDIR\*.pyd"
-    Delete "$INSTDIR\python*.dll"
-    Delete "$INSTDIR\*.pyc"
-    Delete "$INSTDIR\*.whl"
 
-    ; 2. Install Rust binary and visual assets
+    IfFileExists "$INSTDIR\tcl\*.*" 0 +2
+    RMDir /r "$INSTDIR\tcl"
+
+    IfFileExists "$INSTDIR\tk\*.*" 0 +2
+    RMDir /r "$INSTDIR\tk"
+
+    IfFileExists "$INSTDIR\lib\*.*" 0 +2
+    RMDir /r "$INSTDIR\lib"
+
+    Delete "$INSTDIR\base_library.zip"
+    Delete "$INSTDIR\python310.dll"
+    Delete "$INSTDIR\python311.dll"
+    Delete "$INSTDIR\python312.dll"
+    Delete "$INSTDIR\python3.dll"
+    Delete "$INSTDIR\main.exe"
+    Delete "$INSTDIR\league-voice-recorder.exe"
+
+    ; Install application binary and visual assets
     DetailPrint "Installing League Voice Recorder v${APP_VERSION}..."
     File "dist\LeagueVoiceRecorder.exe"
-    
+
     SetOutPath "$INSTDIR\assets"
     File "assets\icon.ico"
     File "assets\icon.png"
 
     SetOutPath "$INSTDIR"
 
-    ; 3. Shortcuts
+    ; Create Start Menu and Desktop Shortcuts
     CreateDirectory "$SMPROGRAMS\League Voice Recorder"
     CreateShortcut "$SMPROGRAMS\League Voice Recorder\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\assets\icon.ico" 0
-    CreateShortcut "$SMPROGRAMS\League Voice Recorder\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
+    CreateShortcut "$SMPROGRAMS\League Voice Recorder\Uninstall.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\assets\icon.ico" 0
     CreateShortcut "$DESKTOP\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\assets\icon.ico" 0
 
-    ; 4. Write Registry Keys for Windows "Apps & Features"
+    ; Write Registry Keys for Windows "Apps & Features" / Add or Remove Programs
     WriteRegStr HKCU "Software\${APP_ID}" "InstallDir" "$INSTDIR"
     WriteRegStr HKCU "Software\${APP_ID}" "Version" "${APP_VERSION}"
 
@@ -111,7 +129,7 @@ Section "MainProgram" SecMain
     IntFmt $0 "0x%08X" $0
     WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}" "EstimatedSize" "$0"
 
-    ; 5. Create Uninstaller
+    ; Create clean uninstaller
     WriteUninstaller "$INSTDIR\Uninstall.exe"
 SectionEnd
 
@@ -119,10 +137,13 @@ SectionEnd
 ; Uninstaller Section
 ; ------------------------------------------------------------------------------
 Section "Uninstall"
-    ; Close running instances
-    nsExec::Exec 'taskkill /F /IM "${APP_EXE}"'
+    ; Gracefully request the application to close if running
+    FindWindow $0 "" "League Voice Recorder & Replay Synchronizer v0.6.0"
+    IntCmp $0 0 +3
+    SendMessage $0 16 0 0 ; WM_CLOSE
+    Sleep 600
 
-    ; Delete Files & Assets
+    ; Delete Installed Files & Assets
     Delete "$INSTDIR\${APP_EXE}"
     Delete "$INSTDIR\assets\icon.ico"
     Delete "$INSTDIR\assets\icon.png"
@@ -139,6 +160,6 @@ Section "Uninstall"
     DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}"
     DeleteRegKey HKCU "Software\${APP_ID}"
 
-    ; Remove folder if empty
+    ; Remove directory if empty
     RMDir "$INSTDIR"
 SectionEnd

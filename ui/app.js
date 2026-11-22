@@ -10,6 +10,42 @@ let smoothMic = 0.0;
 let autoscroll = true;
 let saveDebounceTimer = null;
 
+// Global bridge functions callable via win.eval from Rust
+window.onVolumeChanged = function(vol) {
+  const v = typeof vol === "number" ? vol : parseInt(vol, 10);
+  const qVol = document.getElementById("quick-vol");
+  const qDisp = document.getElementById("quick-vol-display");
+  const cfgVol = document.getElementById("cfg-volume");
+  const muteBtn = document.getElementById("btn-quick-mute");
+
+  if (qVol && document.activeElement !== qVol) qVol.value = v;
+  if (cfgVol && document.activeElement !== cfgVol) cfgVol.value = v;
+  if (qDisp) qDisp.innerText = `${v}%`;
+  if (muteBtn) muteBtn.innerText = v === 0 ? "🔇" : "🔊";
+  isMuted = (v === 0);
+};
+
+window.onOffsetChanged = function(offset) {
+  updateReplayOffsetDisplay(offset);
+};
+
+window.onReplayStopped = function() {
+  isReplaySync = false;
+  const repBtn = document.getElementById("btn-rep");
+  const repBtnText = document.getElementById("btn-rep-text");
+  const repPill = document.getElementById("rep-status-pill");
+  if (repBtn) repBtn.classList.remove("active");
+  if (repBtnText) repBtnText.innerText = (typeof t === "function") ? t("btn_start_rep") : "▶ Start Replay Auto-Sync";
+  if (repPill) {
+    repPill.className = "action-card-status";
+    repPill.innerText = "● IDLE (Click Start to detect .rofl)";
+  }
+  const clockEl = document.getElementById("match-clock");
+  if (clockEl) clockEl.innerText = "Match Time: --:--";
+  if (typeof setStatusPollingRate === "function") setStatusPollingRate(10000);
+  if (typeof updateAudioPolling === "function") updateAudioPolling();
+};
+
 // Multi-lingual translation dictionaries & state
 let currentTranslations = {};
 let fallbackTranslations = {
@@ -166,14 +202,12 @@ async function updateTelemetryPanel() {
     const dbgMatchState = document.getElementById("dbg-match-state");
     const dbgGameTime = document.getElementById("dbg-game-time");
     const dbgBaseTime = document.getElementById("dbg-base-time");
-    const dbgAudioOffset = document.getElementById("dbg-audio-offset");
     const dbgGameId = document.getElementById("dbg-game-id");
     const dbgGamePatch = document.getElementById("dbg-game-patch");
 
     if (dbgMatchState) dbgMatchState.innerText = telem.match_state;
     if (dbgGameTime) dbgGameTime.innerText = telem.game_time;
     if (dbgBaseTime) dbgBaseTime.innerText = telem.base_time;
-    if (dbgAudioOffset) dbgAudioOffset.innerText = telem.audio_offset;
     if (dbgGameId) dbgGameId.innerText = telem.game_id;
     if (dbgGamePatch) dbgGamePatch.innerText = telem.game_patch;
 
@@ -238,9 +272,10 @@ async function toggleRecordingWatcher() {
       pill.innerText = "● LISTENING: Waiting for match...";
       pill.className = "action-card-status watching";
     }
-    setStatusPollingRate(250);
+    setStatusPollingRate(10000);
     updateAudioPolling();
     await invokeTauri("start_recording_watcher");
+    pollStatus();
   } else {
     isRecording = false;
     if (btn) btn.classList.remove("active");
@@ -249,9 +284,10 @@ async function toggleRecordingWatcher() {
       pill.innerText = "● IDLE (Click Start to monitor)";
       pill.className = "action-card-status";
     }
-    if (!isReplaySync) setStatusPollingRate(800);
+    if (!isReplaySync) setStatusPollingRate(10000);
     updateAudioPolling();
     await invokeTauri("stop_recording_watcher");
+    pollStatus();
     setTimeout(loadRecordings, 800);
   }
 }
@@ -272,9 +308,10 @@ async function toggleReplayWatcher() {
       pill.innerText = "● LISTENING: Waiting for replay...";
       pill.className = "action-card-status watching";
     }
-    setStatusPollingRate(250);
+    setStatusPollingRate(10000);
     updateAudioPolling();
     await invokeTauri("start_replay_watcher");
+    pollStatus();
   } else {
     isReplaySync = false;
     if (btn) btn.classList.remove("active");
@@ -283,9 +320,10 @@ async function toggleReplayWatcher() {
       pill.innerText = "● IDLE (Click Start to detect .rofl)";
       pill.className = "action-card-status";
     }
-    if (!isRecording) setStatusPollingRate(800);
+    if (!isRecording) setStatusPollingRate(10000);
     updateAudioPolling();
     await invokeTauri("stop_replay_watcher");
+    pollStatus();
   }
 }
 
@@ -340,13 +378,11 @@ async function pollStatus() {
       }
     }
 
-    // Adapt polling rate based on live activity
-    const isAnyActive = st.is_recording_watcher || st.is_replay_watcher;
-    if (isAnyActive && currentPollInterval !== 250) {
-      setStatusPollingRate(250);
-      updateAudioPolling();
-    } else if (!isAnyActive && currentPollInterval !== 800) {
-      setStatusPollingRate(800);
+    // Adaptive polling rate: 500ms when actively recording or syncing replay, 10s when idle
+    const isLive = isRecording || isReplaySync || (st.is_recording_watcher && st.rec_status === "RECORDING") || (st.is_replay_watcher && st.rep_status === "SYNCING");
+    const targetInterval = isLive ? 500 : 10000;
+    if (currentPollInterval !== targetInterval) {
+      setStatusPollingRate(targetInterval);
       updateAudioPolling();
     }
 
@@ -385,7 +421,35 @@ async function pollStatus() {
       }
     }
 
-    // 3. Match Clock
+    // 3. Replay Volume & Offset sync from backend
+    if (typeof st.replay_volume === "number") {
+      const qVol = document.getElementById("quick-vol");
+      const qDisp = document.getElementById("quick-vol-display");
+      const cfgVol = document.getElementById("cfg-volume");
+      const muteBtn = document.getElementById("btn-quick-mute");
+
+      if (document.activeElement !== qVol && document.activeElement !== cfgVol) {
+        if (qVol && parseInt(qVol.value, 10) !== st.replay_volume) {
+          qVol.value = st.replay_volume;
+        }
+        if (cfgVol && parseInt(cfgVol.value, 10) !== st.replay_volume) {
+          cfgVol.value = st.replay_volume;
+        }
+        if (qDisp) {
+          qDisp.innerText = `${st.replay_volume}%`;
+        }
+        if (muteBtn) {
+          muteBtn.innerText = st.replay_volume === 0 ? "🔇" : "🔊";
+        }
+        isMuted = (st.replay_volume === 0);
+      }
+    }
+
+    if (typeof st.replay_sync_offset === "number") {
+      updateReplayOffsetDisplay(st.replay_sync_offset);
+    }
+
+    // 4. Match Clock
     const clockEl = document.getElementById("match-clock");
     if (st.match_clock) {
       if (clockEl) clockEl.innerText = `Match Time: ${st.match_clock}`;
@@ -393,7 +457,7 @@ async function pollStatus() {
       if (clockEl) clockEl.innerText = "Match Time: --:--";
     }
 
-    // 4. Update Telemetry & Debug Panel if visible
+    // 5. Update Telemetry & Debug Panel if visible
     const debugPanel = document.getElementById("debug-panel");
     if (debugPanel && debugPanel.style.display !== "none") {
       updateTelemetryPanel();
@@ -446,6 +510,38 @@ window.addEventListener("keydown", (e) => {
 });
 
 // -------------------------------------------------------------
+// REPLAY SYNC OFFSET MANAGEMENT
+// -------------------------------------------------------------
+let currentReplayOffset = 0.0;
+
+function updateReplayOffsetDisplay(offset) {
+  currentReplayOffset = typeof offset === "number" ? offset : 0.0;
+  const disp = document.getElementById("replay-offset-val");
+  if (disp) {
+    const sign = currentReplayOffset > 0 ? "+" : "";
+    disp.innerText = `${sign}${currentReplayOffset.toFixed(1)}s`;
+    disp.className = currentReplayOffset !== 0 ? "offset-display active" : "offset-display";
+  }
+  const cfgInput = document.getElementById("cfg-replay-offset");
+  if (cfgInput && document.activeElement !== cfgInput) {
+    cfgInput.value = currentReplayOffset;
+  }
+}
+
+async function adjustReplayOffset(delta, reset = false) {
+  let target = reset ? 0.0 : (currentReplayOffset + delta);
+  target = Math.round(target * 10) / 10;
+  target = Math.max(-30.0, Math.min(30.0, target));
+  updateReplayOffsetDisplay(target);
+  await invokeTauri("set_replay_offset", { offset: target });
+}
+
+function onConfigOffsetChange(val) {
+  const target = parseFloat(val) || 0.0;
+  adjustReplayOffset(target - currentReplayOffset);
+}
+
+// -------------------------------------------------------------
 // SETTINGS AUTO-SAVE (Matching Python _on_settings_entry_debounced)
 // -------------------------------------------------------------
 function autoSaveSettings() {
@@ -465,6 +561,7 @@ async function performSaveSettings() {
   const hudEnabled = document.getElementById("cfg-hud-enabled");
   const hudLocked = document.getElementById("cfg-hud-locked");
   const hudOpacity = document.getElementById("cfg-hud-opacity");
+  const offsetInput = document.getElementById("cfg-replay-offset");
   const cloudUrl = document.getElementById("cfg-cloud-url");
   const cloudKey = document.getElementById("cfg-cloud-key");
 
@@ -476,6 +573,7 @@ async function performSaveSettings() {
     record_folder: folderInput ? folderInput.value.trim() : (currentConfig ? currentConfig.record_folder : ""),
     vlc_dir: "",
     replay_volume: volInput ? parseInt(volInput.value, 10) || 80 : (currentConfig ? currentConfig.replay_volume : 80),
+    replay_sync_offset: offsetInput ? parseFloat(offsetInput.value) || 0.0 : (currentConfig ? currentConfig.replay_sync_offset : 0.0),
     language: langSelect ? langSelect.value : (currentConfig ? currentConfig.language : "en"),
     theme: themeSelect ? themeSelect.value : (currentConfig ? currentConfig.theme : "dark"),
     mic_device_name: micSelect ? micSelect.value : (currentConfig ? currentConfig.mic_device_name : "default"),
@@ -485,7 +583,7 @@ async function performSaveSettings() {
     hud_overlay_enabled: hudEnabled ? hudEnabled.checked : true,
     hud_locked: hudLocked ? hudLocked.checked : false,
     hud_click_through: hudLocked ? hudLocked.checked : false,
-    hud_opacity: hudOpacity ? parseInt(hudOpacity.value, 10) / 100.0 : (currentConfig ? currentConfig.hud_opacity : 0.85),
+    hud_opacity: hudOpacity ? parseInt(hudOpacity.value, 10) / 100.0 : (currentConfig && typeof currentConfig.hud_opacity === "number" ? currentConfig.hud_opacity : 0.85),
     hud_x: currentConfig ? currentConfig.hud_x : -1,
     hud_y: currentConfig ? currentConfig.hud_y : -1,
     audio_format: "mp3",
@@ -508,9 +606,11 @@ async function performSaveSettings() {
 function onOpacityInput(val) {
   const disp = document.getElementById("hud-opacity-display");
   const lbl = document.getElementById("lbl-hud-opacity");
+  const num = parseFloat(val) / 100.0;
   if (disp) disp.innerText = `${val}%`;
   if (lbl) lbl.innerText = `HUD Opacity (${val}%):`;
-  invokeTauri("overlay_set_opacity", { opacity: parseFloat(val) / 100.0 });
+  if (currentConfig) currentConfig.hud_opacity = num;
+  invokeTauri("overlay_set_opacity", { opacity: num });
 }
 
 // -------------------------------------------------------------
@@ -1226,11 +1326,11 @@ async function checkForUpdates() {
 // -------------------------------------------------------------
 let audioPollTimer = null;
 let statusPollTimer = null;
-let currentPollInterval = 800;
+let currentPollInterval = 10000;
 
 function updateAudioPolling() {
-  // If window is minimized / hidden to tray, or user is not on the dashboard tab, pause VU meter polling completely!
-  if (document.hidden || (currentActiveTab !== "log" && currentActiveTab !== "main")) {
+  // If window is minimized / hidden to tray, pause VU meter polling
+  if (document.hidden) {
     if (audioPollTimer) {
       clearInterval(audioPollTimer);
       audioPollTimer = null;
@@ -1251,11 +1351,11 @@ document.addEventListener("visibilitychange", () => {
     }
     if (statusPollTimer) {
       clearInterval(statusPollTimer);
-      statusPollTimer = setInterval(pollStatus, 2000);
+      statusPollTimer = setInterval(pollStatus, 10000);
     }
   } else {
     updateAudioPolling();
-    setStatusPollingRate((isRecording || isReplaySync) ? 250 : 800);
+    setStatusPollingRate(10000);
   }
 });
 
@@ -1460,14 +1560,65 @@ window.addEventListener("DOMContentLoaded", async () => {
       if (document.getElementById("cfg-minimize-tray")) document.getElementById("cfg-minimize-tray").checked = currentConfig.minimize_to_tray;
       if (document.getElementById("cfg-hud-enabled")) document.getElementById("cfg-hud-enabled").checked = currentConfig.hud_overlay_enabled;
       if (document.getElementById("cfg-hud-locked")) document.getElementById("cfg-hud-locked").checked = currentConfig.hud_locked;
+
+      const savedOpacity = typeof currentConfig.hud_opacity === "number" ? currentConfig.hud_opacity : 0.85;
+      const opacityPct = Math.round(savedOpacity * 100);
+      const opacitySlider = document.getElementById("cfg-hud-opacity");
+      const opacityDisp = document.getElementById("hud-opacity-display");
+      const opacityLbl = document.getElementById("lbl-hud-opacity");
+      if (opacitySlider) opacitySlider.value = opacityPct;
+      if (opacityDisp) opacityDisp.innerText = `${opacityPct}%`;
+      if (opacityLbl) opacityLbl.innerText = `HUD Opacity (${opacityPct}%):`;
+
       if (document.getElementById("cfg-cloud-url")) document.getElementById("cfg-cloud-url").value = currentConfig.remote_server_url || "";
       if (document.getElementById("cfg-cloud-key")) document.getElementById("cfg-cloud-key").value = currentConfig.remote_api_key || "";
+      if (document.getElementById("cfg-replay-offset")) document.getElementById("cfg-replay-offset").value = currentConfig.replay_sync_offset || 0.0;
+      updateReplayOffsetDisplay(currentConfig.replay_sync_offset || 0.0);
     }
 
     // Await translations load BEFORE anything renders text to prevent any code names!
     await loadTranslations(currentLanguage);
     applyTranslations();
   } catch (e) {}
+
+  // 2b. Listen for reactive events from Tauri backend (overlay volume changes, hotkeys)
+  if (window.__TAURI__ && window.__TAURI__.event) {
+    window.__TAURI__.event.listen("volume-updated", (event) => {
+      const vol = event.payload;
+      const qVol = document.getElementById("quick-vol");
+      const qDisp = document.getElementById("quick-vol-display");
+      const cfgVol = document.getElementById("cfg-volume");
+      const muteBtn = document.getElementById("btn-quick-mute");
+
+      if (document.activeElement !== qVol && qVol) qVol.value = vol;
+      if (document.activeElement !== cfgVol && cfgVol) cfgVol.value = vol;
+      if (qDisp) qDisp.innerText = `${vol}%`;
+      if (muteBtn) muteBtn.innerText = vol === 0 ? "🔇" : "🔊";
+      isMuted = (vol === 0);
+    });
+
+    window.__TAURI__.event.listen("offset-updated", (event) => {
+      const offset = event.payload;
+      updateReplayOffsetDisplay(offset);
+    });
+
+    window.__TAURI__.event.listen("replay-stopped", () => {
+      isReplaySync = false;
+      const repBtn = document.getElementById("btn-rep");
+      const repBtnText = document.getElementById("btn-rep-text");
+      const repPill = document.getElementById("rep-status-pill");
+      if (repBtn) repBtn.classList.remove("active");
+      if (repBtnText) repBtnText.innerText = t("btn_start_rep");
+      if (repPill) {
+        repPill.className = "action-card-status";
+        repPill.innerText = "● IDLE (Click Start to detect .rofl)";
+      }
+      const clockEl = document.getElementById("match-clock");
+      if (clockEl) clockEl.innerText = "Match Time: --:--";
+      setStatusPollingRate(10000);
+      updateAudioPolling();
+    });
+  }
 
   // Reveal main window once clean translated UI is ready
   requestAnimationFrame(() => {
@@ -1481,7 +1632,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     loadAudioDevices();
     loadRecordings();
     refreshHealth();
-    setStatusPollingRate(800);
+    setStatusPollingRate(10000);
   }, 350);
 
   // 4. Cloud role discovery (no auto remote sync - only syncs when user clicks the Sync button)

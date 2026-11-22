@@ -18,7 +18,7 @@ impl RoflProcessDetector {
                     return res.clone();
                 }
             }
-            let mut sys = System::new();
+            let Ok(mut sys) = System::new() else { return None; };
             sys.refresh_processes_specifics(
                 ProcessesToUpdate::All,
                 true,
@@ -121,7 +121,7 @@ mod tests {
     #[test]
     fn test_sysinfo_cmd_retrieval() {
         use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, UpdateKind};
-        let mut sys = System::new();
+        let Ok(mut sys) = System::new() else { return; };
         sys.refresh_processes_specifics(
             ProcessesToUpdate::All,
             true,

@@ -19,9 +19,7 @@
     <!-- Header Frame matching CustomTkinter header_frame -->
     <header class="app-header">
       <div class="brand">
-        <div class="logo-badge">
-          <img src="assets/icon.png" class="brand-logo-img" alt="League Voice Recorder">
-        </div>
+        <img src="assets/icon.png" class="brand-logo-img" alt="League Voice Recorder">
         <div>
           <div class="title-row">
             <h1 id="txt-app-title" data-i18n="app.title">LEAGUE VOICE RECORDER</h1>
@@ -37,10 +35,6 @@
         <div class="health-pill" id="pill-league">
           <span class="dot"></span>
           <span class="text" id="pill-league-text">League Client: ⚪ Checking...</span>
-        </div>
-        <div class="health-pill online" id="pill-engine">
-          <span class="dot"></span>
-          <span class="text" id="pill-engine-text" data-i18n="health.ready">Player: 🟢 Ready</span>
         </div>
         <button class="btn-theme" id="btn-theme-toggle" onclick="toggleTheme()" data-i18n-title="settings.theme" title="Toggle Theme">🌙</button>
         <button class="btn-refresh-health" onclick="refreshHealth()" data-i18n="health.refresh" title="Refresh System Health">🔄 Refresh</button>
@@ -102,9 +96,16 @@
           <div class="action-row">
             <div class="selector-box vol-box">
               <span class="selector-label" data-i18n="replay.volume">🔊 Volume:</span>
-              <input type="range" id="quick-vol" min="0" max="100" value="80" oninput="updateVolume(this.value)" class="vol-slider">
+              <input type="range" id="quick-vol" min="0" max="200" value="80" oninput="updateVolume(this.value)" class="vol-slider">
               <span id="quick-vol-display" class="vol-display">80%</span>
               <button class="btn-small" id="btn-quick-mute" onclick="toggleMute()" data-i18n-title="replay.hotkey_hint" title="Toggle Mute (Hotkey M)">🔊</button>
+            </div>
+            <div class="selector-box offset-box">
+              <span class="selector-label" title="Audio timing sync offset relative to replay clock">⏱ Sync Offset:</span>
+              <button class="btn-micro" onclick="adjustReplayOffset(-1.0)" title="Shift voice 1.0s earlier (-1s)">-1s</button>
+              <span id="replay-offset-val" class="offset-display">+0.0s</span>
+              <button class="btn-micro" onclick="adjustReplayOffset(1.0)" title="Shift voice 1.0s later (+1s)">+1s</button>
+              <button class="btn-micro btn-reset-offset" onclick="adjustReplayOffset(0.0, true)" title="Reset offset to 0.0s">Reset</button>
             </div>
           </div>
           <!-- 1-Click Replay API Auto-Configuration matching Python replay_api_row -->
@@ -157,10 +158,6 @@
               <div class="debug-row">
                 <span class="k">Base Time:</span>
                 <span class="v" id="dbg-base-time">—</span>
-              </div>
-              <div class="debug-row">
-                <span class="k">Audio Offset:</span>
-                <span class="v" id="dbg-audio-offset">—</span>
               </div>
               <div class="debug-row">
                 <span class="k">Match Game ID:</span>
@@ -271,7 +268,7 @@
 
           <div class="setting-grid-row">
             <span class="setting-lbl" data-i18n="settings.replay_volume">Replay Volume (%):</span>
-            <input type="number" id="cfg-volume" min="0" max="100" class="setting-input" style="width: 100px;" onchange="autoSaveSettings()">
+            <input type="number" id="cfg-volume" min="0" max="200" class="setting-input" style="width: 100px;" onchange="autoSaveSettings()">
             <span></span>
           </div>
         </div>
@@ -337,6 +334,15 @@
               <span class="switch-slider"></span>
               <span class="switch-desc" data-i18n="settings.minimize_to_tray_info">Keep running in background when minimized with titlebar button</span>
             </label>
+          </div>
+
+          <div class="setting-grid-row" style="margin-top: 6px;">
+            <span class="setting-lbl">⏱ Replay Voice Offset:</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="number" id="cfg-replay-offset" step="0.5" min="-30" max="30" value="0.0" class="setting-input" style="width: 80px;" onchange="onConfigOffsetChange(this.value)">
+              <span class="setting-unit" style="font-size: 11px; color: var(--text-muted);">seconds (shift audio e.g. +1.0s or -1.0s)</span>
+            </div>
+            <span></span>
           </div>
         </div>
 

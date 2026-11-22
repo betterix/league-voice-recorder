@@ -335,7 +335,13 @@ impl CloudSyncClient {
             }
             hasher.update(&buffer[..count]);
         }
-        Ok(format!("{:x}", hasher.finalize()))
+        let hash = hasher.finalize();
+        let mut hex = String::with_capacity(hash.len() * 2);
+        for b in hash {
+            use std::fmt::Write;
+            let _ = write!(hex, "{:02x}", b);
+        }
+        Ok(hex)
     }
 }
 

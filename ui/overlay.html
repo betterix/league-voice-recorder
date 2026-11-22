@@ -337,6 +337,13 @@
       }
     });
 
+    window.setCardOpacity = function(val) {
+      if (typeof val === "number" && !isNaN(val)) {
+        opacity = Math.max(0.2, Math.min(1.0, val));
+        if (card) card.style.opacity = opacity;
+      }
+    };
+
     // Replay Volume Slider events
     let isDraggingSlider = false;
 
@@ -344,7 +351,7 @@
       const rect = card.getBoundingClientRect();
       const canvasX = clientX - rect.left;
       const pct = Math.max(0, Math.min(1, (canvasX - SLIDER_X1) / SLIDER_WIDTH));
-      replayVolume = Math.round(pct * 100);
+      replayVolume = Math.round(pct * 200);
       invokeTauri("set_replay_volume", { volume: replayVolume });
     }
 
@@ -574,7 +581,7 @@
       ctx.stroke();
 
       // Active Track
-      const volFraction = Math.max(0, Math.min(1, replayVolume / 100));
+      const volFraction = Math.max(0, Math.min(1, replayVolume / 200));
       const knobX = SLIDER_X1 + volFraction * SLIDER_WIDTH;
       if (knobX > SLIDER_X1) {
         ctx.beginPath();

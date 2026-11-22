@@ -14,8 +14,9 @@ pub struct RodioPlayer {
 
 impl RodioPlayer {
     pub fn try_new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let sink_handle = DeviceSinkBuilder::open_default_sink()
+        let mut sink_handle = DeviceSinkBuilder::open_default_sink()
             .map_err(|e| format!("Failed to open default audio sink: {:?}", e))?;
+        sink_handle.log_on_drop(false);
         let player = Player::connect_new(&sink_handle.mixer());
         Ok(Self {
             sink_handle,
@@ -31,6 +32,7 @@ impl RodioPlayer {
         let reader = BufReader::new(file);
         let source = Decoder::new(reader)?;
 
+        self.player.stop();
         self.current_path = Some(path.to_path_buf());
         self.player = Player::connect_new(&self.sink_handle.mixer());
         self.player.set_volume(self.volume);
@@ -58,7 +60,7 @@ impl RodioPlayer {
     }
 
     pub fn set_volume(&mut self, volume: f32) {
-        self.volume = volume.clamp(0.0, 1.0);
+        self.volume = volume.clamp(0.0, 2.0);
         self.player.set_volume(self.volume);
     }
 
@@ -74,6 +76,7 @@ impl RodioPlayer {
                     let reader = BufReader::new(file);
                     if let Ok(source) = Decoder::new(reader) {
                         let was_paused = self.player.is_paused();
+                        self.player.stop();
                         self.player = Player::connect_new(&self.sink_handle.mixer());
                         self.player.set_volume(self.volume);
                         self.player.set_speed(self.speed);
@@ -118,6 +121,17 @@ mod tests {
         );
         assert!(enc_res.is_ok(), "Failed to synthesize test MP3: {:?}", enc_res.err());
 
+        // Write ID3 metadata tags like in production
+        let meta = crate::scrim_meta::ScrimMetadata {
+            game_id: "123456789".to_string(),
+            team_tag: "TEST".to_string(),
+            notes: "Test notes".to_string(),
+            game_patch: "14.23".to_string(),
+            recorded_at: "2026-11-22".to_string(),
+        };
+        let tag_res = meta.write_to_mp3(&test_mp3);
+        assert!(tag_res.is_ok(), "Writing ID3 tag failed: {:?}", tag_res.err());
+
         // Test player lifecycle: init, volume, load, play, seek, pause, stop
         if let Ok(mut player) = RodioPlayer::try_new() {
             player.set_volume(0.8);
@@ -130,8 +144,12 @@ mod tests {
             player.pause();
             assert!(player.is_paused());
 
+            let raw_seek = player.player.try_seek(Duration::from_millis(100));
+            println!("RAW TRY_SEEK RESULT: {:?}", raw_seek);
+            println!("POS BEFORE SEEK: {:?}", player.get_pos());
             let seek_res = player.seek(Duration::from_millis(100));
             assert!(seek_res.is_ok(), "Seek failed: {:?}", seek_res.err());
+            println!("POS AFTER SEEK: {:?}", player.get_pos());
 
             player.stop();
         }

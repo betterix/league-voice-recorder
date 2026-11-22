@@ -62,6 +62,8 @@ impl LeagueRecorder {
         status_sink: Option<Arc<Mutex<(String, String)>>>,
         clock_sink: Option<Arc<Mutex<Option<String>>>>,
         discord_muted: Option<Arc<AtomicBool>>,
+        base_time_sink: Option<Arc<Mutex<Option<String>>>>,
+        patch_sink: Option<Arc<Mutex<Option<String>>>>,
     ) {
         info!("Starting LeagueRecorder watcher loop...");
 
@@ -81,8 +83,25 @@ impl LeagueRecorder {
             }
         };
 
+        let update_base_time = |bt: Option<String>| {
+            if let Some(ref sink) = base_time_sink {
+                if let Ok(mut lk) = sink.lock() {
+                    *lk = bt;
+                }
+            }
+        };
+
+        let update_patch = |p: Option<String>| {
+            if let Some(ref sink) = patch_sink {
+                if let Ok(mut lk) = sink.lock() {
+                    *lk = p;
+                }
+            }
+        };
+
         update_status("WATCHING", "Waiting for match...");
         update_clock(None);
+        update_base_time(None);
 
         let mut first_game_time: f64 = 0.0;
         let mut last_game_time: f64 = 0.0;
@@ -91,6 +110,9 @@ impl LeagueRecorder {
         let mut consecutive_misses: usize = 0;
         let mut real_game_id: Option<String> = None;
         let mut active_patch = LcuCredentials::fetch_current_patch().await;
+        if !active_patch.is_empty() {
+            update_patch(Some(active_patch.clone()));
+        }
         let mut in_match = false;
         let mut capture_started = false;
 
@@ -170,6 +192,10 @@ impl LeagueRecorder {
                             last_advance_time = Instant::now();
                             pause_tick_count = 0;
 
+                            let base_mins = (first_game_time / 60.0).floor() as u32;
+                            let base_secs = (first_game_time % 60.0).floor() as u32;
+                            update_base_time(Some(format!("{:02}:{:02}", base_mins, base_secs)));
+
                             // Stop preview and engage WASAPI audio recording buffer on disk
                             audio_capture.stop_preview();
                             if let Err(e) = audio_capture.start(mic_target, discord_muted.clone()) {
@@ -204,6 +230,9 @@ impl LeagueRecorder {
                                         }
                                     }
                                 }
+                            }
+                            if !active_patch.is_empty() {
+                                update_patch(Some(active_patch.clone()));
                             }
                         } else if game_time == 0.0 {
                             // Loading screen in progress
@@ -388,7 +417,7 @@ mod tests {
         let stop_clone = stop_sig.clone();
         let status_clone = status_sink.clone();
         let handle = tokio::spawn(async move {
-            recorder.run_watcher_loop(stop_clone, None, Some(status_clone), None, None).await;
+            recorder.run_watcher_loop(stop_clone, None, Some(status_clone), None, None, None, None).await;
         });
 
         // Let watcher start and verify it enters WATCHING state without starting recording

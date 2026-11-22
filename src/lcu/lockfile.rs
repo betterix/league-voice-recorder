@@ -53,26 +53,27 @@ impl LcuCredentials {
         let mut found = None;
 
         // 1. Check active processes using lightweight inspection
-        let mut sys = System::new();
-        sys.refresh_processes_specifics(
-            sysinfo::ProcessesToUpdate::All,
-            true,
-            sysinfo::ProcessRefreshKind::nothing().with_exe(sysinfo::UpdateKind::OnlyIfNotSet),
-        );
+        if let Ok(mut sys) = System::new() {
+            sys.refresh_processes_specifics(
+                sysinfo::ProcessesToUpdate::All,
+                true,
+                sysinfo::ProcessRefreshKind::nothing().with_exe(sysinfo::UpdateKind::OnlyIfNotSet),
+            );
 
-        for (_pid, proc) in sys.processes() {
-            let name = proc.name().to_string_lossy().to_lowercase();
-            if name.contains("leagueclient") || name.contains("league of legends") {
-                if let Some(exe) = proc.exe() {
-                    if let Some(dir) = exe.parent() {
-                        if is_valid(dir) {
-                            found = Some(dir.to_path_buf());
-                            break;
-                        }
-                        if let Some(parent) = dir.parent() {
-                            if is_valid(parent) {
-                                found = Some(parent.to_path_buf());
+            for (_pid, proc) in sys.processes() {
+                let name = proc.name().to_string_lossy().to_lowercase();
+                if name.contains("leagueclient") || name.contains("league of legends") {
+                    if let Some(exe) = proc.exe() {
+                        if let Some(dir) = exe.parent() {
+                            if is_valid(dir) {
+                                found = Some(dir.to_path_buf());
                                 break;
+                            }
+                            if let Some(parent) = dir.parent() {
+                                if is_valid(parent) {
+                                    found = Some(parent.to_path_buf());
+                                    break;
+                                }
                             }
                         }
                     }
@@ -346,7 +347,7 @@ impl LcuCredentials {
                     return (c, g);
                 }
             }
-            let mut sys = System::new();
+            let Ok(mut sys) = System::new() else { return (false, false); };
             sys.refresh_processes_specifics(
                 sysinfo::ProcessesToUpdate::All,
                 true,
