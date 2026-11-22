@@ -12,7 +12,7 @@ ManifestSupportedOS all
 ManifestDPIAware true
 
 !define APP_NAME "League Voice Recorder"
-!define APP_VERSION "0.6.1"
+!define APP_VERSION "0.6.0"
 !define APP_PUBLISHER "betterix"
 !define APP_URL "https://github.com/betterix/league-voice-recorder"
 !define APP_EXE "LeagueVoiceRecorder.exe"

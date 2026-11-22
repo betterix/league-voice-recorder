@@ -137,7 +137,7 @@ set RETRIES=0
 :WAIT_PID
 tasklist /fi "PID eq {pid}" 2>nul | find "{pid}" >nul
 if not errorlevel 1 (
-    timeout /t 1 /nobreak >nul
+    ping 127.0.0.1 -n 2 >nul
     set /a RETRIES+=1
     if %RETRIES% lss 10 goto WAIT_PID
 )
@@ -146,19 +146,19 @@ set COPY_RETRIES=0
 :RETRY_COPY
 copy /y "{download_path}" "{target_exe}" >nul 2>&1
 if errorlevel 1 (
-    timeout /t 1 /nobreak >nul
+    ping 127.0.0.1 -n 2 >nul
     set /a COPY_RETRIES+=1
     if %COPY_RETRIES% lss 10 goto RETRY_COPY
 )
 
-timeout /t 1 /nobreak >nul
+ping 127.0.0.1 -n 2 >nul
 
 if exist "{target_exe}" (
     start "" /d "{target_dir}" "{target_exe}"
 )
 
 del /f /q "{download_path}" >nul 2>&1
-del "%~f0" >nul 2>&1
+(goto) 2>nul & del "%~f0"
 "#,
         pid = pid,
         download_path = download_path.display(),
@@ -173,11 +173,10 @@ del "%~f0" >nul 2>&1
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
-        const DETACHED_PROCESS: u32 = 0x00000008;
 
         std::process::Command::new("cmd.exe")
             .args(["/c", &bat_path.to_string_lossy()])
-            .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
+            .creation_flags(CREATE_NO_WINDOW)
             .spawn()
             .map_err(|e| format!("Failed to launch updater script: {}", e))?;
     }
