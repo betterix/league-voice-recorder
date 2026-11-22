@@ -1312,12 +1312,35 @@ async function checkForUpdates() {
   const info = await invokeTauri("check_for_updates");
   if (info) {
     if (info.available) {
-      if (msg) msg.innerHTML = `🌟 <b>New version available: ${info.latest_version}</b> (Current: ${info.current_version})`;
+      if (info.download_url) {
+        msg.innerHTML = `🌟 <b>New version available: ${info.latest_version}</b> (Current: ${info.current_version}) <button id="btn-apply-update" class="btn-small" onclick="applyUpdate('${info.download_url}')" style="margin-left: 8px; background: var(--accent-gold); color: #000; font-weight: bold;">⬇️ Download & Install Update</button>`;
+      } else {
+        msg.innerHTML = `🌟 <b>New version available: ${info.latest_version}</b> (Current: ${info.current_version}) <a href="https://github.com/betterix/league-voice-recorder/releases/latest" target="_blank" style="color: var(--accent-gold); margin-left: 8px; text-decoration: underline; font-weight: bold;">🔗 View Release</a>`;
+      }
     } else {
       if (msg) msg.innerText = `✓ You are using the latest version (${info.current_version}).`;
     }
   } else {
     if (msg) msg.innerText = "⚠️ Could not check for updates (offline or rate limited).";
+  }
+}
+
+async function applyUpdate(downloadUrl) {
+  const btn = document.getElementById("btn-apply-update");
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = "⏳ Downloading update...";
+  }
+  const msg = document.getElementById("update-status-msg");
+  if (msg) msg.innerText = "Downloading installer and restarting application...";
+  try {
+    await invokeTauri("apply_update", { downloadUrl });
+  } catch (err) {
+    if (msg) msg.innerText = `⚠️ Update failed: ${err}`;
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = "⬇️ Download & Install Update";
+    }
   }
 }
 

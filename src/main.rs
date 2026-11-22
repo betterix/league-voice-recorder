@@ -1545,6 +1545,12 @@ async fn check_for_updates(state: tauri::State<'_, Arc<AppState>>) -> Result<lea
 }
 
 #[tauri::command]
+async fn apply_update(download_url: String, state: tauri::State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.log("⬇️ Downloading update installer and preparing application restart...");
+    league_voice_recorder::updater::download_and_apply_update(&download_url).await
+}
+
+#[tauri::command]
 fn get_available_languages() -> std::collections::HashMap<String, String> {
     league_voice_recorder::i18n::get_available_languages()
 }
@@ -1968,6 +1974,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             cloud_upload_recording,
             cloud_delete_recording,
             check_for_updates,
+            apply_update,
             get_available_languages,
             get_translations,
         ])
