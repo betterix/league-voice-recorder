@@ -70,7 +70,6 @@ impl CloudSyncClient {
         reqwest::Client::builder()
             .default_headers(headers)
             .timeout(std::time::Duration::from_secs(self.timeout_secs))
-            .danger_accept_invalid_certs(true) // Support self-signed certificates
             .build()
             .unwrap_or_default()
     }

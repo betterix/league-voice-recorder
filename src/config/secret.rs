@@ -3,10 +3,22 @@ use base64::{
     Engine as _,
 };
 use hmac::{Hmac, KeyInit, Mac};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 
-const SECRET_SALT: &[u8] = b"LVR_SECRET_STORAGE_V1";
 type HmacSha256 = Hmac<Sha256>;
+
+/// Dynamically derives machine-scoped HMAC key for secret verification.
+fn get_storage_hmac_key() -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(b"LVR_SECRET_STORAGE_SALT_V1");
+    if let Ok(user) = std::env::var("USERNAME").or_else(|_| std::env::var("USER")) {
+        hasher.update(user.as_bytes());
+    }
+    if let Ok(computer) = std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")) {
+        hasher.update(computer.as_bytes());
+    }
+    hasher.finalize().into()
+}
 
 #[cfg(windows)]
 mod dpapi {
@@ -131,7 +143,8 @@ pub fn encrypt_secret(plaintext: &str) -> String {
         return format!("LVR_DPAPI:{}", URL_SAFE_NO_PAD.encode(enc));
     }
 
-    let mut mac = HmacSha256::new_from_slice(SECRET_SALT).expect("HMAC can take key of any size");
+    let key = get_storage_hmac_key();
+    let mut mac = HmacSha256::new_from_slice(&key).expect("HMAC can take key of any size");
     mac.update(b_data);
     let tag = &mac.finalize().into_bytes()[..8];
 
@@ -172,7 +185,8 @@ pub fn decrypt_secret(ciphertext: &str) -> String {
                 return String::new();
             }
             let (tag, b_data) = raw.split_at(8);
-            let mut mac = HmacSha256::new_from_slice(SECRET_SALT).expect("HMAC can take key of any size");
+            let key = get_storage_hmac_key();
+            let mut mac = HmacSha256::new_from_slice(&key).expect("HMAC can take key of any size");
             mac.update(b_data);
             let expected_tag = &mac.finalize().into_bytes()[..8];
             if expected_tag == tag {
@@ -214,7 +228,8 @@ mod tests {
     #[test]
     fn test_legacy_sec_prefix_compatibility() {
         let b_data = b"my_legacy_token";
-        let mut mac = HmacSha256::new_from_slice(SECRET_SALT).unwrap();
+        let key = get_storage_hmac_key();
+        let mut mac = HmacSha256::new_from_slice(&key).unwrap();
         mac.update(b_data);
         let tag = &mac.finalize().into_bytes()[..8];
         let mut blob = Vec::new();

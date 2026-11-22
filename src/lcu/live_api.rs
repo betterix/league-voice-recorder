@@ -21,8 +21,7 @@ pub struct LiveApiClient {
 
 impl Default for LiveApiClient {
     fn default() -> Self {
-        let client = Client::builder()
-            .danger_accept_invalid_certs(true)
+        let client = crate::lcu::create_riot_client_builder()
             .timeout(std::time::Duration::from_millis(350))
             .build()
             .unwrap_or_default();

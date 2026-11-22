@@ -24,8 +24,7 @@ pub struct ReplayApiClient {
 
 impl Default for ReplayApiClient {
     fn default() -> Self {
-        let client = Client::builder()
-            .danger_accept_invalid_certs(true)
+        let client = crate::lcu::create_riot_client_builder()
             .timeout(std::time::Duration::from_millis(800))
             .build()
             .unwrap_or_default();

@@ -144,8 +144,7 @@ impl LcuCredentials {
         use base64::Engine;
 
         let auth = BASE64.encode(format!("riot:{}", self.password));
-        let client = reqwest::Client::builder()
-            .danger_accept_invalid_certs(true)
+        let client = crate::lcu::create_riot_client_builder()
             .build()?;
 
         let url = format!("https://127.0.0.1:{}/lol-gameflow/v1/gameflow-phase", self.port);
@@ -166,8 +165,7 @@ impl LcuCredentials {
         use base64::Engine;
 
         let auth = BASE64.encode(format!("riot:{}", self.password));
-        let client = reqwest::Client::builder()
-            .danger_accept_invalid_certs(true)
+        let client = crate::lcu::create_riot_client_builder()
             .build()?;
 
         let url = format!("https://127.0.0.1:{}/lol-gameflow/v1/session", self.port);
@@ -225,8 +223,7 @@ impl LcuCredentials {
         use base64::Engine;
 
         let auth = BASE64.encode(format!("riot:{}", self.password));
-        let client = reqwest::Client::builder()
-            .danger_accept_invalid_certs(true)
+        let client = crate::lcu::create_riot_client_builder()
             .timeout(std::time::Duration::from_millis(1500))
             .build()
             .ok()?;
