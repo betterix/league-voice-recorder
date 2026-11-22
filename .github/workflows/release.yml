@@ -55,9 +55,6 @@ jobs:
           if (-not (Test-Path "dist\LeagueVoiceRecorder")) {
             New-Item -ItemType Directory -Path "dist\LeagueVoiceRecorder" -Force
           }
-          if (-not (Test-Path "dist\LeagueVoiceRecorder\assets")) {
-            New-Item -ItemType Directory -Path "dist\LeagueVoiceRecorder\assets" -Force
-          }
 
           # Copy standalone release binary
           $builtExe = "target\x86_64-pc-windows-gnu\release\league-voice-recorder.exe"
@@ -72,16 +69,10 @@ jobs:
             exit 1
           }
 
-          # Copy support assets, locales, license, readme, WebView2Loader
+          # Copy support assets, license, readme, WebView2Loader
           if (Test-Path "assets\WebView2Loader.dll") {
             Copy-Item -Path "assets\WebView2Loader.dll" -Destination "dist\LeagueVoiceRecorder\WebView2Loader.dll" -Force
             Copy-Item -Path "assets\WebView2Loader.dll" -Destination "dist\WebView2Loader.dll" -Force
-          }
-          if (Test-Path "assets\icon.ico") {
-            Copy-Item -Path "assets\icon.ico" -Destination "dist\LeagueVoiceRecorder\assets\icon.ico" -Force
-          }
-          if (Test-Path "locales") {
-            Copy-Item -Path "locales" -Destination "dist\LeagueVoiceRecorder\locales" -Recurse -Force
           }
           if (Test-Path "LICENSE") {
             Copy-Item -Path "LICENSE" -Destination "dist\LeagueVoiceRecorder\LICENSE" -Force

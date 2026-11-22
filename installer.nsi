@@ -147,26 +147,18 @@ Section "MainProgram" SecMain
     Delete "$INSTDIR\unins000.dat"
     Delete "$INSTDIR\unins000.msg"
 
-    ; Install application binary, WebView2 runtime loader, and visual assets
+    ; Install application binary, WebView2 runtime loader, and documentation
     DetailPrint "Installing League Voice Recorder v${APP_VERSION}..."
     File "dist\LeagueVoiceRecorder.exe"
     File "assets\WebView2Loader.dll"
+    File "LICENSE"
+    File "README.md"
 
-    SetOutPath "$INSTDIR\locales"
-    File "locales\en.json"
-    File "locales\hu.json"
-
-    SetOutPath "$INSTDIR\assets"
-    File "assets\icon.ico"
-    File "assets\icon.png"
-
-    SetOutPath "$INSTDIR"
-
-    ; Create Start Menu and Desktop Shortcuts (with icon)
+    ; Create Start Menu and Desktop Shortcuts (using embedded exe icon)
     CreateDirectory "$SMPROGRAMS\League Voice Recorder"
-    CreateShortcut "$SMPROGRAMS\League Voice Recorder\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\assets\icon.ico" 0
-    CreateShortcut "$SMPROGRAMS\League Voice Recorder\Uninstall.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\assets\icon.ico" 0
-    CreateShortcut "$DESKTOP\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\assets\icon.ico" 0
+    CreateShortcut "$SMPROGRAMS\League Voice Recorder\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\${APP_EXE}" 0
+    CreateShortcut "$SMPROGRAMS\League Voice Recorder\Uninstall.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\${APP_EXE}" 0
+    CreateShortcut "$DESKTOP\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\${APP_EXE}" 0
 
     ; Write Registry Keys for Windows "Apps & Features" / Add or Remove Programs
     WriteRegStr HKCU "Software\${APP_ID}" "InstallDir" "$INSTDIR"
@@ -175,7 +167,7 @@ Section "MainProgram" SecMain
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}" "DisplayName" "${APP_NAME}"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}" "DisplayVersion" "${APP_VERSION}"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}" "Publisher" "${APP_PUBLISHER}"
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}" "DisplayIcon" "$INSTDIR\assets\icon.ico"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}" "DisplayIcon" "$INSTDIR\${APP_EXE}"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}" "InstallLocation" "$INSTDIR"
     WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}" "NoModify" 1
@@ -202,9 +194,11 @@ Section "Uninstall"
     SendMessage $0 16 0 0 ; WM_CLOSE
     Sleep 500
 
-    ; Delete Installed Files & Assets
+    ; Delete Installed Files & Documentation
     Delete "$INSTDIR\${APP_EXE}"
     Delete "$INSTDIR\WebView2Loader.dll"
+    Delete "$INSTDIR\LICENSE"
+    Delete "$INSTDIR\README.md"
     Delete "$INSTDIR\locales\en.json"
     Delete "$INSTDIR\locales\hu.json"
     RMDir "$INSTDIR\locales"
