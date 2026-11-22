@@ -99,34 +99,24 @@ Function .onInit
     SendMessage $0 16 0 0 ; WM_CLOSE
     Sleep 500
 
-    ; Detect previous installation (Inno Setup unins000.exe or previous NSIS uninstaller)
+    ; Detect legacy Python Inno Setup installation (unins000.exe)
     StrCpy $R0 ""
 
-    ; 1. Check Inno Setup registry
     ReadRegStr $R0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\League Voice Recorder_is1" "UninstallString"
     ${If} $R0 == ""
         ReadRegStr $R0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\League Voice Recorder_is1" "UninstallString"
     ${EndIf}
 
-    ; 2. Check default directory for unins000.exe
     ${If} $R0 == ""
         ${If} ${FileExists} "$LOCALAPPDATA\Programs\League Voice Recorder\unins000.exe"
             StrCpy $R0 '"$LOCALAPPDATA\Programs\League Voice Recorder\unins000.exe"'
         ${EndIf}
     ${EndIf}
 
-    ; 3. Check previous NSIS uninstaller
-    ${If} $R0 == ""
-        ReadRegStr $R1 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}" "UninstallString"
-        ${If} $R1 != ""
-            StrCpy $R0 $R1
-        ${EndIf}
-    ${EndIf}
-
-    ; If a previous version is detected, prompt the user in the selected language and execute uninstaller before continuing
+    ; If legacy version is detected, prompt the user in the selected language and execute uninstaller before continuing
     ${If} $R0 != ""
         ${If} $LANGUAGE == ${LANG_ENGLISH}
-            MessageBox MB_YESNO|MB_ICONQUESTION "A previous version of League Voice Recorder was detected.$\r$\n$\r$\nWould you like to uninstall it first before installing v${APP_VERSION}?" IDNO +3
+            MessageBox MB_YESNO|MB_ICONQUESTION "A legacy version of League Voice Recorder was detected.$\r$\n$\r$\nWould you like to uninstall it first before installing v${APP_VERSION}?" IDNO +3
         ${Else}
             MessageBox MB_YESNO|MB_ICONQUESTION "A League Voice Recorder korábbi verziója található a gépen.$\r$\n$\r$\nSzeretnéd eltávolítani a régebbi verziót a v${APP_VERSION} telepítése előtt?" IDNO +3
         ${EndIf}
@@ -152,12 +142,10 @@ Section "MainProgram" SecMain
     SendMessage $0 16 0 0 ; WM_CLOSE
     Sleep 500
 
-    ; If legacy Inno Setup uninstaller still exists on disk, launch it to ensure clean upgrade
-    ${If} ${FileExists} "$INSTDIR\unins000.exe"
-        DetailPrint "Launching uninstaller for previous version..."
-        ExecWait '"$INSTDIR\unins000.exe"'
-        Sleep 500
-    ${EndIf}
+    ; Clean up any leftover legacy uninstaller files if present
+    Delete "$INSTDIR\unins000.exe"
+    Delete "$INSTDIR\unins000.dat"
+    Delete "$INSTDIR\unins000.msg"
 
     ; Install application binary, WebView2 runtime loader, and visual assets
     DetailPrint "Installing League Voice Recorder v${APP_VERSION}..."
