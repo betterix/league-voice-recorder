@@ -6,12 +6,12 @@ The **League Voice Recorder** team takes security and player safety seriously. T
 
 ## Supported Versions
 
-We actively provide security patches, dependency updates, and bug fixes for the following versions:
+Only the current native Rust release (`0.6.x`) is maintained. All previous legacy Python releases are permanently deprecated and unsupported.
 
 | Version | Supported | Status |
 | :--- | :---: | :--- |
-| `0.6.x` | :white_check_mark: | **Current Active Release (Native Rust & Tauri v2)** |
-| `< 0.6.0` | :x: | End of Life (Legacy Python runtime, unsupported) |
+| `0.6.x` | :white_check_mark: | **Current Active Release (Only Maintained Version)** |
+| `< 0.6.0` | :x: | **End of Life (Legacy, Unsupported & No Maintenance)** |
 
 ---
 
