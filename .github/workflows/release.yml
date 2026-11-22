@@ -35,18 +35,18 @@ jobs:
       - name: 🦀 Set up Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-gnu
+          targets: x86_64-pc-windows-msvc
 
       - name: ⚡ Rust Cache
         uses: Swatinem/rust-cache@v2
 
       - name: 🧪 Run Automated Test Suite
         run: |
-          cargo test --target x86_64-pc-windows-gnu --lib -- --test-threads=1
+          cargo test --lib -- --test-threads=1
 
       - name: ⚙️ Compile Windows Release Binary
         run: |
-          cargo build --release --target x86_64-pc-windows-gnu
+          cargo build --release
 
       - name: 🎁 Assemble Distribution Package
         shell: pwsh
@@ -57,10 +57,7 @@ jobs:
           }
 
           # Copy standalone release binary
-          $builtExe = "target\x86_64-pc-windows-gnu\release\league-voice-recorder.exe"
-          if (-not (Test-Path $builtExe)) {
-            $builtExe = "target\release\league-voice-recorder.exe"
-          }
+          $builtExe = "target\release\league-voice-recorder.exe"
           if (Test-Path $builtExe) {
             Copy-Item -Path $builtExe -Destination "dist\LeagueVoiceRecorder\LeagueVoiceRecorder.exe" -Force
             Copy-Item -Path $builtExe -Destination "dist\LeagueVoiceRecorder.exe" -Force
