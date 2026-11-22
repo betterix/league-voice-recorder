@@ -1,6 +1,6 @@
 # Security Policy
 
-The **League Voice Recorder** team takes security and privacy seriously. This document outlines our security policy, supported versions, and the process for responsibly reporting potential vulnerabilities.
+The **League Voice Recorder** team takes security and player safety seriously. This document outlines our security policy, supported versions, anti-cheat & Vanguard compliance, and the process for responsibly reporting vulnerabilities.
 
 ---
 
@@ -10,11 +10,32 @@ We actively provide security patches, dependency updates, and bug fixes for the 
 
 | Version | Supported | Status |
 | :--- | :---: | :--- |
-| `0.4.x` | :white_check_mark: | **Current Active Release** |
-| `0.3.x` | :x: | End of Life (upgrade recommended) |
-| `0.2.x` | :x: | End of Life (upgrade recommended) |
-| `0.1.x` | :x: | End of Life (upgrade recommended) |
-| `< 0.1.0` | :x: | Unsupported |
+| `0.6.x` | :white_check_mark: | **Current Active Release (Native Rust & Tauri v2)** |
+| `< 0.6.0` | :x: | End of Life (Legacy Python runtime, unsupported) |
+
+---
+
+## 🛡️ Anti-Cheat & Riot Vanguard Compliance
+
+League Voice Recorder is built from the ground up to be **100% Riot Vanguard safe and compliant with Riot Games Developer Terms of Service**:
+
+1. **Zero Memory Injection or Inspection**:
+   - The application **NEVER** inspects, reads, hooks, or injects code into `League of Legends.exe` process memory.
+   - It **NEVER** interacts with or bypasses the Riot Vanguard anti-cheat kernel driver (`vgk.sys`).
+
+2. **Official Local APIs Only**:
+   - Match state detection and replay synchronization communicate strictly with official localhost endpoints:
+     - `https://127.0.0.1:2999/liveclientdata/allgamedata` (Official Live Client Data API)
+     - `https://127.0.0.1:2999/replay/playback` (Official Replay API)
+   - All localhost TLS connections are verified against the official pinned Riot Games Root Certificate Authority (`riotgames.pem`). Insecure certificate bypasses (`danger_accept_invalid_certs`) are eliminated.
+
+3. **Pure Windows WASAPI Audio Capture**:
+   - Voice and microphone capture rely exclusively on standard Windows Audio Session API (WASAPI) loopback and input endpoints.
+   - The application does not install, package, or utilize virtual audio drivers or kernel-level audio filters.
+
+4. **Secret Storage & DPAPI Encryption**:
+   - Remote scrim server API tokens are cryptographically secured at rest on Windows using native DPAPI (`CryptProtectData` / `CryptUnprotectData`).
+   - Plaintext credentials and secrets are never committed to version control or written unencrypted into `config.json`.
 
 ---
 
@@ -58,4 +79,4 @@ Once a vulnerability report is submitted:
 
 - **Keep Your Installation Updated**: Always run the latest release to ensure you have the latest security patches and dependency updates.
 - **Run Official Binaries**: Only download releases directly from our [official GitHub Releases page](https://github.com/betterix/league-voice-recorder/releases).
-- **Discord IPC & Tokens**: The application stores your local Discord IPC token in `config.json` next to the executable. Never share your `config.json` file publicly or commit it to version control.
+- **Credentials & API Keys**: Scrim server API keys and Discord credentials should never be shared publicly or published in screenshot/video streams.
