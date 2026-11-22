@@ -69,7 +69,11 @@ jobs:
             exit 1
           }
 
-          # Copy support assets, locales, license, readme
+          # Copy support assets, locales, license, readme, WebView2Loader
+          if (Test-Path "assets\WebView2Loader.dll") {
+            Copy-Item -Path "assets\WebView2Loader.dll" -Destination "dist\LeagueVoiceRecorder\WebView2Loader.dll" -Force
+            Copy-Item -Path "assets\WebView2Loader.dll" -Destination "dist\WebView2Loader.dll" -Force
+          }
           if (Test-Path "assets\icon.ico") {
             Copy-Item -Path "assets\icon.ico" -Destination "dist\LeagueVoiceRecorder\assets\icon.ico" -Force
           }

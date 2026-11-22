@@ -1,4 +1,4 @@
-; ==============================================================================
+﻿; ==============================================================================
 ; League Voice Recorder & Replay Synchronizer — NSIS Modern Installer Script
 ; Clean Native Rust Desktop Architecture (v0.6.0)
 ; ==============================================================================
@@ -43,7 +43,6 @@ RequestExecutionLevel user
 ; Installer Pages
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "LICENSE"
-!insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APP_EXE}"
@@ -61,18 +60,6 @@ RequestExecutionLevel user
 ; Localized Strings
 LangString LaunchApp ${LANG_ENGLISH} "Launch League Voice Recorder"
 LangString LaunchApp ${LANG_HUNGARIAN} "League Voice Recorder indítása"
-
-LangString SectionMainName ${LANG_ENGLISH} "League Voice Recorder (Required)"
-LangString SectionMainName ${LANG_HUNGARIAN} "League Voice Recorder (Szükséges)"
-
-LangString SectionDesktopName ${LANG_ENGLISH} "Desktop Shortcut"
-LangString SectionDesktopName ${LANG_HUNGARIAN} "Asztali parancsikon"
-
-LangString DESC_SecMain ${LANG_ENGLISH} "Core program files, assets, and native audio capture engine."
-LangString DESC_SecMain ${LANG_HUNGARIAN} "Alapvető programfájlok és natív hangrögzítő motor."
-
-LangString DESC_SecDesktop ${LANG_ENGLISH} "Create a convenient shortcut on your Desktop."
-LangString DESC_SecDesktop ${LANG_HUNGARIAN} "Parancsikon elhelyezése az Asztalon a gyors indításhoz."
 
 ; Version Information Resource
 VIProductVersion "${APP_VERSION}.0"
@@ -105,10 +92,10 @@ Function un.onInit
 FunctionEnd
 
 ; ------------------------------------------------------------------------------
-; Installer Sections
+; Installer Section
 ; ------------------------------------------------------------------------------
-Section $(SectionMainName) SecMain
-    SectionIn RO
+Section "MainProgram" SecMain
+    SetShellVarContext current
     SetOutPath "$INSTDIR"
 
     ; Gracefully close any existing instance via clean WM_CLOSE window message
@@ -117,30 +104,15 @@ Section $(SectionMainName) SecMain
     SendMessage $0 16 0 0 ; WM_CLOSE
     Sleep 600
 
-    ; Clean up legacy Python / PyInstaller runtime files if upgrading over an older version
-    IfFileExists "$INSTDIR\_internal\*.*" 0 +2
-    RMDir /r "$INSTDIR\_internal"
+    ; If legacy Inno Setup uninstaller exists from older version, launch it to cleanly remove it
+    IfFileExists "$INSTDIR\unins000.exe" 0 +3
+    DetailPrint "Launching uninstaller for previous version..."
+    ExecWait '"$INSTDIR\unins000.exe"'
 
-    IfFileExists "$INSTDIR\tcl\*.*" 0 +2
-    RMDir /r "$INSTDIR\tcl"
-
-    IfFileExists "$INSTDIR\tk\*.*" 0 +2
-    RMDir /r "$INSTDIR\tk"
-
-    IfFileExists "$INSTDIR\lib\*.*" 0 +2
-    RMDir /r "$INSTDIR\lib"
-
-    Delete "$INSTDIR\base_library.zip"
-    Delete "$INSTDIR\python310.dll"
-    Delete "$INSTDIR\python311.dll"
-    Delete "$INSTDIR\python312.dll"
-    Delete "$INSTDIR\python3.dll"
-    Delete "$INSTDIR\main.exe"
-    Delete "$INSTDIR\league-voice-recorder.exe"
-
-    ; Install application binary and visual assets
+    ; Install application binary, WebView2 runtime loader, and visual assets
     DetailPrint "Installing League Voice Recorder v${APP_VERSION}..."
     File "dist\LeagueVoiceRecorder.exe"
+    File "assets\WebView2Loader.dll"
 
     SetOutPath "$INSTDIR\assets"
     File "assets\icon.ico"
@@ -148,10 +120,11 @@ Section $(SectionMainName) SecMain
 
     SetOutPath "$INSTDIR"
 
-    ; Create Start Menu Shortcuts
+    ; Create Start Menu and Desktop Shortcuts (with icon)
     CreateDirectory "$SMPROGRAMS\League Voice Recorder"
     CreateShortcut "$SMPROGRAMS\League Voice Recorder\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\assets\icon.ico" 0
     CreateShortcut "$SMPROGRAMS\League Voice Recorder\Uninstall.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\assets\icon.ico" 0
+    CreateShortcut "$DESKTOP\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\assets\icon.ico" 0
 
     ; Write Registry Keys for Windows "Apps & Features" / Add or Remove Programs
     WriteRegStr HKCU "Software\${APP_ID}" "InstallDir" "$INSTDIR"
@@ -175,23 +148,12 @@ Section $(SectionMainName) SecMain
     WriteUninstaller "$INSTDIR\Uninstall.exe"
 SectionEnd
 
-Section $(SectionDesktopName) SecDesktop
-    SetOutPath "$INSTDIR"
-    CreateShortcut "$DESKTOP\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\assets\icon.ico" 0
-SectionEnd
-
-; ------------------------------------------------------------------------------
-; Component Descriptions
-; ------------------------------------------------------------------------------
-!insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
-    !insertmacro MUI_DESCRIPTION_TEXT ${SecMain} $(DESC_SecMain)
-    !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop} $(DESC_SecDesktop)
-!insertmacro MUI_FUNCTION_DESCRIPTION_END
-
 ; ------------------------------------------------------------------------------
 ; Uninstaller Section
 ; ------------------------------------------------------------------------------
 Section "Uninstall"
+    SetShellVarContext current
+
     ; Gracefully request the application to close if running
     FindWindow $0 "" "League Voice Recorder & Replay Synchronizer v0.6.0"
     IntCmp $0 0 +3
@@ -200,6 +162,7 @@ Section "Uninstall"
 
     ; Delete Installed Files & Assets
     Delete "$INSTDIR\${APP_EXE}"
+    Delete "$INSTDIR\WebView2Loader.dll"
     Delete "$INSTDIR\assets\icon.ico"
     Delete "$INSTDIR\assets\icon.png"
     RMDir "$INSTDIR\assets"
