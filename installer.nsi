@@ -35,12 +35,19 @@ RequestExecutionLevel user
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
 
+; Language Selection Dialog Settings
+!define MUI_LANGDLL_REGISTRY_ROOT "HKCU"
+!define MUI_LANGDLL_REGISTRY_KEY "Software\${APP_ID}"
+!define MUI_LANGDLL_REGISTRY_VALUENAME "InstallerLanguage"
+
 ; Installer Pages
 !insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_LICENSE "LICENSE"
+!insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APP_EXE}"
-!define MUI_FINISHPAGE_RUN_TEXT "Launch League Voice Recorder"
+!define MUI_FINISHPAGE_RUN_TEXT $(LaunchApp)
 !insertmacro MUI_PAGE_FINISH
 
 ; Uninstaller Pages
@@ -50,6 +57,22 @@ RequestExecutionLevel user
 ; Languages (English & Hungarian)
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "Hungarian"
+
+; Localized Strings
+LangString LaunchApp ${LANG_ENGLISH} "Launch League Voice Recorder"
+LangString LaunchApp ${LANG_HUNGARIAN} "League Voice Recorder indítása"
+
+LangString SectionMainName ${LANG_ENGLISH} "League Voice Recorder (Required)"
+LangString SectionMainName ${LANG_HUNGARIAN} "League Voice Recorder (Szükséges)"
+
+LangString SectionDesktopName ${LANG_ENGLISH} "Desktop Shortcut"
+LangString SectionDesktopName ${LANG_HUNGARIAN} "Asztali parancsikon"
+
+LangString DESC_SecMain ${LANG_ENGLISH} "Core program files, assets, and native audio capture engine."
+LangString DESC_SecMain ${LANG_HUNGARIAN} "Alapvető programfájlok és natív hangrögzítő motor."
+
+LangString DESC_SecDesktop ${LANG_ENGLISH} "Create a convenient shortcut on your Desktop."
+LangString DESC_SecDesktop ${LANG_HUNGARIAN} "Parancsikon elhelyezése az Asztalon a gyors indításhoz."
 
 ; Version Information Resource
 VIProductVersion "${APP_VERSION}.0"
@@ -62,10 +85,30 @@ VIAddVersionKey /LANG=${LANG_ENGLISH} "FileDescription" "${APP_NAME} Setup"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "FileVersion" "${APP_VERSION}.0"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "OriginalFilename" "LeagueVoiceRecorder_0.6.0_x64-setup.exe"
 
+VIAddVersionKey /LANG=${LANG_HUNGARIAN} "ProductName" "${APP_NAME}"
+VIAddVersionKey /LANG=${LANG_HUNGARIAN} "ProductVersion" "${APP_VERSION}"
+VIAddVersionKey /LANG=${LANG_HUNGARIAN} "CompanyName" "${APP_PUBLISHER}"
+VIAddVersionKey /LANG=${LANG_HUNGARIAN} "LegalCopyright" "Copyright (C) 2026 ${APP_PUBLISHER}. Minden jog fenntartva."
+VIAddVersionKey /LANG=${LANG_HUNGARIAN} "FileDescription" "${APP_NAME} Telepítő"
+VIAddVersionKey /LANG=${LANG_HUNGARIAN} "FileVersion" "${APP_VERSION}.0"
+VIAddVersionKey /LANG=${LANG_HUNGARIAN} "OriginalFilename" "LeagueVoiceRecorder_0.6.0_x64-setup.exe"
+
 ; ------------------------------------------------------------------------------
-; Installer Section
+; Language Initialization Hooks
 ; ------------------------------------------------------------------------------
-Section "MainProgram" SecMain
+Function .onInit
+    !insertmacro MUI_LANGDLL_DISPLAY
+FunctionEnd
+
+Function un.onInit
+    ReadRegStr $LANGUAGE HKCU "Software\${APP_ID}" "InstallerLanguage"
+FunctionEnd
+
+; ------------------------------------------------------------------------------
+; Installer Sections
+; ------------------------------------------------------------------------------
+Section $(SectionMainName) SecMain
+    SectionIn RO
     SetOutPath "$INSTDIR"
 
     ; Gracefully close any existing instance via clean WM_CLOSE window message
@@ -105,11 +148,10 @@ Section "MainProgram" SecMain
 
     SetOutPath "$INSTDIR"
 
-    ; Create Start Menu and Desktop Shortcuts
+    ; Create Start Menu Shortcuts
     CreateDirectory "$SMPROGRAMS\League Voice Recorder"
     CreateShortcut "$SMPROGRAMS\League Voice Recorder\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\assets\icon.ico" 0
     CreateShortcut "$SMPROGRAMS\League Voice Recorder\Uninstall.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\assets\icon.ico" 0
-    CreateShortcut "$DESKTOP\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\assets\icon.ico" 0
 
     ; Write Registry Keys for Windows "Apps & Features" / Add or Remove Programs
     WriteRegStr HKCU "Software\${APP_ID}" "InstallDir" "$INSTDIR"
@@ -132,6 +174,19 @@ Section "MainProgram" SecMain
     ; Create clean uninstaller
     WriteUninstaller "$INSTDIR\Uninstall.exe"
 SectionEnd
+
+Section $(SectionDesktopName) SecDesktop
+    SetOutPath "$INSTDIR"
+    CreateShortcut "$DESKTOP\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\assets\icon.ico" 0
+SectionEnd
+
+; ------------------------------------------------------------------------------
+; Component Descriptions
+; ------------------------------------------------------------------------------
+!insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecMain} $(DESC_SecMain)
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop} $(DESC_SecDesktop)
+!insertmacro MUI_FUNCTION_DESCRIPTION_END
 
 ; ------------------------------------------------------------------------------
 ; Uninstaller Section
