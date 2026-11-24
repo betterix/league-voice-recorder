@@ -1,3 +1,4 @@
+use std::collections::{HashSet, VecDeque};
 use std::fs::OpenOptions;
 use std::io::{BufWriter, Seek, SeekFrom, Write};
 use std::path::PathBuf;
@@ -8,6 +9,42 @@ use std::thread::JoinHandle;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream};
 use tracing::{debug, info, warn};
+
+/// Finds the root process ID of Discord so process loopback captures all child audio sessions.
+pub fn find_discord_root_pid() -> Option<u32> {
+    use sysinfo::{ProcessesToUpdate, System};
+    let mut sys = System::new().ok()?;
+    sys.refresh_processes(ProcessesToUpdate::All, true);
+
+    let discord_pids: HashSet<u32> = sys
+        .processes()
+        .iter()
+        .filter(|(_, p)| {
+            let name = p.name().to_string_lossy().to_lowercase();
+            name == "discord.exe" || name == "discord"
+        })
+        .map(|(pid, _)| pid.as_u32())
+        .collect();
+
+    if discord_pids.is_empty() {
+        return None;
+    }
+
+    // Identify root Discord process: parent is not another Discord process
+    for &pid in &discord_pids {
+        if let Some(proc) = sys.process(sysinfo::Pid::from_u32(pid)) {
+            if let Some(parent_pid) = proc.parent() {
+                if !discord_pids.contains(&parent_pid.as_u32()) {
+                    return Some(pid);
+                }
+            } else {
+                return Some(pid);
+            }
+        }
+    }
+
+    discord_pids.into_iter().next()
+}
 
 enum AudioWriteOp {
     Data(Vec<i16>),
@@ -74,6 +111,8 @@ pub struct AudioCaptureManager {
     loopback_temp_path: PathBuf,
     _mic_stream: Option<Stream>,
     _loopback_stream: Option<Stream>,
+    _process_loopback_stop: Option<Arc<AtomicBool>>,
+    _process_loopback_thread: Option<JoinHandle<()>>,
     pub mic_peak: Arc<Mutex<f32>>,
     pub loopback_peak: Arc<Mutex<f32>>,
 }
@@ -91,6 +130,8 @@ impl AudioCaptureManager {
             loopback_temp_path: PathBuf::new(),
             _mic_stream: None,
             _loopback_stream: None,
+            _process_loopback_stop: None,
+            _process_loopback_thread: None,
             mic_peak: Arc::new(Mutex::new(0.0)),
             loopback_peak: Arc::new(Mutex::new(0.0)),
         }
@@ -436,163 +477,137 @@ impl AudioCaptureManager {
             }
         }
 
-        // 2. Loopback setup: prioritize dedicated Chat/Discord output device, or default output device
-        let out_device = if let Ok(devs) = host.output_devices() {
-            let devs_vec: Vec<_> = devs.collect();
-            devs_vec.iter().find(|d| {
-                if let Ok(desc) = d.description() {
-                    let name = desc.name().to_lowercase();
-                    name.contains("chat") || name.contains("discord")
-                } else {
-                    false
-                }
-            }).cloned().or_else(|| host.default_output_device())
-        } else {
-            host.default_output_device()
-        };
+        // Clean up previous process loopback thread if active
+        if let Some(stop) = self._process_loopback_stop.take() {
+            stop.store(true, Ordering::SeqCst);
+        }
+        if let Some(handle) = self._process_loopback_thread.take() {
+            let _ = handle.join();
+        }
 
-        if let Some(out_dev) = out_device {
+        // 2. Loopback setup:
+        // EXCLUSIVELY attach WASAPI Process Loopback to Discord (Discord.exe process tree).
+        // Under NO circumstances do we fall back to headphones/speakers, ensuring ZERO background
+        // game sound, browser tabs, or music can ever bleed into the scrim recording.
+        if let Some(discord_pid) = find_discord_root_pid() {
+            info!("🎯 Attaching WASAPI Process Loopback to Discord (PID: {})...", discord_pid);
+            let stop_flag = Arc::new(AtomicBool::new(false));
+            self._process_loopback_stop = Some(stop_flag.clone());
+
+            let tx = loop_sender.clone();
             let pause_clone = self.is_paused.clone();
             let peak_clone = self.loopback_peak.clone();
-            let tx = loop_sender.clone();
-            let out_name = out_dev.description().map(|d| d.name().to_string()).unwrap_or_else(|_| "Default Output".to_string());
 
-            if let Ok(config) = out_dev.default_output_config() {
-                let channels = config.channels() as usize;
-                let sample_rate = config.sample_rate();
-                let sample_format = config.sample_format();
-                let err_fn = move |err| {
-                    let msg = format!("{}", err);
-                    let lower = msg.to_lowercase();
-                    if !lower.contains("underrun") && !lower.contains("overrun") {
-                        warn!("Loopback stream error: {}", msg);
-                    } else {
-                        debug!("Loopback stream transient: {}", msg);
+            let handle = std::thread::Builder::new()
+                .name("DiscordProcessLoopback".to_string())
+                .spawn(move || {
+                    let _ = wasapi::initialize_mta();
+
+                    let desired_format = wasapi::WaveFormat::new(
+                        32,
+                        32,
+                        &wasapi::SampleType::Float,
+                        48000,
+                        2,
+                        None,
+                    );
+
+                    let mut audio_client = match wasapi::AudioClient::new_application_loopback_client(discord_pid, true) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            warn!("Failed to create application loopback client for Discord (PID {}): {:?}", discord_pid, e);
+                            return;
+                        }
+                    };
+
+                    let stream_mode = wasapi::StreamMode::EventsShared {
+                        autoconvert: true,
+                        buffer_duration_hns: 0,
+                    };
+
+                    if let Err(e) = audio_client.initialize_client(&desired_format, &wasapi::Direction::Capture, &stream_mode) {
+                        warn!("Failed to initialize Discord application loopback client: {:?}", e);
+                        return;
                     }
-                };
 
-                let mut acc = 0.0f64;
-                let stream_res: Option<Stream> = match sample_format {
-                    SampleFormat::F32 => {
-                        let tx_f32 = tx.clone();
-                        out_dev.build_input_stream(
-                            config.into(),
-                            move |data: &[f32], _| {
-                                if pause_clone.load(Ordering::Relaxed) {
-                                    return;
-                                }
+                    let h_event = match audio_client.set_get_eventhandle() {
+                        Ok(h) => h,
+                        Err(e) => {
+                            warn!("Failed to set/get event handle for Discord loopback: {:?}", e);
+                            return;
+                        }
+                    };
+
+                    let capture_client = match audio_client.get_audiocaptureclient() {
+                        Ok(cc) => cc,
+                        Err(e) => {
+                            warn!("Failed to get AudioCaptureClient for Discord loopback: {:?}", e);
+                            return;
+                        }
+                    };
+
+                    if let Err(e) = audio_client.start_stream() {
+                        warn!("Failed to start Discord process loopback stream: {:?}", e);
+                        return;
+                    }
+
+                    info!("🎧 Pure Discord Process Loopback capture active (PID: {}).", discord_pid);
+
+                    let mut sample_queue = VecDeque::new();
+
+                    while !stop_flag.load(Ordering::Relaxed) {
+                        if h_event.wait_for_event(100).is_ok() {
+                            let _ = capture_client.read_from_device_to_deque(&mut sample_queue);
+
+                            if !sample_queue.is_empty() {
                                 let mut local = Vec::new();
                                 let mut local_peak = 0.0f32;
-                                let step = sample_rate as f64 / 48000.0;
-                                for frame in data.chunks(channels) {
-                                    acc += 1.0;
-                                    while acc >= step {
-                                        acc -= step;
-                                        let left = frame[0];
-                                        let right = if channels > 1 { frame[1] } else { frame[0] };
-                                        let max_v = left.abs().max(right.abs());
+                                let is_paused = pause_clone.load(Ordering::Relaxed);
+
+                                while sample_queue.len() >= 8 {
+                                    let b0 = sample_queue.pop_front().unwrap();
+                                    let b1 = sample_queue.pop_front().unwrap();
+                                    let b2 = sample_queue.pop_front().unwrap();
+                                    let b3 = sample_queue.pop_front().unwrap();
+                                    let left_f32 = f32::from_le_bytes([b0, b1, b2, b3]);
+
+                                    let b4 = sample_queue.pop_front().unwrap();
+                                    let b5 = sample_queue.pop_front().unwrap();
+                                    let b6 = sample_queue.pop_front().unwrap();
+                                    let b7 = sample_queue.pop_front().unwrap();
+                                    let right_f32 = f32::from_le_bytes([b4, b5, b6, b7]);
+
+                                    if !is_paused {
+                                        let max_v = left_f32.abs().max(right_f32.abs());
                                         if max_v > local_peak {
                                             local_peak = max_v;
                                         }
-                                        local.push((left.clamp(-1.0, 1.0) * 32767.0) as i16);
-                                        local.push((right.clamp(-1.0, 1.0) * 32767.0) as i16);
+                                        local.push((left_f32.clamp(-1.0, 1.0) * 32767.0) as i16);
+                                        local.push((right_f32.clamp(-1.0, 1.0) * 32767.0) as i16);
                                     }
                                 }
-                                if let Ok(mut pk) = peak_clone.lock() {
-                                    if local_peak > *pk {
-                                        *pk = local_peak;
-                                    }
-                                }
-                                let _ = tx_f32.send(AudioWriteOp::Data(local));
-                            },
-                            err_fn,
-                            None,
-                        ).ok()
-                    }
-                    SampleFormat::I16 => {
-                        let tx_i16 = tx.clone();
-                        out_dev.build_input_stream(
-                            config.into(),
-                            move |data: &[i16], _| {
-                                if pause_clone.load(Ordering::Relaxed) {
-                                    return;
-                                }
-                                let mut local = Vec::new();
-                                let mut local_peak = 0.0f32;
-                                let step = sample_rate as f64 / 48000.0;
-                                for frame in data.chunks(channels) {
-                                    acc += 1.0;
-                                    while acc >= step {
-                                        acc -= step;
-                                        let left = frame[0];
-                                        let right = if channels > 1 { frame[1] } else { frame[0] };
-                                        let max_v = (left as f32).abs().max((right as f32).abs()) / 32768.0;
-                                        if max_v > local_peak {
-                                            local_peak = max_v;
-                                        }
-                                        local.push(left);
-                                        local.push(right);
-                                    }
-                                }
-                                if let Ok(mut pk) = peak_clone.lock() {
-                                    if local_peak > *pk {
-                                        *pk = local_peak;
-                                    }
-                                }
-                                let _ = tx_i16.send(AudioWriteOp::Data(local));
-                            },
-                            err_fn,
-                            None,
-                        ).ok()
-                    }
-                    SampleFormat::I32 => {
-                        let tx_i32 = tx.clone();
-                        out_dev.build_input_stream(
-                            config.into(),
-                            move |data: &[i32], _| {
-                                if pause_clone.load(Ordering::Relaxed) {
-                                    return;
-                                }
-                                let mut local = Vec::new();
-                                let mut local_peak = 0.0f32;
-                                let step = sample_rate as f64 / 48000.0;
-                                for frame in data.chunks(channels) {
-                                    acc += 1.0;
-                                    while acc >= step {
-                                        acc -= step;
-                                        let left = (frame[0] >> 16) as i16;
-                                        let right = if channels > 1 { (frame[1] >> 16) as i16 } else { left };
-                                        let max_v = (left as f32).abs().max((right as f32).abs()) / 32768.0;
-                                        if max_v > local_peak {
-                                            local_peak = max_v;
-                                        }
-                                        local.push(left);
-                                        local.push(right);
-                                    }
-                                }
-                                if let Ok(mut pk) = peak_clone.lock() {
-                                    if local_peak > *pk {
-                                        *pk = local_peak;
-                                    }
-                                }
-                                let _ = tx_i32.send(AudioWriteOp::Data(local));
-                            },
-                            err_fn,
-                            None,
-                        ).ok()
-                    }
-                    other => {
-                        warn!("Unsupported loopback sample format: {:?}", other);
-                        None
-                    }
-                };
 
-                if let Some(st) = stream_res {
-                    let _ = st.play();
-                    self._loopback_stream = Some(st);
-                    info!("🎧 Voice loopback capture started on '{}' ({}ch @ {}Hz).", out_name, channels, sample_rate);
-                }
+                                if !is_paused && !local.is_empty() {
+                                    if let Ok(mut pk) = peak_clone.lock() {
+                                        if local_peak > *pk {
+                                            *pk = local_peak;
+                                        }
+                                    }
+                                    let _ = tx.send(AudioWriteOp::Data(local));
+                                }
+                            }
+                        }
+                    }
+
+                    let _ = audio_client.stop_stream();
+                    debug!("Discord process loopback stream stopped.");
+                });
+
+            if let Ok(h) = handle {
+                self._process_loopback_thread = Some(h);
             }
+        } else {
+            info!("ℹ️ Discord not detected at match start; loopback channel dedicated solely to Discord (no headphone audio recorded).");
         }
 
         Ok(())
@@ -753,94 +768,85 @@ impl AudioCaptureManager {
             }
         }
 
-        // 2. Loopback setup
-        let out_device = if let Ok(devs) = host.output_devices() {
-            let devs_vec: Vec<_> = devs.collect();
-            devs_vec.iter().find(|d| {
-                if let Ok(desc) = d.description() {
-                    let name = desc.name().to_lowercase();
-                    name.contains("chat") || name.contains("discord")
-                } else {
-                    false
-                }
-            }).cloned().or_else(|| host.default_output_device())
-        } else {
-            host.default_output_device()
-        };
-
-        if let Some(out_dev) = out_device {
+        // 2. Loopback setup:
+        // Exclusively hook preview peak meter to Discord process loopback
+        if let Some(discord_pid) = find_discord_root_pid() {
+            let stop_flag = Arc::new(AtomicBool::new(false));
+            self._process_loopback_stop = Some(stop_flag.clone());
             let peak_clone = self.loopback_peak.clone();
-            if let Ok(config) = out_dev.default_output_config() {
-                let channels = config.channels() as usize;
-                let sample_format = config.sample_format();
-                let err_fn = move |_err| {};
 
-                let stream_res: Option<Stream> = match sample_format {
-                    SampleFormat::F32 => {
-                        out_dev.build_input_stream(
-                            config.into(),
-                            move |data: &[f32], _| {
-                                let mut local_peak = 0.0f32;
-                                for frame in data.chunks(channels) {
-                                    let left = frame[0];
-                                    let right = if channels > 1 { frame[1] } else { frame[0] };
-                                    let max_v = left.abs().max(right.abs());
-                                    if max_v > local_peak { local_peak = max_v; }
-                                }
-                                if let Ok(mut pk) = peak_clone.lock() {
-                                    if local_peak > *pk { *pk = local_peak; }
-                                }
-                            },
-                            err_fn,
-                            None,
-                        ).ok()
+            let handle = std::thread::Builder::new()
+                .name("DiscordPreviewLoopback".to_string())
+                .spawn(move || {
+                    let _ = wasapi::initialize_mta();
+                    let desired_format = wasapi::WaveFormat::new(
+                        32,
+                        32,
+                        &wasapi::SampleType::Float,
+                        48000,
+                        2,
+                        None,
+                    );
+                    let mut audio_client = match wasapi::AudioClient::new_application_loopback_client(discord_pid, true) {
+                        Ok(c) => c,
+                        Err(_) => return,
+                    };
+                    let stream_mode = wasapi::StreamMode::EventsShared {
+                        autoconvert: true,
+                        buffer_duration_hns: 0,
+                    };
+                    if audio_client.initialize_client(&desired_format, &wasapi::Direction::Capture, &stream_mode).is_err() {
+                        return;
                     }
-                    SampleFormat::I16 => {
-                        out_dev.build_input_stream(
-                            config.into(),
-                            move |data: &[i16], _| {
-                                let mut local_peak = 0.0f32;
-                                for frame in data.chunks(channels) {
-                                    let left = frame[0];
-                                    let right = if channels > 1 { frame[1] } else { frame[0] };
-                                    let max_v = (left as f32).abs().max((right as f32).abs()) / 32768.0;
-                                    if max_v > local_peak { local_peak = max_v; }
-                                }
-                                if let Ok(mut pk) = peak_clone.lock() {
-                                    if local_peak > *pk { *pk = local_peak; }
-                                }
-                            },
-                            err_fn,
-                            None,
-                        ).ok()
+                    let h_event = match audio_client.set_get_eventhandle() {
+                        Ok(h) => h,
+                        Err(_) => return,
+                    };
+                    let capture_client = match audio_client.get_audiocaptureclient() {
+                        Ok(cc) => cc,
+                        Err(_) => return,
+                    };
+                    if audio_client.start_stream().is_err() {
+                        return;
                     }
-                    SampleFormat::I32 => {
-                        out_dev.build_input_stream(
-                            config.into(),
-                            move |data: &[i32], _| {
-                                let mut local_peak = 0.0f32;
-                                for frame in data.chunks(channels) {
-                                    let left = (frame[0] >> 16) as i16;
-                                    let right = if channels > 1 { (frame[1] >> 16) as i16 } else { left };
-                                    let max_v = (left as f32).abs().max((right as f32).abs()) / 32768.0;
-                                    if max_v > local_peak { local_peak = max_v; }
-                                }
-                                if let Ok(mut pk) = peak_clone.lock() {
-                                    if local_peak > *pk { *pk = local_peak; }
-                                }
-                            },
-                            err_fn,
-                            None,
-                        ).ok()
-                    }
-                    _ => None,
-                };
 
-                if let Some(st) = stream_res {
-                    if st.play().is_ok() {
-                        self._loopback_stream = Some(st);
+                    let mut sample_queue = VecDeque::new();
+                    while !stop_flag.load(Ordering::Relaxed) {
+                        if h_event.wait_for_event(100).is_ok() {
+                            let _ = capture_client.read_from_device_to_deque(&mut sample_queue);
+                            if !sample_queue.is_empty() {
+                                let mut local_peak = 0.0f32;
+                                while sample_queue.len() >= 8 {
+                                    let b0 = sample_queue.pop_front().unwrap();
+                                    let b1 = sample_queue.pop_front().unwrap();
+                                    let b2 = sample_queue.pop_front().unwrap();
+                                    let b3 = sample_queue.pop_front().unwrap();
+                                    let left_f32 = f32::from_le_bytes([b0, b1, b2, b3]);
+
+                                    let b4 = sample_queue.pop_front().unwrap();
+                                    let b5 = sample_queue.pop_front().unwrap();
+                                    let b6 = sample_queue.pop_front().unwrap();
+                                    let b7 = sample_queue.pop_front().unwrap();
+                                    let right_f32 = f32::from_le_bytes([b4, b5, b6, b7]);
+
+                                    let max_v = left_f32.abs().max(right_f32.abs());
+                                    if max_v > local_peak {
+                                        local_peak = max_v;
+                                    }
+                                }
+                                if let Ok(mut pk) = peak_clone.lock() {
+                                    if local_peak > *pk {
+                                        *pk = local_peak;
+                                    }
+                                }
+                            }
+                        }
                     }
-                }
+                    let _ = audio_client.stop_stream();
+                });
+
+            if let Ok(h) = handle {
+                self._process_loopback_thread = Some(h);
             }
         }
 
@@ -849,6 +855,12 @@ impl AudioCaptureManager {
 
     /// Stops audio preview monitoring.
     pub fn stop_preview(&mut self) {
+        if let Some(stop) = self._process_loopback_stop.take() {
+            stop.store(true, Ordering::SeqCst);
+        }
+        if let Some(handle) = self._process_loopback_thread.take() {
+            let _ = handle.join();
+        }
         self._mic_stream = None;
         self._loopback_stream = None;
         if let Ok(mut pk) = self.mic_peak.lock() {
@@ -869,6 +881,14 @@ impl AudioCaptureManager {
         }
         if let Ok(mut pk) = self.loopback_peak.lock() {
             *pk = 0.0;
+        }
+
+        // Stop Discord process loopback thread
+        if let Some(stop) = self._process_loopback_stop.take() {
+            stop.store(true, Ordering::SeqCst);
+        }
+        if let Some(handle) = self._process_loopback_thread.take() {
+            let _ = handle.join();
         }
 
         // Stop and drop active CPAL streams so callbacks cease producing audio
