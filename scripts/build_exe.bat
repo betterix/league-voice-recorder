@@ -23,17 +23,11 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo.
-echo [2/3] Staging distribution directory...
-if not exist "dist\LeagueVoiceRecorder" mkdir "dist\LeagueVoiceRecorder"
-if not exist "dist\LeagueVoiceRecorder\assets" mkdir "dist\LeagueVoiceRecorder\assets"
-copy /y "assets\icon.ico" "dist\LeagueVoiceRecorder\assets\icon.ico" >nul
-
+echo [2/3] Staging standalone release executable...
 if exist "D:\cargo_target\league-voice-recorder\release\league-voice-recorder.exe" (
-    copy /y "D:\cargo_target\league-voice-recorder\release\league-voice-recorder.exe" "dist\LeagueVoiceRecorder\LeagueVoiceRecorder.exe"
-    copy /y "D:\cargo_target\league-voice-recorder\release\league-voice-recorder.exe" "dist\LeagueVoiceRecorder.exe"
+    copy /y "D:\cargo_target\league-voice-recorder\release\league-voice-recorder.exe" "LeagueVoiceRecorder.exe"
 ) else (
-    copy /y "target\release\league-voice-recorder.exe" "dist\LeagueVoiceRecorder\LeagueVoiceRecorder.exe"
-    copy /y "target\release\league-voice-recorder.exe" "dist\LeagueVoiceRecorder.exe"
+    copy /y "target\release\league-voice-recorder.exe" "LeagueVoiceRecorder.exe"
 )
 
 echo.
@@ -44,14 +38,14 @@ if exist "C:\Program Files\NSIS\makensis.exe" set "MAKENSIS=C:\Program Files\NSI
 
 if defined MAKENSIS (
     "%MAKENSIS%" installer.nsi
-    echo [OK] NSIS Installer: dist\LeagueVoiceRecorder_0.6.1_x64-setup.exe
+    echo [OK] NSIS Installer: LeagueVoiceRecorder_0.6.1_x64-setup.exe
 ) else (
     echo [SKIP] makensis.exe not found. Standalone binary is ready.
 )
 
 echo.
 echo [4/4] Build complete!
-echo Binary output:    dist\LeagueVoiceRecorder.exe
-if defined MAKENSIS echo Installer output: dist\LeagueVoiceRecorder_0.6.1_x64-setup.exe
+echo Binary output:    LeagueVoiceRecorder.exe
+if defined MAKENSIS echo Installer output: LeagueVoiceRecorder_0.6.1_x64-setup.exe
 echo.
 pause

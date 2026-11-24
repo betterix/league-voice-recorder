@@ -22,7 +22,7 @@ ManifestDPIAware true
 Name "${APP_NAME}"
 
 ; Output filename matching standard NSIS naming
-OutFile "dist\LeagueVoiceRecorder_${APP_VERSION}_x64-setup.exe"
+OutFile "LeagueVoiceRecorder_${APP_VERSION}_x64-setup.exe"
 InstallDir "$LOCALAPPDATA\Programs\League Voice Recorder"
 InstallDirRegKey HKCU "Software\${APP_ID}" "InstallDir"
 RequestExecutionLevel user
@@ -149,7 +149,7 @@ Section "MainProgram" SecMain
 
     ; Install application binary, WebView2 runtime loader, and documentation
     DetailPrint "Installing League Voice Recorder v${APP_VERSION}..."
-    File "dist\LeagueVoiceRecorder.exe"
+    File "LeagueVoiceRecorder.exe"
     File "assets\WebView2Loader.dll"
     File "LICENSE"
     File "README.md"
