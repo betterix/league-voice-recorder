@@ -1,14 +1,43 @@
+// -------------------------------------------------------------
+// INSTANT UI CACHE (Persistent localStorage for Frame-0 Render)
+// -------------------------------------------------------------
+const LVR_CACHE = {
+  get(key, fallback = null) {
+    try {
+      const val = localStorage.getItem("lvr_" + key);
+      return val ? JSON.parse(val) : fallback;
+    } catch (e) {
+      return fallback;
+    }
+  },
+  set(key, val) {
+    try {
+      localStorage.setItem("lvr_" + key, JSON.stringify(val));
+    } catch (e) {}
+  }
+};
+
 let isRecording = false;
 let isReplaySync = false;
-let currentConfig = null;
-let currentLanguage = "en";
-let currentTheme = "dark";
+let currentConfig = LVR_CACHE.get("config", null);
+let currentLanguage = LVR_CACHE.get("lang", "en");
+let currentTheme = LVR_CACHE.get("theme", "dark");
 let isMuted = false;
 let previousVolume = 80;
 let smoothApp = 0.0;
 let smoothMic = 0.0;
 let autoscroll = true;
 let saveDebounceTimer = null;
+let currentAppVersion = LVR_CACHE.get("app_version", "0.6.1");
+
+// Immediate Frame-0 Theme Application
+try {
+  let initialEffective = currentTheme;
+  if (initialEffective === "system") {
+    initialEffective = (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+  }
+  document.documentElement.setAttribute("data-theme", initialEffective);
+} catch (e) {}
 
 // Global bridge functions callable via win.eval from Rust
 window.onVolumeChanged = function(vol) {
@@ -23,10 +52,6 @@ window.onVolumeChanged = function(vol) {
   if (qDisp) qDisp.innerText = `${v}%`;
   if (muteBtn) muteBtn.innerText = v === 0 ? "🔇" : "🔊";
   isMuted = (v === 0);
-};
-
-window.onOffsetChanged = function(offset) {
-  updateReplayOffsetDisplay(offset);
 };
 
 window.onReplayStopped = function() {
@@ -46,9 +71,9 @@ window.onReplayStopped = function() {
   if (typeof updateAudioPolling === "function") updateAudioPolling();
 };
 
-// Multi-lingual translation dictionaries & state
-let currentTranslations = {};
-let fallbackTranslations = {
+// Multi-lingual translation dictionaries & state with instant cache rehydration
+let currentTranslations = LVR_CACHE.get("trans_" + currentLanguage, {});
+let fallbackTranslations = LVR_CACHE.get("trans_en", {
   health: {
     discord: "Discord:",
     league: "League Client:",
@@ -69,9 +94,16 @@ let fallbackTranslations = {
   settings: {
     replay_api_status_enabled: "● Enabled",
     replay_api_status_disabled: "● Disabled",
+  },
+  recordings: {
+    delete_local: "🗑 Delete Local",
+    delete_local_confirm_msg: "Are you sure you want to delete {filename} from your local disk?",
+    delete_remote: "☁ Delete from Server",
+    delete_remote_confirm_msg: "Are you sure you want to permanently delete {filename} from the remote server?",
+    delete_confirm_msg: "Are you sure you want to permanently delete {filename} from the remote server?",
   }
-};
-let availableLanguages = {};
+});
+let availableLanguages = LVR_CACHE.get("langs", { en: "English", hu: "Magyar (Hungarian)" });
 
 const I18N_ALIASES = {
   app_title: "app.title",
@@ -84,7 +116,7 @@ const I18N_ALIASES = {
   tab_recordings: "tabs.recordings",
   tab_settings: "tabs.settings",
   recordings_empty: "recordings.empty",
-  delete_confirm: "recordings.delete_confirm_msg",
+  delete_confirm: "recordings.delete_local_confirm_msg",
 };
 
 function getNestedValue(obj, path) {
@@ -210,6 +242,12 @@ async function updateTelemetryPanel() {
     if (dbgBaseTime) dbgBaseTime.innerText = telem.base_time;
     if (dbgGameId) dbgGameId.innerText = telem.game_id;
     if (dbgGamePatch) dbgGamePatch.innerText = telem.game_patch;
+    if (telem.game_patch && telem.game_patch !== "—" && telem.game_patch !== "Detecting...") {
+      if (currentClientPatch !== telem.game_patch) {
+        currentClientPatch = telem.game_patch;
+        loadRecordings();
+      }
+    }
 
     // 2. Replay Sync Engine Card
     const dbgReplayFile = document.getElementById("dbg-replay-file");
@@ -445,10 +483,6 @@ async function pollStatus() {
       }
     }
 
-    if (typeof st.replay_sync_offset === "number") {
-      updateReplayOffsetDisplay(st.replay_sync_offset);
-    }
-
     // 4. Match Clock
     const clockEl = document.getElementById("match-clock");
     if (st.match_clock) {
@@ -510,38 +544,6 @@ window.addEventListener("keydown", (e) => {
 });
 
 // -------------------------------------------------------------
-// REPLAY SYNC OFFSET MANAGEMENT
-// -------------------------------------------------------------
-let currentReplayOffset = 0.0;
-
-function updateReplayOffsetDisplay(offset) {
-  currentReplayOffset = typeof offset === "number" ? offset : 0.0;
-  const disp = document.getElementById("replay-offset-val");
-  if (disp) {
-    const sign = currentReplayOffset > 0 ? "+" : "";
-    disp.innerText = `${sign}${currentReplayOffset.toFixed(1)}s`;
-    disp.className = currentReplayOffset !== 0 ? "offset-display active" : "offset-display";
-  }
-  const cfgInput = document.getElementById("cfg-replay-offset");
-  if (cfgInput && document.activeElement !== cfgInput) {
-    cfgInput.value = currentReplayOffset;
-  }
-}
-
-async function adjustReplayOffset(delta, reset = false) {
-  let target = reset ? 0.0 : (currentReplayOffset + delta);
-  target = Math.round(target * 10) / 10;
-  target = Math.max(-30.0, Math.min(30.0, target));
-  updateReplayOffsetDisplay(target);
-  await invokeTauri("set_replay_offset", { offset: target });
-}
-
-function onConfigOffsetChange(val) {
-  const target = parseFloat(val) || 0.0;
-  adjustReplayOffset(target - currentReplayOffset);
-}
-
-// -------------------------------------------------------------
 // SETTINGS AUTO-SAVE (Matching Python _on_settings_entry_debounced)
 // -------------------------------------------------------------
 let isApiKeyDirty = false;
@@ -582,7 +584,6 @@ async function performSaveSettings() {
     record_folder: folderInput ? folderInput.value.trim() : (currentConfig ? currentConfig.record_folder : ""),
     vlc_dir: "",
     replay_volume: volInput ? parseInt(volInput.value, 10) || 80 : (currentConfig ? currentConfig.replay_volume : 80),
-    replay_sync_offset: offsetInput ? parseFloat(offsetInput.value) || 0.0 : (currentConfig ? currentConfig.replay_sync_offset : 0.0),
     language: langSelect ? langSelect.value : (currentConfig ? currentConfig.language : "en"),
     theme: themeSelect ? themeSelect.value : (currentConfig ? currentConfig.theme : "dark"),
     mic_device_name: micSelect ? micSelect.value : (currentConfig ? currentConfig.mic_device_name : "default"),
@@ -607,6 +608,7 @@ async function performSaveSettings() {
   };
 
   currentConfig = newConfig;
+  LVR_CACHE.set("config", newConfig);
   await invokeTauri("save_config", { config: newConfig });
   if (effectiveKey !== "") {
     isApiKeyDirty = false;
@@ -633,6 +635,20 @@ let currentRecordings = [];
 let remoteRecordings = [];
 let cloudRole = "unknown";
 let isSyncingRemote = false;
+let currentClientPatch = "";
+
+function normalizePatch(p) {
+  if (!p) return "";
+  let clean = String(p).trim().toLowerCase();
+  if (clean.startsWith("patch ")) {
+    clean = clean.substring(6).trim();
+  }
+  const parts = clean.split(".");
+  if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+    return `${parts[0]}.${parts[1]}`;
+  }
+  return clean;
+}
 
 function canUploadToCloud() {
   if (cloudRole === "pull") return false;
@@ -755,8 +771,21 @@ async function deleteRemoteRecording(gameId, btn) {
     appendLog("⚠️ Only Admin role can delete recordings from the remote server.");
     return;
   }
-  const promptMsg = t("recordings.delete_confirm_msg", { game_id: gameId }) ||
-    `Are you sure you want to permanently delete recording ${gameId}.mp3 from the remote server?`;
+  const cleanId = String(gameId || "").replace(/\.mp3$/i, "").trim();
+  const fileName = `${cleanId}.mp3`;
+  const promptParams = {
+    game_id: cleanId,
+    game_name: cleanId,
+    filename: fileName,
+    file: fileName,
+  };
+  let promptMsg = t("recordings.delete_remote_confirm_msg", promptParams);
+  if (!promptMsg || promptMsg === "recordings.delete_remote_confirm_msg") {
+    promptMsg = t("recordings.delete_confirm_msg", promptParams);
+  }
+  if (!promptMsg || promptMsg.includes("{game_name}") || promptMsg.includes("{game_id}")) {
+    promptMsg = `Are you sure you want to permanently delete recording ${fileName} from the remote server?`;
+  }
   if (!confirm(promptMsg)) {
     return;
   }
@@ -765,12 +794,12 @@ async function deleteRemoteRecording(gameId, btn) {
     btn.disabled = true;
   }
   try {
-    await invokeTauri("cloud_delete_recording", { gameId });
-    appendLog(`✓ Deleted ${gameId}.mp3 from remote server.`);
-    remoteRecordings = remoteRecordings.filter(it => String(it.game_id).trim() !== String(gameId).trim());
+    await invokeTauri("cloud_delete_recording", { gameId: cleanId });
+    appendLog(`✓ Deleted ${fileName} from remote server.`);
+    remoteRecordings = remoteRecordings.filter(it => String(it.game_id).trim() !== cleanId);
     await loadRecordings();
   } catch (err) {
-    appendLog(`⚠️ Failed to delete ${gameId}.mp3 from remote server: ${err}`);
+    appendLog(`⚠️ Failed to delete ${fileName} from remote server: ${err}`);
     if (btn) {
       btn.innerText = t("recordings.delete_remote");
       btn.disabled = false;
@@ -783,6 +812,16 @@ async function loadRecordings() {
   const countLabel = document.getElementById("recordings-count-text");
   const downloadAllBtn = document.getElementById("btn-download-all");
   if (!container) return;
+
+  if (!currentClientPatch) {
+    try {
+      const p = await invokeTauri("get_current_patch");
+      if (p && p !== "—" && p !== "Detecting...") {
+        currentClientPatch = p;
+      }
+    } catch (_) {}
+  }
+  const normCurrent = normalizePatch(currentClientPatch);
 
   const recordings = await invokeTauri("get_recordings");
   currentRecordings = recordings || [];
@@ -835,20 +874,29 @@ async function loadRecordings() {
     const dateRaw = String(item.created_at || item.upload_timestamp || "");
     const dateStr = dateRaw.length >= 10 ? dateRaw.substring(0, 10) : "Recent";
     const remotePatch = item.patch || item.game_patch || "";
+    const normRemote = normalizePatch(remotePatch);
+    const isOutdated = Boolean(normCurrent && normRemote && normRemote !== normCurrent);
     const dateDisplay = remotePatch ? `${dateStr}  |  Patch: ${remotePatch}` : dateStr;
     const team = item.team_tag;
 
     const row = document.createElement("div");
-    row.className = "recording-row remote-missing";
+    row.className = `recording-row remote-missing${isOutdated ? " outdated-patch" : ""}`;
 
     const badgeTeam = team ? ` • vs ${escapeHtml(team)}` : "";
-    const badgeText = `[${t("recordings.status_remote")}]${badgeTeam}`;
+    let badgesHtml = `<span class="recording-badge-remote">[${t("recordings.status_remote")}]${badgeTeam}</span>`;
+    if (remotePatch) {
+      if (isOutdated) {
+        badgesHtml += `<span class="badge-patch-outdated" title="Recorded on Patch ${escapeHtml(remotePatch)} (Current client patch: ${escapeHtml(currentClientPatch)})">${t("recordings.patch_outdated", { patch: escapeHtml(remotePatch) })}</span>`;
+      } else {
+        badgesHtml += `<span class="badge-patch-current">${t("recordings.patch_current", { patch: escapeHtml(remotePatch) })}</span>`;
+      }
+    }
 
     row.innerHTML = `
       <div class="recording-info">
         <div class="recording-title-row">
           <span class="recording-name remote">☁️ ${escapeHtml(gameId)}.mp3</span>
-          <span class="recording-badge-remote">${badgeText}</span>
+          ${badgesHtml}
         </div>
         <span class="recording-meta">${t("recordings.remote_meta", { size: sizeMb, date: dateDisplay })}</span>
       </div>
@@ -865,8 +913,11 @@ async function loadRecordings() {
     const gameId = String(rec.game_id || rec.filename.replace(/\.mp3$/i, "")).trim();
     const isOnServer = remoteGameIds.has(gameId);
 
+    const normRec = normalizePatch(rec.game_patch);
+    const isOutdated = Boolean(normCurrent && normRec && normRec !== normCurrent);
+
     const row = document.createElement("div");
-    row.className = "recording-row";
+    row.className = `recording-row${isOutdated ? " outdated-patch" : ""}`;
 
     const savedTeam = rec.team_tag ? ` • vs ${escapeHtml(rec.team_tag)}` : "";
     const patchDisplay = rec.game_patch ? `  |  Patch: ${escapeHtml(rec.game_patch)}` : "";
@@ -891,6 +942,13 @@ async function loadRecordings() {
     if (savedTeam) {
       badgesHtml += `<span class="recording-badge-local" style="margin-left: 6px;">${savedTeam}</span>`;
     }
+    if (rec.game_patch) {
+      if (isOutdated) {
+        badgesHtml += `<span class="badge-patch-outdated" title="Recorded on Patch ${escapeHtml(rec.game_patch)} (Current client patch: ${escapeHtml(currentClientPatch)})">${t("recordings.patch_outdated", { patch: escapeHtml(rec.game_patch) })}</span>`;
+      } else {
+        badgesHtml += `<span class="badge-patch-current">${t("recordings.patch_current", { patch: escapeHtml(rec.game_patch) })}</span>`;
+      }
+    }
 
     const nameClickAttr = canOrganize
       ? `onclick="openEditDetailsModal('${fnEscaped}')" style="cursor: pointer;" title="Click to edit details"`
@@ -909,7 +967,7 @@ async function loadRecordings() {
         ${(!isOnServer && canOrganize) ? `<button class="btn-small btn-upload" onclick="uploadSingleRecording('${gidEscaped}', this)">${t("recordings.upload")}</button>` : ""}
         <button class="btn-small" onclick="playRecording('${fnEscaped}')">${t("recordings.play")}</button>
         ${(isAdmin && isOnServer) ? `<button class="btn-small btn-delete-remote" onclick="deleteRemoteRecording('${gidEscaped}', this)">${t("recordings.delete_remote")}</button>` : ""}
-        <button class="btn-small" style="color: #F87171;" onclick="deleteRecording('${fnEscaped}')">🗑</button>
+        <button class="btn-small btn-delete-local" onclick="deleteRecording('${fnEscaped}')">${t("recordings.delete_local")}</button>
       </div>
     `;
     fragment.appendChild(row);
@@ -1000,8 +1058,23 @@ async function playRecording(filename) {
 }
 
 async function deleteRecording(filename) {
-  if (confirm(t("delete_confirm", { file: filename }))) {
-    await invokeTauri("delete_recording", { filename });
+  const cleanFn = String(filename || "").trim();
+  const cleanId = cleanFn.replace(/\.mp3$/i, "");
+  const promptParams = {
+    filename: cleanFn,
+    file: cleanFn,
+    game_id: cleanId,
+    game_name: cleanId,
+  };
+  let promptMsg = t("recordings.delete_local_confirm_msg", promptParams);
+  if (!promptMsg || promptMsg === "recordings.delete_local_confirm_msg") {
+    promptMsg = t("delete_confirm", promptParams);
+  }
+  if (!promptMsg || promptMsg.includes("{game_name}") || promptMsg.includes("{game_id}")) {
+    promptMsg = `Are you sure you want to delete ${cleanFn} from your local disk?`;
+  }
+  if (confirm(promptMsg)) {
+    await invokeTauri("delete_recording", { filename: cleanFn });
     loadRecordings();
   }
 }
@@ -1083,6 +1156,7 @@ function applyTheme(theme) {
 
 function onThemeChanged(theme) {
   currentTheme = theme;
+  LVR_CACHE.set("theme", theme);
   applyTheme(theme);
   const cfgTheme = document.getElementById("cfg-theme");
   if (cfgTheme && cfgTheme.value !== theme) {
@@ -1124,6 +1198,7 @@ async function loadAvailableLanguages() {
   }
 
   availableLanguages = langs;
+  LVR_CACHE.set("langs", langs);
   select.innerHTML = "";
   for (const [code, name] of Object.entries(langs)) {
     const opt = document.createElement("option");
@@ -1136,6 +1211,7 @@ async function loadAvailableLanguages() {
   if (select.selectedIndex === -1) {
     select.selectedIndex = 0;
     currentLanguage = select.value;
+    LVR_CACHE.set("lang", currentLanguage);
   }
 }
 
@@ -1144,6 +1220,7 @@ async function loadTranslations(lang) {
     const data = await invokeTauri("get_translations", { lang });
     if (data && typeof data === "object") {
       currentTranslations = data;
+      LVR_CACHE.set("trans_" + lang, data);
     }
   } catch (err) {
     console.error(`Failed to load translations for ${lang}:`, err);
@@ -1154,6 +1231,7 @@ async function loadTranslations(lang) {
       const enData = await invokeTauri("get_translations", { lang: "en" });
       if (enData && typeof enData === "object") {
         fallbackTranslations = enData;
+        LVR_CACHE.set("trans_en", enData);
       }
     } catch (e) {}
   } else if (lang === "en") {
@@ -1163,6 +1241,7 @@ async function loadTranslations(lang) {
 
 async function changeLanguage(lang) {
   currentLanguage = lang;
+  LVR_CACHE.set("lang", lang);
   const cfgLang = document.getElementById("cfg-lang");
   if (cfgLang && cfgLang.value !== lang) {
     cfgLang.value = lang;
@@ -1174,8 +1253,6 @@ async function changeLanguage(lang) {
   appendLog(`🌐 Interface language switched to: ${displayName}`);
   autoSaveSettings();
 }
-
-let currentAppVersion = "0.6.0";
 
 function applyTranslations() {
   // Update dynamic window title matching Python: self.title(f"{t('app.window_title')} v{__version__}")
@@ -1643,86 +1720,121 @@ async function resetHudPosition() {
   appendLog("HUD Position reset to top-right screen corner.");
 }
 
-// Initial startup - Instant & Non-blocking parallel initialization
-window.addEventListener("DOMContentLoaded", async () => {
-  // 1. Immediately apply dark theme
-  applyTheme("dark");
+function populateConfigToDom(cfg) {
+  if (!cfg) return;
+  if (document.getElementById("cfg-folder")) document.getElementById("cfg-folder").value = cfg.record_folder || "";
+  if (document.getElementById("cfg-volume")) document.getElementById("cfg-volume").value = cfg.replay_volume || 80;
+  if (document.getElementById("quick-vol")) document.getElementById("quick-vol").value = cfg.replay_volume || 80;
+  if (document.getElementById("quick-vol-display")) document.getElementById("quick-vol-display").innerText = `${cfg.replay_volume || 80}%`;
+  const cfgLang = document.getElementById("cfg-lang");
+  if (cfgLang) {
+    cfgLang.value = currentLanguage;
+    if (cfgLang.selectedIndex === -1) cfgLang.selectedIndex = 0;
+  }
+  const cfgTheme = document.getElementById("cfg-theme");
+  if (cfgTheme) {
+    cfgTheme.value = currentTheme;
+    if (cfgTheme.selectedIndex === -1) cfgTheme.selectedIndex = 0;
+  }
+  if (document.getElementById("cfg-auto-champ")) document.getElementById("cfg-auto-champ").checked = Boolean(cfg.auto_start_champ_select);
+  if (document.getElementById("cfg-auto-replay")) document.getElementById("cfg-auto-replay").checked = Boolean(cfg.auto_start_replay);
+  if (document.getElementById("cfg-minimize-tray")) document.getElementById("cfg-minimize-tray").checked = Boolean(cfg.minimize_to_tray);
+  if (document.getElementById("cfg-hud-enabled")) document.getElementById("cfg-hud-enabled").checked = Boolean(cfg.hud_overlay_enabled);
+  if (document.getElementById("cfg-hud-locked")) document.getElementById("cfg-hud-locked").checked = Boolean(cfg.hud_locked);
 
-  // 2. Fetch config and available languages concurrently
-  try {
-    const [cfg] = await Promise.all([
-      invokeTauri("get_config"),
-      loadAvailableLanguages(),
-    ]);
+  const savedOpacity = typeof cfg.hud_opacity === "number" ? cfg.hud_opacity : 0.85;
+  const opacityPct = Math.round(savedOpacity * 100);
+  const opacitySlider = document.getElementById("cfg-hud-opacity");
+  const opacityDisp = document.getElementById("hud-opacity-display");
+  const opacityLbl = document.getElementById("lbl-hud-opacity");
+  if (opacitySlider) opacitySlider.value = opacityPct;
+  if (opacityDisp) opacityDisp.innerText = `${opacityPct}%`;
+  if (opacityLbl) opacityLbl.innerText = `HUD Opacity (${opacityPct}%):`;
 
-    if (cfg) {
-      currentConfig = cfg;
-      currentLanguage = cfg.language || "en";
-      currentTheme = cfg.theme || "dark";
-      applyTheme(currentTheme);
-
-      if (document.getElementById("cfg-folder")) document.getElementById("cfg-folder").value = currentConfig.record_folder || "";
-      if (document.getElementById("cfg-volume")) document.getElementById("cfg-volume").value = currentConfig.replay_volume || 80;
-      if (document.getElementById("quick-vol")) document.getElementById("quick-vol").value = currentConfig.replay_volume || 80;
-      if (document.getElementById("quick-vol-display")) document.getElementById("quick-vol-display").innerText = `${currentConfig.replay_volume || 80}%`;
-      const cfgLang = document.getElementById("cfg-lang");
-      if (cfgLang) {
-        cfgLang.value = currentLanguage;
-        if (cfgLang.selectedIndex === -1) cfgLang.selectedIndex = 0;
-      }
-      const cfgTheme = document.getElementById("cfg-theme");
-      if (cfgTheme) {
-        cfgTheme.value = currentTheme;
-        if (cfgTheme.selectedIndex === -1) cfgTheme.selectedIndex = 0;
-      }
-      if (document.getElementById("cfg-auto-champ")) document.getElementById("cfg-auto-champ").checked = currentConfig.auto_start_champ_select;
-      if (document.getElementById("cfg-auto-replay")) document.getElementById("cfg-auto-replay").checked = currentConfig.auto_start_replay;
-      if (document.getElementById("cfg-minimize-tray")) document.getElementById("cfg-minimize-tray").checked = currentConfig.minimize_to_tray;
-      if (document.getElementById("cfg-hud-enabled")) document.getElementById("cfg-hud-enabled").checked = currentConfig.hud_overlay_enabled;
-      if (document.getElementById("cfg-hud-locked")) document.getElementById("cfg-hud-locked").checked = currentConfig.hud_locked;
-
-      const savedOpacity = typeof currentConfig.hud_opacity === "number" ? currentConfig.hud_opacity : 0.85;
-      const opacityPct = Math.round(savedOpacity * 100);
-      const opacitySlider = document.getElementById("cfg-hud-opacity");
-      const opacityDisp = document.getElementById("hud-opacity-display");
-      const opacityLbl = document.getElementById("lbl-hud-opacity");
-      if (opacitySlider) opacitySlider.value = opacityPct;
-      if (opacityDisp) opacityDisp.innerText = `${opacityPct}%`;
-      if (opacityLbl) opacityLbl.innerText = `HUD Opacity (${opacityPct}%):`;
-
-      if (document.getElementById("cfg-cloud-url")) document.getElementById("cfg-cloud-url").value = currentConfig.remote_server_url || "";
-      const cloudKeyEl = document.getElementById("cfg-cloud-key");
-      if (cloudKeyEl) {
-        if (currentConfig.remote_api_key) {
-          cloudKeyEl.value = currentConfig.remote_api_key;
-        } else if (currentConfig.remote_api_key_encrypted) {
-          cloudKeyEl.value = "";
-          cloudKeyEl.placeholder = "•••••••••••••••• (Encrypted key saved)";
-        } else {
-          cloudKeyEl.value = "";
-          cloudKeyEl.placeholder = "Paste your UPLOAD_KEY or PULL_KEY";
-        }
-      }
-      if (document.getElementById("cfg-replay-offset")) document.getElementById("cfg-replay-offset").value = currentConfig.replay_sync_offset || 0.0;
-      updateReplayOffsetDisplay(currentConfig.replay_sync_offset || 0.0);
+  if (document.getElementById("cfg-cloud-url")) document.getElementById("cfg-cloud-url").value = cfg.remote_server_url || "";
+  const cloudKeyEl = document.getElementById("cfg-cloud-key");
+  if (cloudKeyEl) {
+    if (cfg.remote_api_key) {
+      cloudKeyEl.value = cfg.remote_api_key;
+    } else if (cfg.remote_api_key_encrypted) {
+      cloudKeyEl.value = "";
+      cloudKeyEl.placeholder = "•••••••••••••••• (Encrypted key saved)";
+    } else {
+      cloudKeyEl.value = "";
+      cloudKeyEl.placeholder = "Paste your UPLOAD_KEY or PULL_KEY";
     }
+  }
+}
 
-    // Fetch dynamic app version from backend
+// Initial startup - Instant Frame-0 Render & Stale-While-Revalidate Background Sync
+window.addEventListener("DOMContentLoaded", () => {
+  // 1. Frame-0 instant visual setup from persistent local storage cache
+  applyTheme(currentTheme);
+  if (currentConfig) {
+    populateConfigToDom(currentConfig);
+  }
+  applyTranslations();
+
+  appendLog("🎮 League Voice Recorder initialized. Zero-latency WASAPI loopback active.");
+
+  // 2. Post-paint window reveal and deferred services
+  requestAnimationFrame(() => {
+    invokeTauri("show_main_window");
+    setTimeout(() => {
+      refreshHealth();
+      loadAudioDevices();
+      loadRecordings();
+      setStatusPollingRate(10000);
+      (async () => {
+        try {
+          const role = await invokeTauri("cloud_get_role");
+          if (role && role !== "unknown") cloudRole = role;
+        } catch (e) {}
+      })();
+    }, 300);
+
+    setTimeout(() => checkForUpdates(true), 3000);
+
+    setInterval(pollLogs, 500);
+    updateAudioPolling();
+  });
+
+  // 3. Asynchronous background revalidation (Stale-While-Revalidate)
+  (async () => {
     try {
-      const ver = await invokeTauri("get_app_version");
-      if (ver) {
-        currentAppVersion = ver;
-        const dbgVer = document.getElementById("dbg-app-version");
-        if (dbgVer) dbgVer.innerText = `v${ver}`;
-        const settingsVer = document.getElementById("settings-app-version");
-        if (settingsVer) settingsVer.innerText = `v${ver}`;
-      }
-    } catch (e) {}
+      const [cfg, _] = await Promise.all([
+        invokeTauri("get_config"),
+        loadAvailableLanguages(),
+      ]);
 
-    // Await translations load BEFORE anything renders text to prevent any code names!
-    await loadTranslations(currentLanguage);
-    applyTranslations();
-  } catch (e) {}
+      if (cfg) {
+        currentConfig = cfg;
+        currentLanguage = cfg.language || "en";
+        currentTheme = cfg.theme || "dark";
+        LVR_CACHE.set("config", cfg);
+        LVR_CACHE.set("lang", currentLanguage);
+        LVR_CACHE.set("theme", currentTheme);
+        applyTheme(currentTheme);
+        populateConfigToDom(currentConfig);
+      }
+
+      // Fetch dynamic app version from backend
+      try {
+        const ver = await invokeTauri("get_app_version");
+        if (ver) {
+          currentAppVersion = ver;
+          LVR_CACHE.set("app_version", ver);
+          const dbgVer = document.getElementById("dbg-app-version");
+          if (dbgVer) dbgVer.innerText = `v${ver}`;
+          const settingsVer = document.getElementById("settings-app-version");
+          if (settingsVer) settingsVer.innerText = `v${ver}`;
+        }
+      } catch (e) {}
+
+      await loadTranslations(currentLanguage);
+      applyTranslations();
+    } catch (e) {}
+  })();
 
   // 2b. Listen for reactive events from Tauri backend (overlay volume changes, hotkeys, update progress)
   if (window.__TAURI__ && window.__TAURI__.event) {
@@ -1794,11 +1906,6 @@ window.addEventListener("DOMContentLoaded", async () => {
       isMuted = (vol === 0);
     });
 
-    window.__TAURI__.event.listen("offset-updated", (event) => {
-      const offset = event.payload;
-      updateReplayOffsetDisplay(offset);
-    });
-
     window.__TAURI__.event.listen("replay-stopped", () => {
       isReplaySync = false;
       const repBtn = document.getElementById("btn-rep");
@@ -1816,36 +1923,4 @@ window.addEventListener("DOMContentLoaded", async () => {
       updateAudioPolling();
     });
   }
-
-  // Reveal main window once clean translated UI is ready
-  requestAnimationFrame(() => {
-    invokeTauri("show_main_window");
-  });
-
-  appendLog("🎮 League Voice Recorder initialized. Zero-latency WASAPI loopback active.");
-
-  // 3. Deferred background loaders: start status bar and health a little bit later (350ms) to ensure clean translations
-  setTimeout(() => {
-    loadAudioDevices();
-    loadRecordings();
-    refreshHealth();
-    setStatusPollingRate(10000);
-  }, 350);
-
-  // 4. Cloud role discovery (no auto remote sync - only syncs when user clicks the Sync button)
-  setTimeout(async () => {
-    try {
-      const role = await invokeTauri("cloud_get_role");
-      if (role && role !== "unknown") cloudRole = role;
-    } catch (e) {}
-  }, 500);
-
-  // 4b. Automatic update announcement (matching Python CustomTkinter 3-second background check)
-  setTimeout(() => {
-    checkForUpdates(true);
-  }, 3000);
-
-  // 5. Start log and audio polling loops
-  setInterval(pollLogs, 500);
-  updateAudioPolling();
 });

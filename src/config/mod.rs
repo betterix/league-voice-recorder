@@ -22,8 +22,6 @@ pub struct AppConfig {
     pub vlc_dir: PathBuf,
     #[serde(default = "default_replay_volume")]
     pub replay_volume: u32,
-    #[serde(default = "default_replay_offset")]
-    pub replay_sync_offset: f64,
     #[serde(default = "default_language")]
     pub language: String,
     #[serde(default = "default_theme")]
@@ -72,7 +70,6 @@ fn default_record_folder() -> PathBuf {
 }
 fn default_vlc_dir() -> PathBuf { PathBuf::from(r"C:\Program Files\VideoLAN\VLC") }
 fn default_replay_volume() -> u32 { 100 }
-fn default_replay_offset() -> f64 { 0.0 }
 fn default_language() -> String { "en".to_string() }
 fn default_theme() -> String { "dark".to_string() }
 fn default_true() -> bool { true }
@@ -91,7 +88,6 @@ impl Default for AppConfig {
             record_folder: default_record_folder(),
             vlc_dir: default_vlc_dir(),
             replay_volume: default_replay_volume(),
-            replay_sync_offset: default_replay_offset(),
             language: default_language(),
             theme: default_theme(),
             auto_start_champ_select: true,

@@ -135,6 +135,18 @@
   color: #0F172A;
 }
 
+[data-theme="light"] .btn-delete-local {
+  background: #FEE2E2 !important;
+  border: 1px solid #FCA5A5 !important;
+  color: #B91C1C !important;
+}
+
+[data-theme="light"] .btn-delete-local:hover {
+  background: #FECACA !important;
+  border-color: #EF4444 !important;
+  color: #991B1B !important;
+}
+
 [data-theme="light"] .btn-small:hover,
 [data-theme="light"] .btn-theme:hover,
 [data-theme="light"] .btn-refresh-health:hover {
@@ -613,38 +625,11 @@ body {
 }
 
 .vol-box {
-  flex: 1.2;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.offset-box {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 5px;
-  white-space: nowrap;
-}
-
-.offset-display {
-  font-size: 11px;
-  font-weight: 700;
-  min-width: 36px;
-  text-align: center;
-  color: var(--gold-light);
-  background: rgba(200, 155, 60, 0.1);
-  padding: 1px 4px;
-  border-radius: 4px;
-  border: 1px solid rgba(200, 155, 60, 0.25);
-}
-
-.offset-display.active {
-  color: #38BDF8;
-  border-color: rgba(56, 189, 248, 0.4);
-  background: rgba(56, 189, 248, 0.12);
+  gap: 8px;
 }
 
 .btn-micro {
@@ -1321,6 +1306,19 @@ body {
   background: #0369A1 !important;
 }
 
+.btn-delete-local {
+  background: rgba(239, 68, 68, 0.12) !important;
+  border: 1px solid rgba(239, 68, 68, 0.35) !important;
+  color: #FCA5A5 !important;
+  font-weight: 600;
+}
+
+.btn-delete-local:hover {
+  background: rgba(239, 68, 68, 0.25) !important;
+  border-color: #EF4444 !important;
+  color: #FFF !important;
+}
+
 .btn-delete-remote {
   background: #DC2626 !important;
   border: 1px solid #EF4444 !important;
@@ -1330,6 +1328,7 @@ body {
 
 .btn-delete-remote:hover {
   background: #B91C1C !important;
+  border-color: #F87171 !important;
 }
 
 .btn-save-and-upload {
@@ -1341,6 +1340,74 @@ body {
 
 .btn-save-and-upload:hover {
   background: #0369A1 !important;
+}
+
+/* Outdated Patch Alert Styling */
+.recording-row.outdated-patch {
+  border: 1px solid #EF4444 !important;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.22), inset 0 0 8px rgba(239, 68, 68, 0.06);
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.12) 0%, rgba(15, 26, 54, 0.7) 100%) !important;
+}
+
+.recording-row.outdated-patch:hover {
+  border-color: #F87171 !important;
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.35), inset 0 0 10px rgba(239, 68, 68, 0.1);
+}
+
+[data-theme="light"] .recording-row.outdated-patch {
+  border: 1px solid #EF4444 !important;
+  background: linear-gradient(90deg, #FEE2E2 0%, #FFFFFF 100%) !important;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.15);
+}
+
+.badge-patch-outdated {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid #EF4444;
+  color: #FCA5A5;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 4px;
+  margin-left: 6px;
+  animation: pulse-outdated-border 2.5s infinite ease-in-out;
+}
+
+@keyframes pulse-outdated-border {
+  0%, 100% {
+    box-shadow: 0 0 4px rgba(239, 68, 68, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.65);
+  }
+}
+
+[data-theme="light"] .badge-patch-outdated {
+  background: #FEE2E2;
+  border: 1px solid #DC2626;
+  color: #B91C1C;
+}
+
+.badge-patch-current {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #6EE7B7;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+}
+
+[data-theme="light"] .badge-patch-current {
+  background: #ECFDF5;
+  border: 1px solid #10B981;
+  color: #047857;
 }
 
 /* Edit Details Modal Backdrop & Card */

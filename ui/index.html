@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>League Voice Recorder & Replay Synchronizer v0.6.0</title>
+  <title>League Voice Recorder & Replay Synchronizer v0.6.1</title>
   <style>
     html, body {
       background-color: #0B1120 !important;
@@ -120,13 +120,6 @@
               <span id="quick-vol-display" class="vol-display">80%</span>
               <button class="btn-small" id="btn-quick-mute" onclick="toggleMute()" data-i18n-title="replay.hotkey_hint" title="Toggle Mute (Hotkey M)">🔊</button>
             </div>
-            <div class="selector-box offset-box">
-              <span class="selector-label" title="Audio timing sync offset relative to replay clock">⏱ Sync Offset:</span>
-              <button class="btn-micro" onclick="adjustReplayOffset(-1.0)" title="Shift voice 1.0s earlier (-1s)">-1s</button>
-              <span id="replay-offset-val" class="offset-display">+0.0s</span>
-              <button class="btn-micro" onclick="adjustReplayOffset(1.0)" title="Shift voice 1.0s later (+1s)">+1s</button>
-              <button class="btn-micro btn-reset-offset" onclick="adjustReplayOffset(0.0, true)" title="Reset offset to 0.0s">Reset</button>
-            </div>
           </div>
           <!-- 1-Click Replay API Auto-Configuration matching Python replay_api_row -->
           <div class="meter-box api-box">
@@ -231,7 +224,7 @@
               </div>
               <div class="debug-row">
                 <span class="k">App Version:</span>
-                <span class="v highlight-ver" id="dbg-app-version">v0.6.0</span>
+                <span class="v highlight-ver" id="dbg-app-version">v0.6.1</span>
               </div>
             </div>
 
@@ -355,15 +348,6 @@
               <span class="switch-desc" data-i18n="settings.minimize_to_tray_info">Keep running in background when minimized with titlebar button</span>
             </label>
           </div>
-
-          <div class="setting-grid-row" style="margin-top: 6px;">
-            <span class="setting-lbl">⏱ Replay Voice Offset:</span>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <input type="number" id="cfg-replay-offset" step="0.5" min="-30" max="30" value="0.0" class="setting-input" style="width: 80px;" onchange="onConfigOffsetChange(this.value)">
-              <span class="setting-unit" style="font-size: 11px; color: var(--text-muted);">seconds (shift audio e.g. +1.0s or -1.0s)</span>
-            </div>
-            <span></span>
-          </div>
         </div>
 
         <!-- CARD 4: IN-GAME FLOATING HUD OVERLAY -->
@@ -434,7 +418,7 @@
           <div class="setting-grid-row">
             <span class="setting-lbl">App Version:</span>
             <div style="display: flex; align-items: center; gap: 12px;">
-              <span id="settings-app-version" style="font-size: 12px; font-weight: bold; color: var(--text-muted);">v0.6.0</span>
+              <span id="settings-app-version" style="font-size: 12px; font-weight: bold; color: var(--text-muted);">v0.6.1</span>
               <button class="btn-small" onclick="checkForUpdates()">Check for Updates</button>
             </div>
             <span></span>
