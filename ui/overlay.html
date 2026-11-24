@@ -79,33 +79,6 @@
       z-index: 1000;
       -webkit-app-region: no-drag;
     }
-
-    /* Context menu for unlocked state */
-    #context-menu {
-      position: absolute;
-      background: #141A23;
-      border: 1px solid #2A3547;
-      border-radius: 6px;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.7);
-      padding: 4px 0;
-      z-index: 3000;
-      font-size: 11px;
-      color: #E2E8F0;
-      min-width: 125px;
-      display: none;
-      -webkit-app-region: no-drag;
-    }
-
-    .menu-item {
-      padding: 6px 12px;
-      cursor: pointer;
-      white-space: nowrap;
-    }
-
-    .menu-item:hover {
-      background: #1E293B;
-      color: #38BDF8;
-    }
   </style>
 </head>
 <body>
@@ -113,10 +86,6 @@
     <canvas id="hud-canvas" width="350" height="76"></canvas>
     <div id="lock-hit" data-tauri-drag-region="false" title="Toggle Lock / Drag Mode"></div>
     <div id="slider-hit" data-tauri-drag-region="false" title="Replay Volume"></div>
-    <div id="context-menu" data-tauri-drag-region="false">
-      <div class="menu-item" id="menu-lock">🔒 Lock Position</div>
-      <div class="menu-item" id="menu-reset">🎯 Reset Position</div>
-    </div>
   </div>
 
   <script>
@@ -212,27 +181,18 @@
     const card = document.getElementById("hud-card");
     const lockHit = document.getElementById("lock-hit");
     const sliderHit = document.getElementById("slider-hit");
-    const contextMenu = document.getElementById("context-menu");
 
-    function hideContextMenu() {
-      if (contextMenu) contextMenu.style.display = "none";
-    }
-
-    function showContextMenu(x, y) {
-      if (!contextMenu) return;
-      const menuW = 130;
-      const menuH = 65;
-      const posX = Math.min(350 - menuW - 4, Math.max(4, x));
-      const posY = Math.min(76 - menuH - 4, Math.max(4, y));
-      contextMenu.style.left = `${posX}px`;
-      contextMenu.style.top = `${posY}px`;
-      contextMenu.style.display = "block";
-    }
-
-    // Disable default browser context menu everywhere
+    // Completely disable default browser context menu and system menu everywhere
     document.addEventListener("contextmenu", (e) => {
       e.preventDefault();
-    });
+      e.stopPropagation();
+      return false;
+    }, true);
+    window.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    }, true);
 
     async function invokeTauri(cmd, args = {}) {
       const invoker = (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) ||
@@ -249,27 +209,22 @@
     let lastForwardTime = 0;
 
     // Right-click handling:
-    // When locked: Right-click panel is permanently disabled!
-    // Forwards right-click directly into the game beneath so player movement is never blocked!
+    // If locked: forwards right-click directly into the game beneath so player movement is never blocked!
+    // If unlocked: completely ignored! No menu, no minimize, no maximize!
     card.addEventListener("contextmenu", async (e) => {
       e.preventDefault();
       e.stopPropagation();
       if (isLocked) {
-        hideContextMenu();
         const now = Date.now();
         if (now - lastForwardTime > 30) {
           lastForwardTime = now;
           await invokeTauri("overlay_forward_click", { button: "right" });
         }
-        return;
       }
-      showContextMenu(e.clientX, e.clientY);
     });
 
     // Left-click handling:
     card.addEventListener("mousedown", async (e) => {
-      hideContextMenu();
-
       // If clicked on lock icon or slider:
       if (e.target.id === "lock-hit") return;
       if (e.target.id === "slider-hit") return;
@@ -304,7 +259,6 @@
     lockHit.addEventListener("click", async (e) => {
       e.preventDefault();
       e.stopPropagation();
-      hideContextMenu();
       isLocked = !isLocked;
       card.classList.toggle("locked", isLocked);
       if (isLocked) {
@@ -313,28 +267,6 @@
         card.setAttribute("data-tauri-drag-region", "");
       }
       await invokeTauri("overlay_set_locked", { locked: isLocked });
-    });
-
-    // Context menu actions
-    document.getElementById("menu-lock").addEventListener("click", async (e) => {
-      e.stopPropagation();
-      hideContextMenu();
-      isLocked = true;
-      card.classList.add("locked");
-      card.removeAttribute("data-tauri-drag-region");
-      await invokeTauri("overlay_set_locked", { locked: true });
-    });
-
-    document.getElementById("menu-reset").addEventListener("click", async (e) => {
-      e.stopPropagation();
-      hideContextMenu();
-      await invokeTauri("overlay_reset_position");
-    });
-
-    window.addEventListener("click", (e) => {
-      if (contextMenu && !contextMenu.contains(e.target)) {
-        hideContextMenu();
-      }
     });
 
     window.setCardOpacity = function(val) {

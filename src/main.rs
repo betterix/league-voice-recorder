@@ -17,6 +17,10 @@ use league_voice_recorder::{
     scrim_meta::ScrimMetadata,
 };
 
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+    tauri::async_runtime::spawn_blocking(f).await.ok()
+}
+
 #[cfg(windows)]
 unsafe extern "system" {
     fn AttachConsole(dwProcessId: u32) -> i32;
@@ -105,17 +109,20 @@ impl Default for AppState {
 
         let preview_capture = Arc::new(Mutex::new(AudioCaptureManager::new()));
         let initial_cfg = AppConfig::load().unwrap_or_default();
-        let mic_target = if initial_cfg.mic_device_name.is_empty() || initial_cfg.mic_device_name == "default" {
-            None
-        } else {
-            Some(initial_cfg.mic_device_name.clone())
-        };
 
-        {
-            if let Ok(mut cap) = preview_capture.lock() {
+        let prev_cap_startup = preview_capture.clone();
+        tokio::task::spawn_blocking(move || {
+            std::thread::sleep(std::time::Duration::from_millis(60));
+            let cfg = AppConfig::load().unwrap_or_default();
+            let mic_target = if cfg.mic_device_name.is_empty() || cfg.mic_device_name == "default" {
+                None
+            } else {
+                Some(cfg.mic_device_name)
+            };
+            if let Ok(mut cap) = prev_cap_startup.lock() {
                 let _ = cap.start_preview(mic_target.as_deref());
             }
-        }
+        });
 
         let audio_levels = Arc::new(Mutex::new((0.0f32, 0.0f32)));
         let rec_active = Arc::new(AtomicBool::new(false));
@@ -196,6 +203,7 @@ impl AppState {
             *bt = None;
         }
         self.log("🔴 Recording Watcher started. Polling League client LiveData (:2999)...");
+        update_tray_status(self);
 
         let stop_sig = self.rec_stop.clone();
         let active_sig = self.rec_active.clone();
@@ -257,6 +265,7 @@ impl AppState {
             let _ = prev.start_preview(target.as_deref());
         }
         self.log("⏹ Stopping Recording Watcher...");
+        update_tray_status(self);
     }
 
     pub fn start_replay(&self) {
@@ -275,6 +284,7 @@ impl AppState {
             *bt = None;
         }
         self.log("▶ Replay Auto-Sync started. Monitoring running .rofl processes...");
+        update_tray_status(self);
 
         let stop_sig = self.rep_stop.clone();
         let active_sig = self.rep_active.clone();
@@ -344,6 +354,7 @@ impl AppState {
             }
         }
         self.log("⏹ Stopping Replay Auto-Sync...");
+        update_tray_status(self);
     }
 }
 
@@ -360,7 +371,6 @@ struct StatusDto {
     rep_detail: String,
     match_clock: Option<String>,
     replay_volume: u32,
-    replay_sync_offset: f64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -377,8 +387,10 @@ struct RecordingItem {
 
 #[tauri::command]
 async fn get_status(state: tauri::State<'_, Arc<AppState>>) -> Result<StatusDto, String> {
-    let client_running = LcuCredentials::is_client_running();
-    let game_running = LcuCredentials::is_game_process_running();
+    let (client_running, game_running) = blocking(|| (
+        LcuCredentials::is_client_running(),
+        LcuCredentials::is_game_process_running(),
+    )).await.unwrap_or((false, false));
 
     let mut phase = "Offline".to_string();
     if client_running {
@@ -401,7 +413,6 @@ async fn get_status(state: tauri::State<'_, Arc<AppState>>) -> Result<StatusDto,
 
     let vol_norm = state.replay_volume.lock().map(|v| *v).unwrap_or(0.8);
     let vol_int = (vol_norm * 100.0).round() as u32;
-    let sync_offset = AppConfig::load().map(|c| c.replay_sync_offset).unwrap_or(0.0);
 
     Ok(StatusDto {
         league_running: client_running || game_running,
@@ -415,7 +426,6 @@ async fn get_status(state: tauri::State<'_, Arc<AppState>>) -> Result<StatusDto,
         rep_detail: rep_stat.1,
         match_clock: clk,
         replay_volume: vol_int,
-        replay_sync_offset: sync_offset,
     })
 }
 
@@ -452,7 +462,11 @@ fn get_logs(state: tauri::State<'_, Arc<AppState>>) -> Vec<String> {
 }
 
 #[tauri::command]
-fn get_recordings() -> Vec<RecordingItem> {
+async fn get_recordings() -> Vec<RecordingItem> {
+    blocking(get_recordings_sync).await.unwrap_or_default()
+}
+
+fn get_recordings_sync() -> Vec<RecordingItem> {
     let mut items = Vec::new();
     if let Ok(cfg) = AppConfig::load() {
         if let Ok(entries) = std::fs::read_dir(&cfg.record_folder) {
@@ -599,8 +613,8 @@ fn delete_recording(filename: String, state: tauri::State<'_, Arc<AppState>>) ->
 }
 
 #[tauri::command]
-fn get_audio_devices() -> Vec<String> {
-    AudioCaptureManager::get_available_microphones()
+async fn get_audio_devices() -> Vec<String> {
+    blocking(AudioCaptureManager::get_available_microphones).await.unwrap_or_default()
 }
 
 #[tauri::command]
@@ -651,22 +665,6 @@ fn set_replay_volume(volume: u32, state: tauri::State<'_, Arc<AppState>>, app: t
 }
 
 #[tauri::command]
-fn set_replay_offset(offset: f64, state: tauri::State<'_, Arc<AppState>>, app: tauri::AppHandle) -> Result<f64, String> {
-    if let Ok(mut cfg) = AppConfig::load() {
-        cfg.replay_sync_offset = offset;
-        let _ = cfg.save();
-        state.log(&format!("⏱ Replay sync offset set to {:+.1}s", offset));
-        use tauri::Manager;
-        if let Some(win) = app.get_webview_window("main") {
-            let _ = win.eval(&format!("if (window.onOffsetChanged) window.onOffsetChanged({});", offset));
-        }
-        Ok(offset)
-    } else {
-        Err("Failed to load configuration".to_string())
-    }
-}
-
-#[tauri::command]
 fn enable_replay_api(state: tauri::State<'_, Arc<AppState>>) -> Result<String, String> {
     let res = ReplayConfigManager::enable_replay_api();
     match &res {
@@ -695,8 +693,8 @@ fn get_audio_levels(state: tauri::State<'_, Arc<AppState>>) -> AudioLevelsDto {
 }
 
 #[tauri::command]
-fn check_replay_api_status() -> bool {
-    ReplayConfigManager::check_replay_api_status().0
+async fn check_replay_api_status() -> bool {
+    blocking(|| ReplayConfigManager::check_replay_api_status().0).await.unwrap_or(false)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -707,7 +705,15 @@ struct SystemHealthDto {
 }
 
 #[tauri::command]
-fn get_system_health() -> SystemHealthDto {
+async fn get_system_health() -> SystemHealthDto {
+    blocking(get_system_health_sync).await.unwrap_or(SystemHealthDto {
+        discord_running: false,
+        league_running: false,
+        replay_api_enabled: false,
+    })
+}
+
+fn get_system_health_sync() -> SystemHealthDto {
     let mut discord_running = false;
     let mut league_running = false;
 
@@ -932,6 +938,8 @@ fn get_telemetry(state: tauri::State<'_, Arc<AppState>>) -> TelemetryDto {
     }
 }
 
+static OVERLAY_HWND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+
 #[cfg(windows)]
 fn is_league_foreground() -> bool {
     unsafe extern "system" {
@@ -941,18 +949,30 @@ fn is_league_foreground() -> bool {
         fn QueryFullProcessImageNameW(hProcess: isize, dwFlags: u32, lpExeName: *mut u16, lpdwSize: *mut u32) -> i32;
         fn CloseHandle(hObject: isize) -> i32;
         fn GetWindowTextW(hWnd: isize, lpString: *mut u16, nMaxCount: i32) -> i32;
+        fn GetAncestor(hwnd: isize, gaFlags: u32) -> isize;
     }
     let hwnd = unsafe { GetForegroundWindow() };
     if hwnd == 0 {
         return false;
     }
+
+    // 1. If foreground window is the overlay HUD itself (or any WebView2 child inside it),
+    // the user is interacting with / touching the HUD! Keep it visible and never blink or bug.
+    let overlay_h = OVERLAY_HWND.load(Ordering::SeqCst);
+    if overlay_h != 0 {
+        const GA_ROOT: u32 = 2;
+        const GA_ROOTOWNER: u32 = 3;
+        let root = unsafe { GetAncestor(hwnd, GA_ROOT) };
+        let root_owner = unsafe { GetAncestor(hwnd, GA_ROOTOWNER) };
+        if hwnd == overlay_h || root == overlay_h || root_owner == overlay_h {
+            return true;
+        }
+    }
+
     let mut pid: u32 = 0;
     unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
-    if pid == 0 {
+    if pid == 0 || pid == std::process::id() {
         return false;
-    }
-    if pid == std::process::id() {
-        return true;
     }
 
     const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
@@ -964,21 +984,21 @@ fn is_league_foreground() -> bool {
         unsafe { CloseHandle(h_proc) };
         if success != 0 && size > 0 {
             let path_os = String::from_utf16_lossy(&buf[..size as usize]).to_lowercase();
-            if path_os.ends_with("league of legends.exe") || path_os.ends_with("leagueclientux.exe") {
-                return true;
+            if path_os.ends_with("msedgewebview2.exe") || path_os.ends_with("leaguevoicerecorder.exe") {
+                return false;
             }
-            if path_os.ends_with("msedgewebview2.exe") || path_os.ends_with("leaguevoicerecorder.exe") || path_os.ends_with("league-voice-recorder.exe") {
+            if path_os.ends_with("league of legends.exe") {
                 return true;
             }
         }
     }
 
-    // Fallback: check window title
+    // Fallback: check window title (for League match window)
     let mut title_buf = [0u16; 256];
     let len = unsafe { GetWindowTextW(hwnd, title_buf.as_mut_ptr(), 256) };
     if len > 0 {
         let title = String::from_utf16_lossy(&title_buf[..len as usize]).to_lowercase();
-        if title.contains("league of legends") || title.contains("league overlay") {
+        if title.starts_with("league of legends") && !title.contains("recorder") && !title.contains("overlay") {
             return true;
         }
     }
@@ -1081,6 +1101,44 @@ unsafe extern "system" fn main_window_subclass_proc(
 }
 
 #[cfg(windows)]
+static PREV_OVERLAY_WND_PROC: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+
+#[cfg(windows)]
+unsafe extern "system" fn overlay_window_subclass_proc(
+    hwnd: isize,
+    msg: u32,
+    wparam: usize,
+    lparam: isize,
+) -> isize {
+    const WM_CONTEXTMENU: u32 = 0x007B;
+    const WM_NCRBUTTONDOWN: u32 = 0x00A4;
+    const WM_NCRBUTTONUP: u32 = 0x00A5;
+    const WM_SYSCOMMAND: u32 = 0x0112;
+    const SC_MINIMIZE: usize = 0xF020;
+    const SC_MAXIMIZE: usize = 0xF030;
+
+    // 1. Completely suppress right-click context menu and non-client system menu
+    if msg == WM_CONTEXTMENU || msg == WM_NCRBUTTONDOWN || msg == WM_NCRBUTTONUP {
+        return 0;
+    }
+
+    // 2. Reject any attempt to minimize or maximize the overlay window
+    if msg == WM_SYSCOMMAND {
+        let cmd = wparam & 0xFFF0;
+        if cmd == SC_MINIMIZE || cmd == SC_MAXIMIZE {
+            return 0;
+        }
+    }
+
+    let prev = PREV_OVERLAY_WND_PROC.load(Ordering::SeqCst);
+    if prev != 0 {
+        unsafe { CallWindowProcW(prev, hwnd, msg, wparam, lparam) }
+    } else {
+        0
+    }
+}
+
+#[cfg(windows)]
 fn restore_main_window_robust(win: &tauri::WebviewWindow) {
     if let Ok(hwnd) = win.hwnd() {
         unsafe {
@@ -1106,6 +1164,8 @@ const GWL_EXSTYLE: i32 = -20;
 const WS_EX_TRANSPARENT: isize = 0x00000020;
 #[cfg(windows)]
 const WS_EX_NOACTIVATE: isize = 0x08000000;
+#[cfg(windows)]
+const WS_EX_TOOLWINDOW: isize = 0x00000080;
 
 #[cfg(windows)]
 const MOUSEEVENTF_LEFTDOWN: u32 = 0x0002;
@@ -1172,7 +1232,162 @@ fn restore_main_window(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+static LAST_TRAY_STATUS_KEY: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+fn update_tray_status(state: &AppState) {
+    let maybe_handle = state.app_handle.lock().ok().and_then(|h| h.clone());
+    let Some(handle) = maybe_handle else { return };
+
+    let is_rec = state.rec_active.load(Ordering::SeqCst);
+    let is_rep = state.rep_active.load(Ordering::SeqCst);
+    let clk_str = state.match_time.lock().ok().and_then(|c| c.clone()).unwrap_or_else(|| "00:00".to_string());
+    let rec_stat = state.rec_status.lock().map(|s| s.0.clone()).unwrap_or_default();
+    let rep_stat = state.rep_status.lock().map(|s| s.0.clone()).unwrap_or_default();
+
+    // 1. Tooltip string (contains live timer if in match/replay)
+    let tooltip_str = if is_rec {
+        if rec_stat == "PAUSED" {
+            format!("League Voice Recorder: ⏸ Paused ({})", clk_str)
+        } else if rec_stat == "RECORDING" {
+            format!("League Voice Recorder: 🔴 Recording Scrim ({})", clk_str)
+        } else {
+            "League Voice Recorder: 🔴 Recording Watcher Active".to_string()
+        }
+    } else if is_rep {
+        if rep_stat == "PAUSED" {
+            format!("League Voice Recorder: ⏸ Replay Paused ({})", clk_str)
+        } else if rep_stat == "SYNCING" {
+            format!("League Voice Recorder: ▶ Replay Auto-Sync ({})", clk_str)
+        } else {
+            "League Voice Recorder: 🎬 Replay Watching".to_string()
+        }
+    } else {
+        "League Voice Recorder: Idle".to_string()
+    };
+
+    // 2. Menu status string (tracks operational state without rapid 1-sec ticks so popup menu remains stable)
+    let menu_status_str = if is_rec {
+        if rec_stat == "PAUSED" {
+            "League Voice Recorder: ⏸ Match Paused".to_string()
+        } else if rec_stat == "RECORDING" {
+            "League Voice Recorder: 🔴 Recording Scrim".to_string()
+        } else {
+            "League Voice Recorder: 🔴 Recording Watcher Active".to_string()
+        }
+    } else if is_rep {
+        if rep_stat == "PAUSED" {
+            "League Voice Recorder: ⏸ Replay Paused".to_string()
+        } else if rep_stat == "SYNCING" {
+            "League Voice Recorder: ▶ Replay Auto-Sync".to_string()
+        } else {
+            "League Voice Recorder: 🎬 Replay Watching".to_string()
+        }
+    } else {
+        "League Voice Recorder: Idle".to_string()
+    };
+
+    if let Some(tray) = handle.tray_by_id("tray") {
+        let _ = tray.set_tooltip(Some(&tooltip_str));
+
+        // Only rebuild menu when menu status string actually transitions to a new state
+        let mut should_update_menu = false;
+        if let Ok(mut last) = LAST_TRAY_STATUS_KEY.lock() {
+            if *last != menu_status_str {
+                *last = menu_status_str.clone();
+                should_update_menu = true;
+            }
+        }
+
+        if should_update_menu {
+            let app_handle = handle.clone();
+            let status_text = menu_status_str.clone();
+            let tray_clone = tray.clone();
+            let _ = handle.run_on_main_thread(move || {
+                use tauri::menu::{Menu, MenuItem};
+                if let Ok(open_item) = MenuItem::with_id(&app_handle, "open", "Open", true, None::<&str>) {
+                    if let Ok(status_item) = MenuItem::with_id(&app_handle, "status", &status_text, false, None::<&str>) {
+                        if let Ok(exit_item) = MenuItem::with_id(&app_handle, "exit", "Exit", true, None::<&str>) {
+                            if let Ok(fresh_menu) = Menu::with_items(&app_handle, &[&open_item, &status_item, &exit_item]) {
+                                let _ = tray_clone.set_menu(Some(fresh_menu));
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+}
+
+fn create_aux_windows(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    for label in ["overlay", "toast"] {
+        if app.get_webview_window(label).is_some() {
+            continue;
+        }
+        if let Some(cfg) = app.config().app.windows.iter().find(|w| w.label == label) {
+            let _ = tauri::WebviewWindowBuilder::from_config(app, cfg).and_then(|b| b.build());
+        }
+    }
+}
+
+fn setup_overlay(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    static OVERLAY_SETUP_DONE: AtomicBool = AtomicBool::new(false);
+    if OVERLAY_SETUP_DONE.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let Some(overlay_win) = app.get_webview_window("overlay") else {
+        OVERLAY_SETUP_DONE.store(false, Ordering::SeqCst);
+        return;
+    };
+    let cfg = AppConfig::load().unwrap_or_default();
+    if let Ok(Some(monitor)) = overlay_win.primary_monitor() {
+        let scale = monitor.scale_factor();
+        let screen_w = monitor.size().width as f64 / scale;
+        let target_x = if cfg.hud_x >= 0 { cfg.hud_x as f64 } else { screen_w - 350.0 - 40.0 };
+        let target_y = if cfg.hud_y >= 0 { cfg.hud_y as f64 } else { 40.0 };
+        let _ = overlay_win.set_position(tauri::LogicalPosition::new(target_x, target_y));
+    }
+    let _ = overlay_win.set_background_color(Some(tauri::webview::Color(0, 0, 0, 0)));
+    let _ = overlay_win.set_always_on_top(true);
+    let _ = overlay_win.set_ignore_cursor_events(false);
+
+    #[cfg(windows)]
+    if let Ok(hwnd) = overlay_win.hwnd() {
+        let hwnd_val = hwnd.0 as isize;
+        OVERLAY_HWND.store(hwnd_val, Ordering::SeqCst);
+        unsafe {
+            ShowWindow(hwnd_val, 9); // SW_RESTORE (ensures overlay is never stuck minimized)
+
+            const GWL_STYLE: i32 = -16;
+            const WS_MINIMIZEBOX: isize = 0x00020000;
+            const WS_MAXIMIZEBOX: isize = 0x00010000;
+            const WS_SYSMENU: isize = 0x00080000;
+
+            let cur_style = GetWindowLongPtrW(hwnd_val, GWL_STYLE);
+            SetWindowLongPtrW(hwnd_val, GWL_STYLE, cur_style & !WS_MINIMIZEBOX & !WS_MAXIMIZEBOX & !WS_SYSMENU);
+
+            let cur_ex = GetWindowLongPtrW(hwnd_val, GWL_EXSTYLE);
+            SetWindowLongPtrW(hwnd_val, GWL_EXSTYLE, cur_ex | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW);
+
+            let prev = SetWindowLongPtrW(hwnd_val, -4, overlay_window_subclass_proc as *const () as isize);
+            PREV_OVERLAY_WND_PROC.store(prev, Ordering::SeqCst);
+        }
+    }
+
+    overlay_win.on_window_event(|event| {
+        if let tauri::WindowEvent::Moved(pos) = event {
+            if let Ok(mut cfg) = AppConfig::load() {
+                cfg.hud_x = pos.x;
+                cfg.hud_y = pos.y;
+                let _ = cfg.save();
+            }
+        }
+    });
+}
+
 fn show_toast_announcement(app: &tauri::AppHandle) {
+    create_aux_windows(app);
     #[cfg(windows)]
     {
         unsafe { MessageBeep(0x00000040) }; // MB_ICONASTERISK
@@ -1313,11 +1528,18 @@ fn overlay_start_dragging(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn overlay_preview_rec(app: tauri::AppHandle, state: tauri::State<'_, Arc<AppState>>) -> Result<(), String> {
+    create_aux_windows(&app);
+    setup_overlay(&app);
     use tauri::Manager;
     if let Ok(mut mode) = state.hud_preview_mode.lock() {
         *mode = Some("RECORD".to_string());
     }
     if let Some(win) = app.get_webview_window("overlay") {
+        #[cfg(windows)]
+        if let Ok(hwnd) = win.hwnd() {
+            unsafe { ShowWindow(hwnd.0 as isize, 9); } // SW_RESTORE
+        }
+        let _ = win.unminimize();
         let _ = win.set_ignore_cursor_events(false);
         let _ = win.show();
         let _ = win.set_always_on_top(true);
@@ -1327,11 +1549,18 @@ fn overlay_preview_rec(app: tauri::AppHandle, state: tauri::State<'_, Arc<AppSta
 
 #[tauri::command]
 fn overlay_preview_replay(app: tauri::AppHandle, state: tauri::State<'_, Arc<AppState>>) -> Result<(), String> {
+    create_aux_windows(&app);
+    setup_overlay(&app);
     use tauri::Manager;
     if let Ok(mut mode) = state.hud_preview_mode.lock() {
         *mode = Some("REPLAY".to_string());
     }
     if let Some(win) = app.get_webview_window("overlay") {
+        #[cfg(windows)]
+        if let Ok(hwnd) = win.hwnd() {
+            unsafe { ShowWindow(hwnd.0 as isize, 9); } // SW_RESTORE
+        }
+        let _ = win.unminimize();
         let _ = win.set_ignore_cursor_events(false);
         let _ = win.show();
         let _ = win.set_always_on_top(true);
@@ -1393,6 +1622,12 @@ fn overlay_set_opacity(opacity: f32, app: tauri::AppHandle) -> Result<(), String
 fn overlay_reset_position(app: tauri::AppHandle) -> Result<(), String> {
     use tauri::Manager;
     if let Some(win) = app.get_webview_window("overlay") {
+        #[cfg(windows)]
+        if let Ok(hwnd) = win.hwnd() {
+            unsafe { ShowWindow(hwnd.0 as isize, 9); } // SW_RESTORE (ensures window is unminimized)
+        }
+        let _ = win.unminimize();
+        let _ = win.show();
         if let Ok(Some(mon)) = win.primary_monitor() {
             let scale = mon.scale_factor();
             let screen_w = mon.size().width as f64 / scale;
@@ -1538,6 +1773,25 @@ fn get_app_version() -> &'static str {
 }
 
 #[tauri::command]
+async fn get_current_patch(state: tauri::State<'_, Arc<AppState>>) -> Result<String, ()> {
+    if let Ok(lk) = state.active_game_patch.lock() {
+        if let Some(ref p) = *lk {
+            if !p.is_empty() && p != "—" {
+                return Ok(p.clone());
+            }
+        }
+    }
+    let p = LcuCredentials::fetch_current_patch().await;
+    if !p.is_empty() {
+        if let Ok(mut lk) = state.active_game_patch.lock() {
+            *lk = Some(p.clone());
+        }
+        return Ok(p);
+    }
+    Ok(String::new())
+}
+
+#[tauri::command]
 async fn check_for_updates(state: tauri::State<'_, Arc<AppState>>) -> Result<league_voice_recorder::updater::UpdateInfo, String> {
     state.log("🔄 Checking GitHub Releases for newer versions...");
     match league_voice_recorder::updater::check_for_update(league_voice_recorder::updater::CURRENT_VERSION).await {
@@ -1600,7 +1854,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                  --disable-background-networking \
                  --disable-component-update \
                  --renderer-process-limit=1 \
-                 --disable-gpu-shader-disk-cache \
                  --disable-extensions \
                  --disable-default-apps \
                  --disable-sync \
@@ -1681,6 +1934,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(handle) = maybe_handle {
                 use tauri::Manager;
                 if let Some(win) = handle.get_webview_window("overlay") {
+                    #[cfg(windows)]
+                    if let Ok(hwnd) = win.hwnd() {
+                        OVERLAY_HWND.store(hwnd.0 as isize, Ordering::SeqCst);
+                    }
+
                     let overlay_enabled = hud_sync_state.hud_overlay_enabled.load(Ordering::SeqCst);
                     if !overlay_enabled {
                         if last_visible != Some(false) {
@@ -1701,9 +1959,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let should_be_active = is_match_live || is_replay_live;
 
                     if should_be_active && is_league_foreground() {
+                        if win.is_minimized().unwrap_or(false) {
+                            #[cfg(windows)]
+                            if let Ok(hwnd) = win.hwnd() {
+                                unsafe { ShowWindow(hwnd.0 as isize, 9); } // SW_RESTORE
+                            }
+                            let _ = win.unminimize();
+                        }
                         if last_visible != Some(true) {
+                            #[cfg(windows)]
+                            if let Ok(hwnd) = win.hwnd() {
+                                unsafe { ShowWindow(hwnd.0 as isize, 9); } // SW_RESTORE
+                            }
+                            let _ = win.unminimize();
                             let _ = win.show();
-                            let _ = win.set_always_on_top(true);
                             last_visible = Some(true);
                         }
                     } else if last_visible != Some(false) {
@@ -1720,7 +1989,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::spawn(async move {
         let mut last_phase = String::new();
         loop {
-            tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+            // 1. Synchronize tray menu item and tooltip on every cycle
+            update_tray_status(&auto_state);
 
             let client_running = LcuCredentials::is_client_running();
             let game_running = LcuCredentials::is_game_process_running();
@@ -1782,31 +2054,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-
-            // 4. System Tray tooltip synchronization
-            let maybe_handle = auto_state.app_handle.lock().ok().and_then(|h| h.clone());
-            if let Some(handle) = maybe_handle {
-                if let Some(tray) = handle.tray_by_id("tray") {
-                    let is_rec = auto_state.rec_active.load(Ordering::SeqCst);
-                    let is_rep = auto_state.rep_active.load(Ordering::SeqCst);
-                    let clk_str = auto_state.match_time.lock().ok().and_then(|c| c.clone()).unwrap_or_else(|| "00:00".to_string());
-                    let rec_stat = auto_state.rec_status.lock().map(|s| s.0.clone()).unwrap_or_default();
-
-                    let status_str = if is_rec {
-                        if rec_stat == "PAUSED" {
-                            format!("League Voice Recorder: ⏸ Paused ({})", clk_str)
-                        } else {
-                            format!("League Voice Recorder: 🔴 Recording Scrim ({})", clk_str)
-                        }
-                    } else if is_rep {
-                        format!("League Voice Recorder: ▶ Replay Auto-Sync ({})", clk_str)
-                    } else {
-                        "League Voice Recorder: Idle".to_string()
-                    };
-
-                    let _ = tray.set_tooltip(Some(status_str));
-                }
-            }
         }
     });
 
@@ -1828,21 +2075,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = window.set_background_color(Some(tauri::webview::Color(11, 17, 32, 255)));
                 let fallback_win = window.clone();
                 std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    std::thread::sleep(std::time::Duration::from_millis(60));
                     let _ = fallback_win.show();
                 });
-
-                if let Ok(Some(monitor)) = window.primary_monitor() {
-                    let size = monitor.size();
-                    let scale = monitor.scale_factor();
-                    let screen_w = size.width as f64 / scale;
-                    let screen_h = size.height as f64 / scale;
-                    let app_w = 1100.0_f64.min(920.0_f64.max(screen_w - 80.0));
-                    let app_h = 960.0_f64.min(750.0_f64.max(screen_h - 100.0));
-                    let _ = window.set_size(tauri::LogicalSize::new(app_w, app_h));
-                    let _ = window.set_min_size(Some(tauri::LogicalSize::new(920.0, 750.0)));
-                    let _ = window.center();
-                }
 
                 #[cfg(windows)]
                 if let Ok(hwnd) = window.hwnd() {
@@ -1869,44 +2104,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 });
             }
 
-            if let Some(overlay_win) = app.get_webview_window("overlay") {
-                let cfg = AppConfig::load().unwrap_or_default();
-                if let Ok(Some(monitor)) = overlay_win.primary_monitor() {
-                    let scale = monitor.scale_factor();
-                    let screen_w = monitor.size().width as f64 / scale;
-                    let target_x = if cfg.hud_x >= 0 { cfg.hud_x as f64 } else { screen_w - 350.0 - 40.0 };
-                    let target_y = if cfg.hud_y >= 0 { cfg.hud_y as f64 } else { 40.0 };
-                    let _ = overlay_win.set_position(tauri::LogicalPosition::new(target_x, target_y));
-                }
-                let _ = overlay_win.set_always_on_top(true);
-                let _ = overlay_win.set_ignore_cursor_events(false);
-
-                #[cfg(windows)]
-                if let Ok(hwnd) = overlay_win.hwnd() {
-                    let hwnd_val = hwnd.0 as isize;
-                    unsafe {
-                        let cur = GetWindowLongPtrW(hwnd_val, GWL_EXSTYLE);
-                        if (cur & WS_EX_NOACTIVATE) == 0 {
-                            SetWindowLongPtrW(hwnd_val, GWL_EXSTYLE, cur | WS_EX_NOACTIVATE);
-                        }
-                    }
-                }
-
-                overlay_win.on_window_event(|event| {
-                    if let tauri::WindowEvent::Moved(pos) = event {
-                        if let Ok(mut cfg) = AppConfig::load() {
-                            cfg.hud_x = pos.x;
-                            cfg.hud_y = pos.y;
-                            let _ = cfg.save();
-                        }
-                    }
-                });
-            }
-
             // Setup System Tray
             let open_item = MenuItem::with_id(app, "open", "Open", true, None::<&str>)?;
             let status_item = MenuItem::with_id(app, "status", "League Voice Recorder: Idle", false, None::<&str>)?;
             let exit_item = MenuItem::with_id(app, "exit", "Exit", true, None::<&str>)?;
+            if let Ok(mut lk) = LAST_TRAY_STATUS_KEY.lock() {
+                *lk = "League Voice Recorder: Idle".to_string();
+            }
             let tray_menu = Menu::with_items(app, &[&open_item, &status_item, &exit_item])?;
 
             let tray_icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray_32.png"))
@@ -1956,6 +2160,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .build(app)?;
 
             *app.state::<Arc<AppState>>().app_handle.lock().unwrap() = Some(app.handle().clone());
+
+            let aux_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(1500));
+                let h2 = aux_handle.clone();
+                let _ = aux_handle.run_on_main_thread(move || {
+                    create_aux_windows(&h2);
+                    setup_overlay(&h2);
+                });
+            });
+
             Ok(())
         })
         .manage(state)
@@ -1976,7 +2191,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             get_config,
             save_config,
             set_replay_volume,
-            set_replay_offset,
             enable_replay_api,
             check_replay_api_status,
             get_audio_levels,
@@ -2004,6 +2218,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             get_available_languages,
             get_translations,
             get_app_version,
+            get_current_patch,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
