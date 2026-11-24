@@ -9,6 +9,7 @@ config.json
 # ==========================================
 # Large Binaries & Media Assets
 # ==========================================
+*.exe
 ffmpeg.exe
 redist/
 recordings/
