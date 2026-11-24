@@ -1351,13 +1351,14 @@ fn setup_overlay(app: &tauri::AppHandle) {
     let _ = overlay_win.set_background_color(Some(tauri::webview::Color(0, 0, 0, 0)));
     let _ = overlay_win.set_always_on_top(true);
     let _ = overlay_win.set_ignore_cursor_events(false);
+    let _ = overlay_win.hide();
 
     #[cfg(windows)]
     if let Ok(hwnd) = overlay_win.hwnd() {
         let hwnd_val = hwnd.0 as isize;
         OVERLAY_HWND.store(hwnd_val, Ordering::SeqCst);
         unsafe {
-            ShowWindow(hwnd_val, 9); // SW_RESTORE (ensures overlay is never stuck minimized)
+            ShowWindow(hwnd_val, 0); // SW_HIDE (ensure overlay starts completely hidden)
 
             const GWL_STYLE: i32 = -16;
             const WS_MINIMIZEBOX: isize = 0x00020000;
@@ -1959,14 +1960,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let should_be_active = is_match_live || is_replay_live;
 
                     if should_be_active && is_league_foreground() {
-                        if win.is_minimized().unwrap_or(false) {
-                            #[cfg(windows)]
-                            if let Ok(hwnd) = win.hwnd() {
-                                unsafe { ShowWindow(hwnd.0 as isize, 9); } // SW_RESTORE
-                            }
-                            let _ = win.unminimize();
-                        }
-                        if last_visible != Some(true) {
+                        let is_vis = win.is_visible().unwrap_or(false);
+                        if !is_vis || last_visible != Some(true) {
                             #[cfg(windows)]
                             if let Ok(hwnd) = win.hwnd() {
                                 unsafe { ShowWindow(hwnd.0 as isize, 9); } // SW_RESTORE
@@ -1975,9 +1970,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let _ = win.show();
                             last_visible = Some(true);
                         }
-                    } else if last_visible != Some(false) {
-                        let _ = win.hide();
-                        last_visible = Some(false);
+                    } else {
+                        let is_vis = win.is_visible().unwrap_or(false);
+                        if is_vis || last_visible != Some(false) {
+                            let _ = win.hide();
+                            #[cfg(windows)]
+                            if let Ok(hwnd) = win.hwnd() {
+                                unsafe { ShowWindow(hwnd.0 as isize, 0); } // SW_HIDE
+                            }
+                            last_visible = Some(false);
+                        }
                     }
                 }
             }
