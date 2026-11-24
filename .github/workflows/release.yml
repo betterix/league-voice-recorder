@@ -74,6 +74,7 @@ jobs:
           if (Test-Path $builtExe) {
             Copy-Item -Path $builtExe -Destination "dist\LeagueVoiceRecorder\LeagueVoiceRecorder.exe" -Force
             Copy-Item -Path $builtExe -Destination "dist\LeagueVoiceRecorder.exe" -Force
+            Copy-Item -Path $builtExe -Destination "LeagueVoiceRecorder.exe" -Force
           } else {
             Write-Error "Release executable not found at $builtExe"
             exit 1
@@ -106,6 +107,8 @@ jobs:
           }
           Write-Host "Compiling setup wizard using $makensis..."
           & $makensis installer.nsi
+          if (-not (Test-Path "dist")) { New-Item -ItemType Directory -Path "dist" -Force }
+          Get-ChildItem -Path "*setup*.exe" | ForEach-Object { Copy-Item $_.FullName "dist\" -Force }
           Get-ChildItem -Path "dist\*setup*.exe"
 
       - name: 📊 Generate GitHub Actions Job Summary
