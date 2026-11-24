@@ -1,6 +1,6 @@
 [package]
 name = "league-voice-recorder"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2024"
 authors = ["betterix"]
 description = "Record League of Legends scrim voice audio and synchronize it with replay playback in native Rust."
@@ -30,14 +30,17 @@ tauri-plugin-single-instance = "2.5"
 tauri-build = "2.7"
 
 [profile.dev]
-opt-level = 1
+opt-level = 0
 debug = 0
-strip = true
+strip = false
+incremental = true
+
+[profile.dev.package."*"]
+opt-level = 1
 
 [profile.release]
 opt-level = 3
-lto = "thin"
-codegen-units = 16
-panic = "unwind"
-strip = "none"
-debug = false
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true

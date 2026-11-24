@@ -11,7 +11,7 @@ Only the current native Rust release (`0.6.x`) is maintained. All previous legac
 | Version | Supported | Status |
 | :--- | :---: | :--- |
 | `0.6.x` | :white_check_mark: | **Current Active Release (Only Maintained Version)** |
-| `< 0.6.0` | :x: | **End of Life (Legacy, Unsupported & No Maintenance)** |
+| `< 0.6.1` | :x: | **End of Life (Legacy, Unsupported & No Maintenance)** |
 
 ---
 
