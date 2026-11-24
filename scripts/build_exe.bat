@@ -23,11 +23,13 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo.
-echo [2/3] Staging standalone release executable...
-if exist "D:\cargo_target\league-voice-recorder\release\league-voice-recorder.exe" (
-    copy /y "D:\cargo_target\league-voice-recorder\release\league-voice-recorder.exe" "LeagueVoiceRecorder.exe"
-) else (
-    copy /y "target\release\league-voice-recorder.exe" "LeagueVoiceRecorder.exe"
+echo [2/3] Staging standalone release executable in cargo target release...
+set "TARGET_DIR=target\release"
+if exist "D:\cargo_target\league-voice-recorder\release" set "TARGET_DIR=D:\cargo_target\league-voice-recorder\release"
+
+if exist "%TARGET_DIR%\league-voice-recorder.exe" (
+    copy /y "%TARGET_DIR%\league-voice-recorder.exe" "%TARGET_DIR%\LeagueVoiceRecorder.exe"
+    copy /y "%TARGET_DIR%\league-voice-recorder.exe" "LeagueVoiceRecorder.exe"
 )
 
 echo.
@@ -38,14 +40,18 @@ if exist "C:\Program Files\NSIS\makensis.exe" set "MAKENSIS=C:\Program Files\NSI
 
 if defined MAKENSIS (
     "%MAKENSIS%" installer.nsi
-    echo [OK] NSIS Installer: LeagueVoiceRecorder_0.6.1_x64-setup.exe
+    if exist "LeagueVoiceRecorder_0.6.1_x64-setup.exe" (
+        move /y "LeagueVoiceRecorder_0.6.1_x64-setup.exe" "%TARGET_DIR%\LeagueVoiceRecorder_0.6.1_x64-setup.exe"
+    )
+    if exist "LeagueVoiceRecorder.exe" del /f /q "LeagueVoiceRecorder.exe"
+    echo [OK] NSIS Installer: %TARGET_DIR%\LeagueVoiceRecorder_0.6.1_x64-setup.exe
 ) else (
     echo [SKIP] makensis.exe not found. Standalone binary is ready.
 )
 
 echo.
 echo [4/4] Build complete!
-echo Binary output:    LeagueVoiceRecorder.exe
-if defined MAKENSIS echo Installer output: LeagueVoiceRecorder_0.6.1_x64-setup.exe
+echo Binary output:    %TARGET_DIR%\LeagueVoiceRecorder.exe
+if defined MAKENSIS echo Installer output: %TARGET_DIR%\LeagueVoiceRecorder_0.6.1_x64-setup.exe
 echo.
 pause
