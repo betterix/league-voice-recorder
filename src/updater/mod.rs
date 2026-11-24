@@ -53,27 +53,14 @@ pub async fn check_for_update(current: &str) -> Result<UpdateInfo, String> {
 
     let mut download_url = None;
     if let Some(assets) = json.get("assets").and_then(|v| v.as_array()) {
-        // 1. Prefer standalone executable (LeagueVoiceRecorder.exe), not setup installer
+        // Exclusively locate the setup installer (e.g. LeagueVoiceRecorder_0.6.1_x64-setup.exe)
         for asset in assets {
             if let Some(name) = asset.get("name").and_then(|v| v.as_str()) {
                 let name_lower = name.to_lowercase();
-                if name_lower.ends_with(".exe") && !name_lower.contains("setup") {
+                if name_lower.ends_with(".exe") && (name_lower.contains("setup") || name_lower.contains("installer")) {
                     if let Some(url) = asset.get("browser_download_url").and_then(|v| v.as_str()) {
                         download_url = Some(url.to_string());
                         break;
-                    }
-                }
-            }
-        }
-        // 2. Fallback to any .exe if standalone name pattern differs
-        if download_url.is_none() {
-            for asset in assets {
-                if let Some(name) = asset.get("name").and_then(|v| v.as_str()) {
-                    if name.to_lowercase().ends_with(".exe") {
-                        if let Some(url) = asset.get("browser_download_url").and_then(|v| v.as_str()) {
-                            download_url = Some(url.to_string());
-                            break;
-                        }
                     }
                 }
             }
@@ -93,9 +80,8 @@ pub async fn check_for_update(current: &str) -> Result<UpdateInfo, String> {
 
 pub type ProgressCallback = Box<dyn Fn(u64, u64, u32, &str) + Send + Sync>;
 
-/// Downloads the standalone update executable into %TEMP%, streams progress,
-/// spawns a background updater script, copies it over the running binary once exited,
-/// relaunches the updated app, and deletes the temporary update file.
+/// Downloads the setup installer executable into %TEMP%, streams progress,
+/// spawns the installer silently as a detached native process, and cleanly exits the app.
 pub async fn download_and_apply_update(
     download_url: &str,
     progress_callback: Option<ProgressCallback>,
@@ -123,7 +109,7 @@ pub async fn download_and_apply_update(
         .map(|d| d.as_secs())
         .unwrap_or(0);
 
-    let download_path = temp_dir.join(format!("lvr_update_{}.exe", timestamp));
+    let download_path = temp_dir.join(format!("lvr_setup_{}.exe", timestamp));
 
     let total_size = resp.content_length().unwrap_or(0);
     let mut downloaded: u64 = 0;
@@ -157,69 +143,28 @@ pub async fn download_and_apply_update(
         cb(downloaded, total_size, 100, "installing");
     }
 
-    let current_exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("LeagueVoiceRecorder.exe"));
-    let target_dir = current_exe.parent().unwrap_or_else(|| std::path::Path::new("."));
-    let pid = std::process::id();
-
-    let bat_path = temp_dir.join(format!("lvr_apply_update_{}.bat", timestamp));
-    let bat_content = format!(
-        r#"@echo off
-setlocal
-set RETRIES=0
-:WAIT_PID
-tasklist /fi "PID eq {pid}" 2>nul | find "{pid}" >nul
-if not errorlevel 1 (
-    ping 127.0.0.1 -n 2 >nul
-    set /a RETRIES+=1
-    if %RETRIES% lss 10 goto WAIT_PID
-)
-
-set COPY_RETRIES=0
-:RETRY_COPY
-copy /y "{download_path}" "{target_exe}" >nul 2>&1
-if errorlevel 1 (
-    ping 127.0.0.1 -n 2 >nul
-    set /a COPY_RETRIES+=1
-    if %COPY_RETRIES% lss 10 goto RETRY_COPY
-)
-
-ping 127.0.0.1 -n 2 >nul
-
-if exist "{target_exe}" (
-    start "" /d "{target_dir}" "{target_exe}"
-)
-
-del /f /q "{download_path}" >nul 2>&1
-(goto) 2>nul & del "%~f0"
-"#,
-        pid = pid,
-        download_path = download_path.display(),
-        target_exe = current_exe.display(),
-        target_dir = target_dir.display(),
-    );
-
-    std::fs::write(&bat_path, &bat_content)
-        .map_err(|e| format!("Failed to write batch script: {}", e))?;
-
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        // DETACHED_PROCESS (0x00000008) | CREATE_NEW_PROCESS_GROUP (0x00000200)
+        const DETACHED_PROCESS_FLAGS: u32 = 0x00000008 | 0x00000200;
 
-        std::process::Command::new("cmd.exe")
-            .args(["/c", &bat_path.to_string_lossy()])
-            .creation_flags(CREATE_NO_WINDOW)
+        // Launch NSIS setup silently in the background as a detached native process
+        std::process::Command::new(&download_path)
+            .arg("/S")
+            .creation_flags(DETACHED_PROCESS_FLAGS)
             .spawn()
-            .map_err(|e| format!("Failed to launch updater script: {}", e))?;
+            .map_err(|e| format!("Failed to spawn native setup installer: {}", e))?;
+
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        std::process::exit(0);
     }
 
     #[cfg(not(windows))]
     {
-        let _ = std::process::Command::new("sh").arg(&bat_path).spawn();
+        let _ = std::process::Command::new(&download_path).spawn();
+        std::process::exit(0);
     }
-
-    std::thread::sleep(std::time::Duration::from_millis(300));
-    std::process::exit(0);
 }
 
 #[cfg(test)]
