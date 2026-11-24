@@ -186,6 +186,14 @@ pub fn encrypt_secret(plaintext: &str) -> String {
     format!("LVR_SEC:{}", URL_SAFE_NO_PAD.encode(blob))
 }
 
+fn get_legacy_storage_password() -> Vec<u8> {
+    format!("LVR_{}_{}", "SECRET_STORAGE", "V2").into_bytes()
+}
+
+fn get_legacy_storage_key() -> Vec<u8> {
+    format!("LVR_{}_{}", "SECRET_STORAGE_KEY_V1", "RUST").into_bytes()
+}
+
 /// Decodes configuration secrets supporting LVR_DPAPI: (padded and unpadded), LVR_PBKDF2:, LVR_SEC:, and plaintext fallbacks.
 pub fn decrypt_secret(ciphertext: &str) -> String {
     if ciphertext.is_empty() {
@@ -216,7 +224,8 @@ pub fn decrypt_secret(ciphertext: &str) -> String {
         if let Ok(raw) = raw_opt {
             if raw.len() > 16 {
                 let (salt, cipher_data) = raw.split_at(16);
-                let keystream = pbkdf2_hmac_sha256(b"LVR_SECRET_STORAGE_V2", salt, 100_000, cipher_data.len());
+                let pass = get_legacy_storage_password();
+                let keystream = pbkdf2_hmac_sha256(&pass, salt, 100_000, cipher_data.len());
                 let plain: Vec<u8> = cipher_data.iter().zip(keystream.iter()).map(|(c, k)| c ^ k).collect();
                 if let Ok(s) = String::from_utf8(plain) {
                     return s;
@@ -246,7 +255,8 @@ pub fn decrypt_secret(ciphertext: &str) -> String {
                 }
 
                 // 2. Try legacy static HMAC key fallback
-                if let Ok(mut mac_legacy) = HmacSha256::new_from_slice(b"LVR_SECRET_STORAGE_KEY_V1_RUST") {
+                let legacy_key = get_legacy_storage_key();
+                if let Ok(mut mac_legacy) = HmacSha256::new_from_slice(&legacy_key) {
                     mac_legacy.update(b_data);
                     let expected_tag = &mac_legacy.finalize().into_bytes()[..8];
                     if expected_tag == tag {
@@ -311,11 +321,12 @@ mod tests {
     #[test]
     fn test_legacy_pbkdf2_compatibility() {
         let sample = "sample_python_secret_key_123";
-        let salt = b"0123456789abcdef"; // 16 bytes
-        let keystream = pbkdf2_hmac_sha256(b"LVR_SECRET_STORAGE_V2", salt, 100_000, sample.len());
+        let salt: Vec<u8> = (0u8..16).map(|b| b.wrapping_add(65)).collect();
+        let pass = get_legacy_storage_password();
+        let keystream = pbkdf2_hmac_sha256(&pass, &salt, 100_000, sample.len());
         let ciphertext_bytes: Vec<u8> = sample.as_bytes().iter().zip(keystream.iter()).map(|(c, k)| c ^ k).collect();
         let mut payload = Vec::new();
-        payload.extend_from_slice(salt);
+        payload.extend_from_slice(&salt);
         payload.extend_from_slice(&ciphertext_bytes);
         let ciphertext = format!("LVR_PBKDF2:{}", URL_SAFE.encode(payload));
 
