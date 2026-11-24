@@ -91,12 +91,12 @@ VIAddVersionKey /LANG=${LANG_HUNGARIAN} "OriginalFilename" "LeagueVoiceRecorder_
 ; Language Initialization & Pre-Install Detection
 ; ------------------------------------------------------------------------------
 Function .onInit
-    !insertmacro MUI_LANGDLL_DISPLAY
+    ${IfNot} ${Silent}
+        !insertmacro MUI_LANGDLL_DISPLAY
+    ${EndIf}
 
-    ; Gracefully request any active running instance to close
-    FindWindow $0 "" "${APP_NAME} & Replay Synchronizer v${APP_VERSION}"
-    IntCmp $0 0 +3
-    SendMessage $0 16 0 0 ; WM_CLOSE
+    ; Gracefully and forcefully terminate any active running instance (preventing file lock errors)
+    nsExec::Exec 'taskkill /F /IM "${APP_EXE}" /T'
     Sleep 500
 
     ; Detect legacy Python Inno Setup installation (unins000.exe)
@@ -129,6 +129,12 @@ Function un.onInit
     ReadRegStr $LANGUAGE HKCU "Software\${APP_ID}" "InstallerLanguage"
 FunctionEnd
 
+Function .onInstSuccess
+    ${If} ${Silent}
+        Exec '"$INSTDIR\${APP_EXE}"'
+    ${EndIf}
+FunctionEnd
+
 ; ------------------------------------------------------------------------------
 ; Installer Section
 ; ------------------------------------------------------------------------------
@@ -136,10 +142,8 @@ Section "MainProgram" SecMain
     SetShellVarContext current
     SetOutPath "$INSTDIR"
 
-    ; Gracefully close any existing instance via clean WM_CLOSE window message
-    FindWindow $0 "" "${APP_NAME} & Replay Synchronizer v${APP_VERSION}"
-    IntCmp $0 0 +3
-    SendMessage $0 16 0 0 ; WM_CLOSE
+    ; Gracefully and forcefully terminate any active running instance (preventing file lock errors)
+    nsExec::Exec 'taskkill /F /IM "${APP_EXE}" /T'
     Sleep 500
 
     ; Clean up any leftover legacy uninstaller files if present
@@ -188,10 +192,8 @@ SectionEnd
 Section "Uninstall"
     SetShellVarContext current
 
-    ; Gracefully request the application to close if running
-    FindWindow $0 "" "${APP_NAME} & Replay Synchronizer v${APP_VERSION}"
-    IntCmp $0 0 +3
-    SendMessage $0 16 0 0 ; WM_CLOSE
+    ; Gracefully and forcefully terminate any active running instance
+    nsExec::Exec 'taskkill /F /IM "${APP_EXE}" /T'
     Sleep 500
 
     ; Delete Installed Files & Documentation
