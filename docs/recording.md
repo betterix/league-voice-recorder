@@ -87,3 +87,18 @@ In tournament and scrim environments, games frequently pause (`/pause`):
   - Suppresses the microphone stream by feeding synchronized zero bytes (`0i16`).
   - Team communications from Discord loopback are **never muted**, ensuring teammates' callouts remain recorded.
   - Keeps the match clock sample-accurate without requiring manual push-to-mute toggling.
+
+---
+
+## 6. Scrim Metadata, ID3v2 Tags & Patch Mismatch Detection
+
+### 6.1 Studio-Grade ID3v2 Tagging (`src/scrim_meta/id3.rs`)
+- When encoding `<GameID>.mp3`, official match context is embedded directly into ID3v2 frames:
+  - **Game ID**: Encoded in ID3 title (`TIT2`) and custom user-defined text frame (`TXXX:GameId`).
+  - **Game Patch**: Encoded in comment (`COMM`) and custom frame (`TXXX:GamePatch`) fetched directly from LCU.
+  - **Team Tag & Notes**: Custom metadata frames preserved across transfers and cloud uploads.
+
+### 6.2 Out-of-Patch Visual Alert
+- Scrim reviews often suffer when a `.rofl` replay cannot be played in League because the game has since updated to a newer patch.
+- The desktop recording explorer continuously compares the embedded `GamePatch` of each recording against the active League client patch.
+- If a recording's patch does not match the active game patch, it is highlighted with a prominent reddish border, alert badge, and patch warning indicator so players and coaches instantly know it belongs to a previous patch.

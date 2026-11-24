@@ -64,6 +64,9 @@ League Voice Recorder stores all settings, device preferences, and cloud credent
 | `auto_start_record`| `Boolean`| `true` | Automatically starts recording when a live match is detected. |
 | `auto_start_replay`| `Boolean`| `true` | Automatically synchronizes audio when a `.rofl` replay is launched. |
 
+> [!NOTE]
+> **Replay Sync Offset**: Audio playback synchronization uses a hardcoded `+1.0s` offset (`target_time = state.time + 1.0s`) matching League of Legends replay engine video-to-audio latency. This calibration is completely automatic and requires zero manual adjustment.
+
 ---
 
 ## 3. Audio Device Selection & Fallback

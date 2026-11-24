@@ -80,3 +80,13 @@ The desktop client inspects the token permissions and dynamically adapts the UI:
   - Validates file integrity before registering in the local scrim library.
 - **On-Demand Manual Sync**:
   - Scrims are only indexed when explicitly clicking the **☁ Sync Remote** toolbar button to minimize network traffic and keep application startup instantaneous.
+
+---
+
+## 6. Server Recording Management & Selective Delete
+
+- **Precise Action Scoping**:
+  - The "Remove from Server" action button appears strictly on recordings that have actually been uploaded and verified on the team backend.
+  - Local recordings that have not been uploaded show only local actions ("Upload to Server", "Delete Local"), preventing confusion or invalid delete requests.
+- **Admin Remote Delete (`DELETE /api/v1/recordings/{id}`)**:
+  - Users with `admin` tokens can remove outdated or sensitive scrim recordings directly from the cloud repository without accessing the server shell or database.

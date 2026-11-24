@@ -84,25 +84,36 @@ flowchart TD
 
 ---
 
-## 4. Native Dragging & Click-Through Hit Testing
+## 4. Native Dragging, Win32 Subclassing & Click-Through
 
-### 4.1 Unlocked Drag Mode (`hud_locked = false`)
-- Users can click anywhere on the HUD background to move the window across any monitor.
-- Mouse movement uses Tauri's native window dragging API (`win.start_dragging()`), which hooks directly into the Windows OS window manager for stutter-free dragging across high-refresh-rate displays.
-- Right-clicking the HUD in unlocked mode opens a context menu with options to **Lock Position** (`🔒 Lock Position`) or **Reset Position** (`🎯 Reset Position`).
-- When released (`mouseup`), the window coordinates are retrieved via `win.outer_position()` and persisted into `config.json` (`hud_x`, `hud_y`).
+### 4.1 Win32 Context Menu & Minimize Suppression
+- To guarantee the overlay can never be accidentally minimized or broken during frantic gameplay:
+  - The native Win32 window procedure is subclassed (`SetWindowLongPtrW(GWLP_WNDPROC)`).
+  - Intercepts `WM_CONTEXTMENU`, `WM_NCRBUTTONDOWN`, and `WM_NCRBUTTONUP` (returning `0`) to completely eliminate the native Win32 system menu (Restore, Move, Size, Minimize, Maximize) and browser context menus.
+  - Blocks `WM_SYSCOMMAND` for `SC_MINIMIZE` and `SC_MAXIMIZE` (returning `0`), ensuring the overlay window cannot be minimized or maximized.
+  - Strips `WS_MINIMIZEBOX`, `WS_MAXIMIZEBOX`, and `WS_SYSMENU` window styles.
+  - Automatic unminimize/`SW_RESTORE` guard ensures that previewing, syncing, or resetting position immediately restores the window if it ever entered an anomalous state.
 
-### 4.2 Click-Through & Forwarding Mode (`hud_locked = true`)
-- When locked, mouse right-clicks and left-clicks on the HUD background are permanently disabled from triggering menus or dragging.
-- **Direct Input Forwarding**: Any mouse click (left or right) hitting the HUD card is forwarded directly into the underlying game engine or desktop window beneath, ensuring 100% uninterrupted champion movement, ability targeting, or camera panning.
+### 4.2 Unlocked Drag Mode (`hud_locked = false`)
+- Users can left-click anywhere on the HUD background to move the window across any monitor.
+- Mouse movement uses Tauri's native window dragging (`data-tauri-drag-region`), hooking directly into the Windows OS window manager for butter-smooth movement across high-refresh-rate displays.
+- Right-clicking in unlocked mode is completely ignored (no disruptive popup menus).
+- Dedicated interactive buttons:
+  - **Lock Toggle (`#lock-hit`)**: Instantly locks the HUD in place and activates click-through mode.
+  - **Volume Slider (`#slider-hit`)**: Allows adjusting replay audio volume in real-time.
+- Position coordinates are automatically saved to `config.json` (`hud_x`, `hud_y`).
+
+### 4.3 Click-Through & Forwarding Mode (`hud_locked = true`)
+- When locked, mouse clicks on the HUD card pass directly through to League of Legends (`WS_EX_TRANSPARENT`).
+- **Direct Input Forwarding**: Right-clicks and left-clicks on the HUD pass through into the underlying game engine, ensuring 100% uninterrupted champion movement, ability targeting, or camera panning.
 - **Dedicated Interactive Lock Hit Target**:
-  - The **Lock Icon** (`#lock-hit`) is the only interactive control enabled during lock mode, allowing players to easily unlock the overlay at any time without Alt-Tabbing.
+  - The **Lock Icon** (`#lock-hit`) remains interactive, allowing players to easily unlock and reposition the overlay at any time without Alt-Tabbing.
 
 ---
 
-## 5. Preview Mode
+## 5. Preview Mode & Position Reset
 
 From the **Settings** tab in the main desktop UI, users can test and position the HUD at any time without starting League:
 - **Preview Rec HUD**: Simulates a live match with synthesized voice waveforms and running match timer.
 - **Preview Replay HUD**: Simulates replay synchronization with active waveform needle and volume controls.
-- **Position Reset**: Instantly resets the HUD back to monitor center (`x = 100, y = 100`).
+- **Position Reset**: Instantly unminimizes, restores (`SW_RESTORE`), and resets the HUD back to monitor coordinates (`x = 100, y = 100`).
