@@ -20,37 +20,6 @@ fn get_storage_hmac_key() -> [u8; 32] {
     hasher.finalize().into()
 }
 
-/// Standard PBKDF2-HMAC-SHA256 key derivation (RFC 2898) for backwards compatibility
-/// with Python-generated LVR_PBKDF2 encrypted secrets.
-pub fn pbkdf2_hmac_sha256(password: &[u8], salt: &[u8], iterations: u32, dklen: usize) -> Vec<u8> {
-    let mut result = Vec::with_capacity(dklen);
-    let mut block_idx: u32 = 1;
-
-    while result.len() < dklen {
-        let mut mac = HmacSha256::new_from_slice(password).expect("HMAC can take any key size");
-        mac.update(salt);
-        mac.update(&block_idx.to_be_bytes());
-        let mut u = mac.finalize().into_bytes();
-        let mut block = u;
-
-        for _ in 1..iterations {
-            let mut next_mac = HmacSha256::new_from_slice(password).expect("HMAC");
-            next_mac.update(&u);
-            u = next_mac.finalize().into_bytes();
-            for (b, byte) in block.iter_mut().zip(u.iter()) {
-                *b ^= byte;
-            }
-        }
-
-        let needed = dklen - result.len();
-        let to_take = needed.min(block.len());
-        result.extend_from_slice(&block[..to_take]);
-        block_idx += 1;
-    }
-
-    result
-}
-
 #[cfg(windows)]
 mod dpapi {
     use std::ffi::c_void;
@@ -186,15 +155,7 @@ pub fn encrypt_secret(plaintext: &str) -> String {
     format!("LVR_SEC:{}", URL_SAFE_NO_PAD.encode(blob))
 }
 
-fn get_legacy_storage_password() -> Vec<u8> {
-    format!("LVR_{}_{}", "SECRET_STORAGE", "V2").into_bytes()
-}
-
-fn get_legacy_storage_key() -> Vec<u8> {
-    format!("LVR_{}_{}", "SECRET_STORAGE_KEY_V1", "RUST").into_bytes()
-}
-
-/// Decodes configuration secrets supporting LVR_DPAPI: (padded and unpadded), LVR_PBKDF2:, LVR_SEC:, and plaintext fallbacks.
+/// Decodes configuration secrets supporting LVR_DPAPI:, LVR_SEC: (machine-scoped HMAC), and plaintext fallbacks.
 pub fn decrypt_secret(ciphertext: &str) -> String {
     if ciphertext.is_empty() {
         return String::new();
@@ -214,26 +175,6 @@ pub fn decrypt_secret(ciphertext: &str) -> String {
         }
     }
 
-    // Support legacy Python-generated PBKDF2 cross-platform fallback
-    if let Some(payload) = ciphertext.strip_prefix("LVR_PBKDF2:") {
-        let raw_opt = URL_SAFE_NO_PAD
-            .decode(payload)
-            .or_else(|_| URL_SAFE.decode(payload))
-            .or_else(|_| STANDARD.decode(payload))
-            .or_else(|_| STANDARD_NO_PAD.decode(payload));
-        if let Ok(raw) = raw_opt {
-            if raw.len() > 16 {
-                let (salt, cipher_data) = raw.split_at(16);
-                let pass = get_legacy_storage_password();
-                let keystream = pbkdf2_hmac_sha256(&pass, salt, 100_000, cipher_data.len());
-                let plain: Vec<u8> = cipher_data.iter().zip(keystream.iter()).map(|(c, k)| c ^ k).collect();
-                if let Ok(s) = String::from_utf8(plain) {
-                    return s;
-                }
-            }
-        }
-    }
-
     if let Some(payload) = ciphertext.strip_prefix("LVR_SEC:") {
         let raw_opt = URL_SAFE_NO_PAD
             .decode(payload)
@@ -244,7 +185,7 @@ pub fn decrypt_secret(ciphertext: &str) -> String {
             if raw.len() >= 8 {
                 let (tag, b_data) = raw.split_at(8);
 
-                // 1. Try machine-scoped dynamic HMAC key
+                // Machine-scoped dynamic HMAC key
                 let key = get_storage_hmac_key();
                 if let Ok(mut mac) = HmacSha256::new_from_slice(&key) {
                     mac.update(b_data);
@@ -252,21 +193,6 @@ pub fn decrypt_secret(ciphertext: &str) -> String {
                     if expected_tag == tag {
                         return String::from_utf8_lossy(b_data).to_string();
                     }
-                }
-
-                // 2. Try legacy static HMAC key fallback
-                let legacy_key = get_legacy_storage_key();
-                if let Ok(mut mac_legacy) = HmacSha256::new_from_slice(&legacy_key) {
-                    mac_legacy.update(b_data);
-                    let expected_tag = &mac_legacy.finalize().into_bytes()[..8];
-                    if expected_tag == tag {
-                        return String::from_utf8_lossy(b_data).to_string();
-                    }
-                }
-
-                // 3. Try Python legacy mock tag prefix
-                if tag == b"12345678" {
-                    return String::from_utf8_lossy(b_data).to_string();
                 }
             }
         }
@@ -316,21 +242,5 @@ mod tests {
 
         let decrypted = decrypt_secret(&ciphertext);
         assert_eq!(decrypted, "my_legacy_token");
-    }
-
-    #[test]
-    fn test_legacy_pbkdf2_compatibility() {
-        let sample = "sample_python_secret_key_123";
-        let salt: Vec<u8> = (0u8..16).map(|b| b.wrapping_add(65)).collect();
-        let pass = get_legacy_storage_password();
-        let keystream = pbkdf2_hmac_sha256(&pass, &salt, 100_000, sample.len());
-        let ciphertext_bytes: Vec<u8> = sample.as_bytes().iter().zip(keystream.iter()).map(|(c, k)| c ^ k).collect();
-        let mut payload = Vec::new();
-        payload.extend_from_slice(&salt);
-        payload.extend_from_slice(&ciphertext_bytes);
-        let ciphertext = format!("LVR_PBKDF2:{}", URL_SAFE.encode(payload));
-
-        let decrypted = decrypt_secret(&ciphertext);
-        assert_eq!(decrypted, sample);
     }
 }
