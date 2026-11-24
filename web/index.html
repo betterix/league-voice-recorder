@@ -107,7 +107,7 @@
         <!-- Release Badge -->
         <div class="version-badge">
           <span class="version-dot"></span>
-          <span data-i18n="hero_badge">v0.5.3 Released • Windows 10/11 64-bit • Open Source</span>
+          <span data-i18n="hero_badge">v0.6.1 Released • Windows 10/11 64-bit • Open Source</span>
         </div>
 
         <!-- Hero Headline -->
@@ -119,7 +119,7 @@
 
         <!-- Subtitle -->
         <p class="hero-subtitle" data-i18n="hero_subtitle">
-          Zero-latency automated Discord voice recording coupled with frame-accurate League of Legends replay audio lock. Scrub at 0.5x, 1x, 2x, or 4x without losing comms sync.
+          Zero-latency automated Discord voice recording coupled with frame-accurate League of Legends replay audio lock. Scrub at 0.5x, 1x, 2x, 4x, or 8x without losing comms sync.
         </p>
 
         <!-- CTA Buttons -->
@@ -264,8 +264,8 @@
           <div class="app-titlebar">
             <div class="titlebar-left">
               <img src="assets/icon.svg" alt="App Icon" class="titlebar-icon">
-              <span class="titlebar-title">League Voice Recorder &amp; Replay Synchronizer v0.5.3</span>
-              <span class="titlebar-update-badge">✓ v0.5.3</span>
+              <span class="titlebar-title">League Voice Recorder &amp; Replay Synchronizer v0.6.1</span>
+              <span class="titlebar-update-badge">✓ v0.6.1</span>
             </div>
             <div class="titlebar-controls">
               <button class="titlebar-btn btn-min" title="Minimize"></button>
@@ -376,7 +376,7 @@
                   <div class="sim-replay-hint">
                     <div class="sim-hint-row">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-                      <span data-i18n="sim_rep_hint_auto">Auto-detects running League replay process and locks VLC playback clock.</span>
+                      <span data-i18n="sim_rep_hint_auto">Auto-detects running League replay process and locks Rodio audio engine frame-for-frame.</span>
                     </div>
                     <div class="sim-hint-row">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c8aa6e" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
@@ -438,8 +438,8 @@
                   <div style="font-family: var(--font-mono); color: #cbd5e1; background: #0f172a; padding: 6px 10px; border-radius: 4px;">%USERPROFILE%\Documents\League Voice Recorder\config.json</div>
                 </div>
                 <div>
-                  <div style="color: #fff; font-weight: 600; margin-bottom: 4px;">VLC 64-Bit Directory:</div>
-                  <div style="font-family: var(--font-mono); color: #cbd5e1; background: #0f172a; padding: 6px 10px; border-radius: 4px;">C:\Program Files\VideoLAN\VLC</div>
+                  <div style="color: #fff; font-weight: 600; margin-bottom: 4px;">Replay Auto-Sync Offset:</div>
+                  <div style="font-family: var(--font-mono); color: #cbd5e1; background: #0f172a; padding: 6px 10px; border-radius: 4px;">+1.0s (Auto-Calibrated Frame Lock)</div>
                 </div>
                 <div>
                   <div style="color: #fff; font-weight: 600; margin-bottom: 4px;">Auto-Start in Champ Select:</div>
@@ -458,7 +458,7 @@
                 <div style="grid-column: span 2; border-top: 1px solid #1e293b; padding-top: 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: gap: 8px;">
                   <div>
                     <div style="color: #fff; font-weight: 600; margin-bottom: 2px;" data-i18n="sim_settings_update">Software Updates:</div>
-                    <div id="sim-update-status" style="color: #4ade80; font-size: 0.8rem;" data-i18n="sim_settings_update_status">● You are running the latest version (v0.5.3)</div>
+                    <div id="sim-update-status" style="color: #4ade80; font-size: 0.8rem;" data-i18n="sim_settings_update_status">● You are running the latest version (v0.6.1)</div>
                   </div>
                   <button class="btn btn-secondary btn-sm" id="sim-check-update-btn" data-i18n="sim_settings_update_btn">🔄 Check for Updates</button>
                 </div>
@@ -521,7 +521,7 @@
             <span class="engine-badge rep" data-i18n="engine_rep_badge">ENGINE 2 • REPLAY SYNCHRONIZATION</span>
             <h3 class="engine-title" data-i18n="engine_rep_title">Frame-Accurate Replay Lock</h3>
             <p class="engine-desc" data-i18n="engine_rep_desc">
-              Hooks into the League Replay Playback API (:2999/replay/playback) and synchronizes audio via VLC Media Player.
+              Hooks into the League Replay Playback API (:2999/replay/playback) and synchronizes audio via native Rodio audio engine.
             </p>
 
             <ul class="engine-steps">
@@ -535,8 +535,8 @@
               <li class="engine-step-item">
                 <span class="step-number">2</span>
                 <div class="step-content">
-                  <h4 data-i18n="engine_rep_s2_title">Dynamic Variable Rate Sync (0.5x - 4x)</h4>
-                  <p data-i18n="engine_rep_s2_desc">Fast forward or rewind during review; VLC dynamically adjusts voice playback speed in microsecond intervals.</p>
+                  <h4 data-i18n="engine_rep_s2_title">Dynamic Variable Rate Sync (0.5x - 8x)</h4>
+                  <p data-i18n="engine_rep_s2_desc">Fast forward or rewind during review; Rodio dynamically adjusts voice playback speed across 0.5x, 1x, 2x, 4x, and 8x without seek audio hitches.</p>
                 </div>
               </li>
               <li class="engine-step-item">
@@ -561,7 +561,7 @@
           <span class="section-tag" data-i18n="timeline_tag">TIMELINE PRECISION</span>
           <h2 class="section-title cyan-gradient-text" data-i18n="timeline_title">Why Frame-Accuracy Matters</h2>
           <p class="section-desc" data-i18n="timeline_desc">
-            Manual recordings always drift. League Voice Recorder uses FFmpeg sample math to lock audio frame-by-frame.
+            Manual recordings always drift. League Voice Recorder uses pure Rust sample math to lock audio frame-by-frame.
           </p>
         </div>
 
@@ -692,9 +692,9 @@
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
               </svg>
             </div>
-            <h3 class="feature-title" data-i18n="feat_5_title">Integrated Scrim Browser</h3>
+            <h3 class="feature-title" data-i18n="feat_5_title">Integrated Scrim Browser &amp; Cloud Sync</h3>
             <p class="feature-text" data-i18n="feat_5_desc">
-              Browse, audit, and play recordings directly inside the app with instant metadata, file sizes, and timestamps.
+              Browse, audit, and play recordings directly inside the app with ID3 metadata, patch mismatch alerts, and team cloud sync.
             </p>
           </div>
 
@@ -790,20 +790,20 @@
           <!-- Setup Tabs Bar -->
           <div class="setup-tabs-bar">
             <button class="setup-tab-btn active" data-panel="release" data-i18n="setup_tab_release">1. Standalone Release</button>
-            <button class="setup-tab-btn" data-panel="winget" data-i18n="setup_tab_winget">2. Winget Prerequisites</button>
+            <button class="setup-tab-btn" data-panel="winget" data-i18n="setup_tab_winget">2. Zero Prerequisites</button>
             <button class="setup-tab-btn" data-panel="gamecfg" data-i18n="setup_tab_gamecfg">3. Enable Replay API</button>
             <button class="setup-tab-btn" data-panel="discord" data-i18n="setup_tab_discord">4. Discord Auth</button>
-            <button class="setup-tab-btn" data-panel="source" data-i18n="setup_tab_source">5. Run from Source</button>
+            <button class="setup-tab-btn" data-panel="source" data-i18n="setup_tab_source">5. Build from Source</button>
           </div>
 
           <!-- Panel 1: Standalone Release -->
           <div class="setup-tab-panel active" id="setup-panel-release">
             <h3 style="font-size: 1.4rem; color: #fff; margin-bottom: 12px;" data-i18n="setup_panel1_title">Windows Setup Wizard (Recommended)</h3>
-            <p style="margin-bottom: 20px;" data-i18n="setup_panel1_desc">No Python environment or manual dependencies required. Includes an official Windows setup installer wizard with Desktop shortcuts and start menu registration.</p>
+            <p style="margin-bottom: 20px;" data-i18n="setup_panel1_desc">No external runtimes, Python environment, or manual dependencies required. Includes an official Windows setup installer wizard with Desktop shortcuts and start menu registration.</p>
 
             <ol style="padding-left: 20px; line-height: 1.8; color: var(--text-secondary); margin-bottom: 24px;">
               <li data-i18n="setup_panel1_s1">Go to our <a href="https://github.com/betterix/league-voice-recorder/releases" target="_blank" rel="noopener noreferrer">GitHub Releases</a> page.</li>
-              <li data-i18n="setup_panel1_s2">Download <strong><code>LeagueVoiceRecorder-Setup-v0.5.3.exe</code></strong> (or portable <code>LeagueVoiceRecorder-Windows-x64.zip</code>).</li>
+              <li data-i18n="setup_panel1_s2">Download <strong><code>LeagueVoiceRecorder_0.6.1_x64-setup.exe</code></strong> (or standalone <code>LeagueVoiceRecorder.exe</code>).</li>
               <li data-i18n="setup_panel1_s3">Run the setup installer (supports English and Hungarian languages).</li>
               <li data-i18n="setup_panel1_s4">Launch <strong>League Voice Recorder</strong> directly from your Desktop or Start Menu!</li>
             </ol>
@@ -814,31 +814,24 @@
                 <polyline points="7 10 12 15 17 10"></polyline>
                 <line x1="12" y1="15" x2="12" y2="3"></line>
               </svg>
-              <span>Download Windows Installer (v0.5.3)</span>
+              <span>Download Windows Installer (v0.6.1)</span>
             </a>
           </div>
 
-          <!-- Panel 2: Winget Prerequisites -->
+          <!-- Panel 2: Zero Prerequisites -->
           <div class="setup-tab-panel" id="setup-panel-winget">
-            <h3 style="font-size: 1.4rem; color: #fff; margin-bottom: 12px;">Install Dependencies via Windows Package Manager</h3>
-            <p>League Voice Recorder uses FFmpeg for audio sample alignment and 64-bit VLC for synchronized replay seeking.</p>
+            <h3 style="font-size: 1.4rem; color: #fff; margin-bottom: 12px;">Zero External Prerequisites (Pure Native Rust)</h3>
+            <p>League Voice Recorder is built entirely in native Rust 2024 and Tauri v2. Unlike other recorders, it does NOT require VLC Media Player, Python, FFmpeg, virtual audio cables (Voicemeeter), or audio drivers. Everything is compiled directly into a self-contained, high-performance desktop application.</p>
 
             <div class="code-box">
               <div class="code-box-header">
-                <span>PowerShell (Run as Administrator or standard user)</span>
-                <button class="btn-copy" data-copy-target="code-winget">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                  </svg>
-                  <span>Copy Command</span>
-                </button>
+                <span>Self-Contained Native Engine</span>
               </div>
-              <pre><code id="code-winget"># 1. Install FFmpeg (Audio conversion &amp; offset alignment)
-winget install -e --id Gyan.FFmpeg
-
-# 2. Install VLC Media Player 64-bit (Replay playback engine)
-winget install -e --id VideoLAN.VLC</code></pre>
+              <pre><code id="code-winget"># Zero external software needed!
+# 1. Native WASAPI audio loopback &amp; mic capture (no virtual cables)
+# 2. Pure Rust MP3 stream-to-disk encoding (rusty_mp3)
+# 3. In-process headless audio replay engine (Rodio 0.23)
+# 4. 100% Vanguard &amp; Riot API compliant</code></pre>
             </div>
           </div>
 
@@ -896,10 +889,10 @@ EnableReplayApi=1</code></pre>
             </div>
           </div>
 
-          <!-- Panel 5: Run from Source -->
+          <!-- Panel 5: Build from Source -->
           <div class="setup-tab-panel" id="setup-panel-source">
-            <h3 style="font-size: 1.4rem; color: #fff; margin-bottom: 12px;">Run Directly from Python Source via uv</h3>
-            <p>Compatible with Python 3.12+ and 3.14. Uses the blazing-fast <code>uv</code> package manager.</p>
+            <h3 style="font-size: 1.4rem; color: #fff; margin-bottom: 12px;">Build Directly from Rust Source</h3>
+            <p>Built with Rust 2024 Edition and Tauri v2. Requires standard Rust (rustup) and Node.js for frontend assets.</p>
 
             <div class="code-box">
               <div class="code-box-header">
@@ -916,14 +909,14 @@ EnableReplayApi=1</code></pre>
 git clone https://github.com/betterix/league-voice-recorder.git
 cd league-voice-recorder
 
-# 2. Sync dependencies
-uv sync --dev
+# 2. Build development executable
+cargo build
 
-# 3. Launch the desktop GUI
-uv run main.py
+# 3. Run automated test suite (41 unit tests)
+cargo test --lib
 
-# 4. Run automated test suite (129 unit tests)
-uv run pytest</code></pre>
+# 4. Launch the desktop GUI
+cargo run</code></pre>
             </div>
           </div>
         </div>
@@ -987,7 +980,7 @@ uv run pytest</code></pre>
               <div class="arch-step-box">
                 <span class="arch-step-badge">CAPTURE</span>
                 <span class="arch-step-name">WASAPI Loopback</span>
-                <span class="arch-step-desc">Hooks Discord.exe process directly via <code>proc-tap</code>. Captures mic via <code>pyaudiowpatch</code> at 48kHz PCM16.</span>
+                <span class="arch-step-desc">Captures Discord audio and player microphone via Windows WASAPI at studio standard 48kHz PCM16.</span>
               </div>
               <div class="arch-step-box">
                 <span class="arch-step-badge">ALIGNMENT</span>
@@ -997,12 +990,12 @@ uv run pytest</code></pre>
               <div class="arch-step-box">
                 <span class="arch-step-badge">ZERO-DRIFT</span>
                 <span class="arch-step-name">Pause Truncation</span>
-                <span class="arch-step-desc">In-game pauses truncate WAV frames in-place (<code>seek(44 + frame*size)</code>), slicing out the 450ms API polling lag.</span>
+                <span class="arch-step-desc">In-game pauses truncate raw PCM disk streams in-place, slicing out the 280ms API polling lag with zero drift.</span>
               </div>
               <div class="arch-step-box">
                 <span class="arch-step-badge gold">EXPORT</span>
-                <span class="arch-step-name">FFmpeg Normalization</span>
-                <span class="arch-step-desc">Sample-accurate <code>adelay</code> and trim filters mix mic + Discord into a pristine 192k <code>&lt;GameID&gt;.mp3</code>.</span>
+                <span class="arch-step-name">Pure Rust MP3 Mixer</span>
+                <span class="arch-step-desc">Sample-accurate silence padding, offset trimming, and <code>rusty_mp3</code> encoding into a pristine <code>&lt;GameID&gt;.mp3</code>.</span>
               </div>
             </div>
           </div>
@@ -1020,7 +1013,7 @@ uv run pytest</code></pre>
               <div class="arch-step-box">
                 <span class="arch-step-badge gold">PROCESS</span>
                 <span class="arch-step-name">ROFL Inspector</span>
-                <span class="arch-step-desc">Scans <code>psutil.process_iter</code> for <code>League of Legends.exe</code> running any <code>*.rofl</code> replay.</span>
+                <span class="arch-step-desc">High-speed <code>sysinfo</code> command-line scanner identifies <code>League of Legends.exe</code> running any <code>*.rofl</code> replay.</span>
               </div>
               <div class="arch-step-box">
                 <span class="arch-step-badge">GAME ID</span>
@@ -1028,9 +1021,9 @@ uv run pytest</code></pre>
                 <span class="arch-step-desc">Extracts Game ID from replay arguments (e.g. <code>8018190134</code>) and loads matching <code>recordings/8018190134.mp3</code>.</span>
               </div>
               <div class="arch-step-box">
-                <span class="arch-step-badge">VLC ENGINE</span>
+                <span class="arch-step-badge">RODIO ENGINE</span>
                 <span class="arch-step-name">Zero-Latency Sync</span>
-                <span class="arch-step-desc">Polls <code>:2999/replay/playback</code> every 50ms. Locks audio speed to 0.5x, 1x, 2x, 4x without seek audio hitches.</span>
+                <span class="arch-step-desc">Polls <code>:2999/replay/playback</code> every 50ms. Locks audio speed to 0.5x, 1x, 2x, 4x, 8x without seek audio dropouts.</span>
               </div>
               <div class="arch-step-box">
                 <span class="arch-step-badge">OBSERVER</span>
@@ -1050,7 +1043,7 @@ uv run pytest</code></pre>
             </svg>
             <span data-i18n="arch_docs_cta">📖 Read Architecture &amp; Codebase Internals</span>
           </a>
-          <p style="margin-top: 10px; font-size: 0.9rem; color: var(--text-muted);" data-i18n="arch_docs_sub">Deep dive into main.py, app/native_audio.py, WASAPI loopback, pause truncation, and zero-latency audio pipelines.</p>
+          <p style="margin-top: 10px; font-size: 0.9rem; color: var(--text-muted);" data-i18n="arch_docs_sub">Deep dive into native Rust core, Rodio player, WASAPI loopback, pause truncation, and zero-latency audio pipelines.</p>
         </div>
       </div>
     </section>
@@ -1126,7 +1119,7 @@ uv run pytest</code></pre>
             </button>
             <div class="faq-answer">
               <div class="faq-answer-inner">
-                Yes! Both English and Hungarian (Magyar) are built-in from day one. You can add any other language simply by creating a new <code>.json</code> file in the <code>locales/</code> directory without modifying any Python code.
+                Yes! Both English and Hungarian (Magyar) are built-in from day one. You can add any other language simply by creating a new <code>.json</code> file in the <code>locales/</code> directory without modifying any application code.
               </div>
             </div>
           </div>

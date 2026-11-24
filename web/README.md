@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.5.3-blue?logo=github" alt="Release" /></a>
+  <a href="https://github.com/betterix/league-voice-recorder/releases"><img src="https://img.shields.io/badge/release-v0.6.1-blue?logo=github" alt="Release" /></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%2064--bit-0078D6?logo=windows&logoColor=white" alt="Platform" />
   <img src="https://img.shields.io/badge/i18n-English%20%7C%20Magyar-success" alt="i18n" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License" />
@@ -20,7 +20,7 @@
 ## ✨ Features of the Website
 
 - 🎮 **Hextech Esports Aesthetic**: Deep Obsidian Void backgrounds, Hextech Gold gradients, and Zaun Magic Cyan glowing accents with dynamic interactive particle animations.
-- 🧪 **Live Desktop App Simulator**: An interactive in-browser replica of the CustomTkinter desktop interface:
+- 🧪 **Live Desktop App Simulator**: An interactive in-browser replica of the native Tauri v2 desktop interface:
   - Working **Start/Stop Recording Watcher** cycle with match launch simulation.
   - Responsive **audio VU meters** for Discord loopback and player microphone.
   - Interactive **Discord Mute Test button** demonstrating real-time silence byte injection without timeline desync.

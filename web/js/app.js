@@ -17,11 +17,11 @@ const i18n = {
     nav_faq: "FAQ",
     nav_download: "Download Latest Release",
 
-    hero_badge: "v0.5.3 Released • Windows 10/11 64-bit • Open Source",
+    hero_badge: "v0.6.1 Released • Windows 10/11 64-bit • Open Source",
     hero_title_1: "Frame-Accurate Scrim Comms &",
     hero_title_2: "Replay Synchronization",
     hero_title_3: "For League of Legends",
-    hero_subtitle: "Zero-latency automated Discord voice recording coupled with frame-accurate League of Legends replay audio lock. Scrub at 0.5x, 1x, 2x, or 4x without losing comms sync.",
+    hero_subtitle: "Zero-latency automated Discord voice recording coupled with frame-accurate League of Legends replay audio lock. Scrub at 0.5x, 1x, 2x, 4x, or 8x without losing comms sync.",
     hero_cta_download: "Download Latest Release",
     hero_cta_github: "View on GitHub",
     hero_cta_sim: "Try Interactive App",
@@ -32,8 +32,8 @@ const i18n = {
 
     health_discord: "Discord IPC:",
     health_league: "League Client:",
-    health_vlc: "VLC Engine:",
-    health_ffmpeg: "FFmpeg:",
+    health_vlc: "Rodio Audio:",
+    health_ffmpeg: "Rust Core:",
     health_ready: "🟢 Ready",
     health_connected: "🟢 Connected",
     health_running: "🟢 Running",
@@ -62,7 +62,7 @@ const i18n = {
     sim_rep_stop_btn: "⏹ Stop Replay Auto-Sync",
     sim_rep_vol: "Replay Volume:",
     sim_rep_hotkey: "Press M to Mute/Unmute",
-    sim_rep_hint_auto: "Auto-detects running League replay process and locks VLC playback clock.",
+    sim_rep_hint_auto: "Auto-detects running League replay process and locks Rodio audio engine frame-for-frame.",
     sim_rep_hint_m: "Press 'M' hotkey while watching to mute/unmute synced voice comms.",
 
     sim_tab_log: "📋 Activity Log",
@@ -70,7 +70,7 @@ const i18n = {
     sim_tab_settings: "⚙️ Settings",
     sim_mic_select: "Microphone Device:",
     sim_settings_update: "Software Updates:",
-    sim_settings_update_status: "● You are running the latest version (v0.5.3)",
+    sim_settings_update_status: "● You are running the latest version (v0.6.1)",
     sim_settings_update_btn: "🔄 Check for Updates",
     sim_settings_hud: "In-Game Floating HUD Overlay:",
     sim_settings_hud_desc: "● Opacity 85% • WS_EX_TRANSPARENT Click-Through • LoL.exe Auto-Focus",
@@ -93,17 +93,17 @@ const i18n = {
 
     engine_rep_badge: "ENGINE 2 • REPLAY SYNCHRONIZATION",
     engine_rep_title: "Frame-Accurate Replay Lock",
-    engine_rep_desc: "Hooks into the League Replay Playback API (:2999/replay/playback) and synchronizes audio via VLC Media Player.",
+    engine_rep_desc: "Hooks into the League Replay Playback API (:2999/replay/playback) and synchronizes audio via native Rodio audio engine.",
     engine_rep_s1_title: "Instant .ROFL Detection",
     engine_rep_s1_desc: "Opening any match replay in League automatically locates the matching <GameID>.mp3 in your recordings.",
-    engine_rep_s2_title: "Dynamic Variable Rate Sync (0.5x - 4x)",
-    engine_rep_s2_desc: "Fast forward or rewind during review; VLC dynamically adjusts voice playback speed in microsecond intervals.",
+    engine_rep_s2_title: "Dynamic Variable Rate Sync (0.5x - 8x)",
+    engine_rep_s2_desc: "Fast forward or rewind during review; Rodio dynamically adjusts voice playback speed across 0.5x, 1x, 2x, 4x, and 8x without seek audio hitches.",
     engine_rep_s3_title: "In-Game Observer Mute ('M' Hotkey)",
     engine_rep_s3_desc: "Press 'M' while watching in League to instantly silence voice comms to hear important in-game audio cues.",
 
     timeline_tag: "TIMELINE PRECISION",
     timeline_title: "Why Frame-Accuracy Matters",
-    timeline_desc: "Manual recordings always drift. League Voice Recorder uses FFmpeg sample math to lock audio frame-by-frame.",
+    timeline_desc: "Manual recordings always drift. League Voice Recorder uses pure Rust sample math to lock audio frame-by-frame.",
     timeline_track_game: "In-Game Scrim Timeline",
     timeline_track_bad: "Standard Manual Recording (Disaster)",
     timeline_track_good: "League Voice Recorder (Frame Locked)",
@@ -118,8 +118,8 @@ const i18n = {
     feat_3_desc: "Zero memory injection, zero DLL hooking. Communicates strictly with Riot's approved local HTTP endpoints.",
     feat_4_title: "Replay Guard Protection",
     feat_4_desc: "Inspects running process trees to ensure you never accidentally record over an existing file when reviewing replays.",
-    feat_5_title: "Integrated Scrim Browser",
-    feat_5_desc: "Browse, audit, and play recordings directly inside the app with instant metadata, file sizes, and timestamps.",
+    feat_5_title: "Integrated Scrim Browser & Cloud Sync",
+    feat_5_desc: "Browse, audit, and play recordings directly inside the app with ID3 metadata, patch mismatch alerts, and team cloud sync.",
     feat_6_title: "Drop-In Translations (i18n)",
     feat_6_desc: "Full internationalization support. English & Hungarian built-in; add any language via a simple JSON file.",
     feat_7_title: "In-Game Floating HUD Overlay",
@@ -133,15 +133,15 @@ const i18n = {
 
     setup_tag: "INSTALLATION & CONFIGURATION",
     setup_title: "Get Running in Under 2 Minutes",
-    setup_desc: "Available as a precompiled standalone Windows executable or run directly from source with uv.",
+    setup_desc: "Available as a precompiled standalone Windows executable or setup wizard with zero external dependencies.",
     setup_tab_release: "1. Standalone Release",
-    setup_tab_winget: "2. Winget Prerequisites",
+    setup_tab_winget: "2. Zero Prerequisites",
     setup_tab_gamecfg: "3. Enable Replay API",
     setup_tab_discord: "4. Discord Auth",
-    setup_tab_source: "5. Run from Source",
+    setup_tab_source: "5. Build from Source",
 
     arch_docs_cta: "📖 Read Architecture & Codebase Internals",
-    arch_docs_sub: "Deep dive into main.py, app/native_audio.py, WASAPI loopback, pause truncation, and zero-latency audio pipelines.",
+    arch_docs_sub: "Deep dive into native Rust core, Rodio player, WASAPI loopback, pause truncation, and zero-latency audio pipelines.",
 
     faq_tag: "FREQUENTLY ASKED QUESTIONS",
     faq_title: "Answers & Technical Details",
@@ -167,11 +167,11 @@ const i18n = {
     nav_faq: "GYIK",
     nav_download: "Legfrissebb Kiadás Letöltése",
 
-    hero_badge: "v0.5.3 Megjelent • Windows 10/11 64-bit • Nyílt forráskód",
+    hero_badge: "v0.6.1 Megjelent • Windows 10/11 64-bit • Nyílt forráskód",
     hero_title_1: "Képkocka-Pontos Scrim Hang &",
     hero_title_2: "Visszajátszás Szinkronizáció",
     hero_title_3: "League of Legends-hez",
-    hero_subtitle: "Zéró késleltetésű automatikus Discord hangrögzítés és képkocka-pontos League visszajátszás szinkronizáció. Tekerj 0.5x, 1x, 2x vagy 4x sebességgel anélkül, hogy a hang elcsúszna.",
+    hero_subtitle: "Zéró késleltetésű automatikus Discord hangrögzítés és képkocka-pontos League visszajátszás szinkronizáció. Tekerj 0.5x, 1x, 2x, 4x vagy 8x sebességgel anélkül, hogy a hang elcsúszna.",
     hero_cta_download: "Legfrissebb Kiadás Letöltése",
     hero_cta_github: "Megtekintés GitHubon",
     hero_cta_sim: "Interaktív Alkalmazás Kipróbálása",
@@ -182,8 +182,8 @@ const i18n = {
 
     health_discord: "Discord IPC:",
     health_league: "League Kliens:",
-    health_vlc: "VLC Motor:",
-    health_ffmpeg: "FFmpeg:",
+    health_vlc: "Rodio Audio:",
+    health_ffmpeg: "Rust Motor:",
     health_ready: "🟢 Kész",
     health_connected: "🟢 Csatlakozva",
     health_running: "🟢 Fut",
@@ -212,7 +212,7 @@ const i18n = {
     sim_rep_stop_btn: "⏹ Replay Auto-Sync leállítása",
     sim_rep_vol: "Visszajátszási hangerő:",
     sim_rep_hotkey: "M billentyű: Némítás / Visszakapcsolás",
-    sim_rep_hint_auto: "Automatikusan felismeri a futó League replay-t és zárja a VLC órát.",
+    sim_rep_hint_auto: "Automatikusan felismeri a futó League replay-t és szinkronizálja a beépített Rodio audiomotort.",
     sim_rep_hint_m: "Nyomd meg az 'M' billentyűt nézői módban a hang némításához.",
 
     sim_tab_log: "📋 Tevékenységnapló",
@@ -220,7 +220,7 @@ const i18n = {
     sim_tab_settings: "⚙️ Beállítások",
     sim_mic_select: "Mikrofon Eszköz:",
     sim_settings_update: "Szoftverfrissítések:",
-    sim_settings_update_status: "● A legfrissebb verziót használod (v0.5.3)",
+    sim_settings_update_status: "● A legfrissebb verziót használod (v0.6.1)",
     sim_settings_update_btn: "🔄 Frissítések keresése",
     sim_settings_hud: "Játékon Belüli Lebegő HUD:",
     sim_settings_hud_desc: "● Átlátszóság 85% • WS_EX_TRANSPARENT Átkattintás • LoL.exe Auto-Fókusz",
@@ -243,17 +243,17 @@ const i18n = {
 
     engine_rep_badge: "2. MOTOR • REPLAY SZINKRONIZÁCIÓ",
     engine_rep_title: "Képkocka-Pontos Replay Zárás",
-    engine_rep_desc: "Rácsatlakozik a League Replay Playback API-ra (:2999/replay/playback) és VLC-n keresztül szinkronizálja a hangot.",
+    engine_rep_desc: "Rácsatlakozik a League Replay Playback API-ra (:2999/replay/playback) és közvetlenül a beépített Rodio motoron szinkronizálja a hangot.",
     engine_rep_s1_title: "Azonnali .ROFL Felismerés",
     engine_rep_s1_desc: "Bármely meccs visszajátszásának megnyitásakor automatikusan megkeresi a hozzá tartozó <GameID>.mp3 fájlt.",
-    engine_rep_s2_title: "Dinamikus Változó Sebesség (0.5x - 4x)",
-    engine_rep_s2_desc: "Tekerj előre vagy vissza; a VLC mikromásodperces időközökkel igazítja a hangsebességet a képkockákhoz.",
+    engine_rep_s2_title: "Dinamikus Változó Sebesség (0.5x - 8x)",
+    engine_rep_s2_desc: "Tekerj előre vagy vissza; a Rodio natív audiomotor azonnal igazítja a hangsebességet 0.5x és 8x között kattogás és csúszás nélkül.",
     engine_rep_s3_title: "Játékon Belüli Némítás ('M' Billentyű)",
     engine_rep_s3_desc: "Nyomd meg az 'M' billentyűt a League-ben az azonnali némításhoz, ha fontos in-game hangeffekteket figyelnél.",
 
     timeline_tag: "IDŐVONAL PONTOSSÁG",
     timeline_title: "Miért Számít a Képkocka-Pontosság?",
-    timeline_desc: "A manuális felvételek mindig elcsúsznak. A League Voice Recorder FFmpeg mintamatematikával képkockánként zárja a hangot.",
+    timeline_desc: "A manuális felvételek mindig elcsúsznak. A League Voice Recorder tiszta Rust mintamatematikával képkockánként zárja a hangot.",
     timeline_track_game: "Játékbeli Mérkőzés Idővonala",
     timeline_track_bad: "Hagyományos Manuális Felvétel (Katasztrófa)",
     timeline_track_good: "League Voice Recorder (Képkocka-Zárolt)",
@@ -268,8 +268,8 @@ const i18n = {
     feat_3_desc: "Nincs memóriainjekció, nincs DLL-hookolás. Kizárólag a Riot jóváhagyott helyi HTTP végpontjaival kommunikál.",
     feat_4_title: "Replay Guard Védelem",
     feat_4_desc: "Folyamatfa-ellenőrzéssel garantálja, hogy visszajátszások megtekintésekor véletlenül se írd felül a felvételeket.",
-    feat_5_title: "Beépített Scrim Kezelő",
-    feat_5_desc: "Böngészd és játszd le a rögzített meccseket közvetlenül az appban részletes metaadatokkal és fájlméretekkel.",
+    feat_5_title: "Beépített Scrim Kezelő & Felhőszinkron",
+    feat_5_desc: "Böngészd és játszd le a rögzített meccseket közvetlenül az appban ID3 címkékkel, patch eltérés figyelmeztetéssel és csapatfelhő szinkronnal.",
     feat_6_title: "Könnyű Bővíthetőség (i18n)",
     feat_6_desc: "Teljes nemzetköziesítés. Angol és Magyar beépítve; bármilyen nyelv hozzáadható egyetlen JSON fájllal.",
     feat_7_title: "Játékon Belüli Lebegő HUD",
@@ -283,15 +283,29 @@ const i18n = {
 
     setup_tag: "TELEPÍTÉS ÉS BEÁLLÍTÁS",
     setup_title: "Indulásra Kész Kevesebb Mint 2 Perc Alatt",
-    setup_desc: "Elérhető előre lefordított önálló Windows programként (.exe), vagy forrásból futtatva uv segítségével.",
-    setup_tab_release: "1. Letöltés (.ZIP)",
-    setup_tab_winget: "2. Winget Előfeltételek",
+    setup_desc: "Elérhető előre lefordított önálló Windows telepítőként (.exe), külső függőségek nélkül.",
+    setup_tab_release: "1. Windows Telepítő",
+    setup_tab_winget: "2. Zéró Előfeltétel",
     setup_tab_gamecfg: "3. Replay API Engedélyezés",
     setup_tab_discord: "4. Discord Engedély",
-    setup_tab_source: "5. Futtatás Forrásból",
+    setup_tab_source: "5. Fordítás Forrásból",
 
     arch_docs_cta: "📖 Teljes Architektúra és Kód Belsőségek",
-    arch_docs_sub: "Részletes elemzés: main.py, app/native_audio.py, WASAPI loopback, szünet levágás és késleltetésmentes hangfeldolgozás.",
+    arch_docs_sub: "Részletes elemzés: natív Rust mag, Rodio lejátszó, WASAPI loopback, szünet levágás és késleltetésmentes hangfeldolgozás.",
+
+    faq_tag: "GYAKRAN ISMÉTELT KÉRDÉSEK",
+    faq_title: "Válaszok és Technikai Részletek",
+    faq_6_q: "Biztonságosak a Windows programok és védettek a vírusok / kártevők ellen?",
+    faq_6_a: "<strong>Igen, 100%-ban.</strong> Minden kiadott programfájlt (<code>LeagueVoiceRecorder.exe</code> és <code>LeagueVoiceRecorder-Setup-*.exe</code>) több mint <strong>70 vírusirtó motor</strong> ellenőriz automatikusan a hivatalos VirusTotal API v3-on keresztül a GitHub Actions kiadási folyamat során. Minden kiadási jegyzék tartalmazza a közvetlen linkeket a nyilvános jelentésekre és a kriptográfiai SHA256 ellenőrző összegekre.",
+
+    cta_title: "Készen Állsz Szintre Emelni a Scrim Elemzést?",
+    cta_desc: "Töltsd le a League Voice Recorder-t Windows 10 és 11 rendszerekre még ma. Teljesen ingyenes, nyílt forráskódú és esportra szabott.",
+    cta_btn_download: "Legfrissebb Kiadás Letöltése",
+    cta_btn_repo: "Csillagozd GitHubon",
+
+    footer_desc: "Automatizált Discord hangrögzítő és képkocka-pontos League of Legends visszajátszás-szinkronizáló esport csapatoknak.",
+    footer_disclaimer: "A League Voice Recorder független nyílt forráskódú projekt, és nem áll kapcsolatban a Riot Games, Inc.-vel, nem a Riot Games hagyta jóvá vagy támogatja azt. A League of Legends a Riot Games, Inc. bejegyzett védjegye."
+  }
 
     faq_tag: "GYAKRAN ISMÉTELT KÉRDÉSEK",
     faq_title: "Válaszok és Technikai Részletek",
@@ -879,10 +893,10 @@ function initSimulator() {
           statusEl.replaceChildren();
           const span = document.createElement("span");
           span.style.color = "#4ade80";
-          span.textContent = "● You are running the latest version (v0.5.3)";
+          span.textContent = "● You are running the latest version (v0.6.1)";
           statusEl.appendChild(span);
         }
-        appendSimLog("✅ [UPDATER] Version check complete. Running latest release v0.5.3.", "success");
+        appendSimLog("✅ [UPDATER] Version check complete. Running latest release v0.6.1.", "success");
       }, 900);
     });
   }
