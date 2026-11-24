@@ -68,6 +68,14 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for AppLogLayer {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DownloadProgress {
+    pub downloaded: u64,
+    pub total: u64,
+    pub percentage: u32,
+    pub status: String,
+}
+
 pub struct AppState {
     pub rec_stop: Arc<AtomicBool>,
     pub rep_stop: Arc<AtomicBool>,
@@ -89,6 +97,7 @@ pub struct AppState {
     pub hud_overlay_enabled: Arc<AtomicBool>,
     pub base_game_time: Arc<Mutex<Option<String>>>,
     pub active_game_patch: Arc<Mutex<Option<String>>>,
+    pub update_progress: Arc<Mutex<Option<DownloadProgress>>>,
 }
 
 impl Default for AppState {
@@ -165,6 +174,7 @@ impl Default for AppState {
             hud_overlay_enabled: Arc::new(AtomicBool::new(initial_cfg.hud_overlay_enabled)),
             base_game_time: Arc::new(Mutex::new(None)),
             active_game_patch: Arc::new(Mutex::new(None)),
+            update_progress: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -1565,15 +1575,25 @@ async fn apply_update(
     state.log("⬇️ Downloading update and preparing application restart...");
     use tauri::Emitter;
     let app_handle = app.clone();
+    let prog_lock = state.update_progress.clone();
     let cb = Box::new(move |downloaded: u64, total: u64, pct: u32, status: &str| {
-        let _ = app_handle.emit("update-download-progress", serde_json::json!({
-            "downloaded": downloaded,
-            "total": total,
-            "percentage": pct,
-            "status": status,
-        }));
+        let p = DownloadProgress {
+            downloaded,
+            total,
+            percentage: pct,
+            status: status.to_string(),
+        };
+        if let Ok(mut lk) = prog_lock.lock() {
+            *lk = Some(p.clone());
+        }
+        let _ = app_handle.emit("update-download-progress", serde_json::to_value(&p).unwrap_or_default());
     });
     league_voice_recorder::updater::download_and_apply_update(&download_url, Some(cb)).await
+}
+
+#[tauri::command]
+fn get_update_progress(state: tauri::State<'_, Arc<AppState>>) -> Option<DownloadProgress> {
+    state.update_progress.lock().ok()?.clone()
 }
 
 #[tauri::command]
@@ -2001,6 +2021,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             cloud_delete_recording,
             check_for_updates,
             apply_update,
+            get_update_progress,
             get_available_languages,
             get_translations,
             get_app_version,

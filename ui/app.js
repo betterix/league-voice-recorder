@@ -1384,6 +1384,68 @@ async function checkForUpdates(silent = false) {
   }
 }
 
+function updateProgressUI(data) {
+  if (!data) return;
+  const progressFills = [
+    document.getElementById("update-progress-bar-fill"),
+    document.getElementById("banner-update-progress-bar-fill")
+  ];
+  const statusEls = [
+    document.getElementById("update-progress-status"),
+    document.getElementById("banner-update-progress-status")
+  ];
+  const byteEls = [
+    document.getElementById("update-progress-bytes"),
+    document.getElementById("banner-update-progress-bytes")
+  ];
+  const barTextEls = [
+    document.getElementById("update-progress-bar-text"),
+    document.getElementById("banner-update-progress-bar-text")
+  ];
+
+  if (data.status === "downloading") {
+    progressFills.forEach(f => {
+      if (f) {
+        f.classList.remove("installing");
+        f.style.width = `${data.percentage}%`;
+      }
+    });
+    statusEls.forEach(s => {
+      if (s) s.innerText = `Downloading update... ${data.percentage}%`;
+    });
+    if (data.total > 0) {
+      const dlMb = (data.downloaded / (1024 * 1024)).toFixed(1);
+      const totalMb = (data.total / (1024 * 1024)).toFixed(1);
+      byteEls.forEach(b => {
+        if (b) b.innerText = `${dlMb} MB / ${totalMb} MB`;
+      });
+      barTextEls.forEach(t => {
+        if (t) t.innerText = `${dlMb} MB / ${totalMb} MB (${data.percentage}%)`;
+      });
+    } else {
+      barTextEls.forEach(t => {
+        if (t) t.innerText = `${data.percentage}%`;
+      });
+    }
+  } else if (data.status === "installing") {
+    progressFills.forEach(f => {
+      if (f) {
+        f.classList.add("installing");
+        f.style.width = "100%";
+      }
+    });
+    statusEls.forEach(s => {
+      if (s) s.innerText = "Installing update & restarting application...";
+    });
+    byteEls.forEach(b => {
+      if (b) b.innerText = "Finalizing...";
+    });
+    barTextEls.forEach(t => {
+      if (t) t.innerText = "Installing... (100%)";
+    });
+  }
+}
+
 async function applyUpdate(downloadUrl) {
   const targetUrl = downloadUrl || latestDownloadUrl;
   if (!targetUrl) return;
@@ -1433,9 +1495,22 @@ async function applyUpdate(downloadUrl) {
   ];
   barTextEls.forEach(t => { if (t) t.innerText = "Connecting..."; });
 
+  const progressTimer = setInterval(async () => {
+    try {
+      const p = await invokeTauri("get_update_progress");
+      if (p) {
+        updateProgressUI(p);
+        if (p.status === "installing") {
+          clearInterval(progressTimer);
+        }
+      }
+    } catch (_) {}
+  }, 40);
+
   try {
     await invokeTauri("apply_update", { downloadUrl: targetUrl });
   } catch (err) {
+    clearInterval(progressTimer);
     statusEls.forEach(s => { if (s) s.innerText = `⚠️ Update failed: ${err}`; });
     [btn, bannerBtn].forEach(b => {
       if (b) {
@@ -1732,73 +1807,11 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // 2b. Listen for reactive events from Tauri backend (overlay volume changes, hotkeys, update progress)
   if (window.__TAURI__ && window.__TAURI__.event) {
-    window.__TAURI__.event.listen("update-download-progress", (event) => {
-      const data = event.payload;
-      const progressContainers = [
-        document.getElementById("update-progress-container"),
-        document.getElementById("banner-update-progress-container")
-      ];
-      progressContainers.forEach(c => { if (c) c.style.display = "block"; });
-
-      const progressFills = [
-        document.getElementById("update-progress-bar-fill"),
-        document.getElementById("banner-update-progress-bar-fill")
-      ];
-      const statusEls = [
-        document.getElementById("update-progress-status"),
-        document.getElementById("banner-update-progress-status")
-      ];
-      const byteEls = [
-        document.getElementById("update-progress-bytes"),
-        document.getElementById("banner-update-progress-bytes")
-      ];
-      const barTextEls = [
-        document.getElementById("update-progress-bar-text"),
-        document.getElementById("banner-update-progress-bar-text")
-      ];
-
-      if (data.status === "downloading") {
-        progressFills.forEach(f => {
-          if (f) {
-            f.classList.remove("installing");
-            f.style.width = `${data.percentage}%`;
-          }
-        });
-        statusEls.forEach(s => {
-          if (s) s.innerText = `Downloading update... ${data.percentage}%`;
-        });
-        if (data.total > 0) {
-          const dlMb = (data.downloaded / (1024 * 1024)).toFixed(1);
-          const totalMb = (data.total / (1024 * 1024)).toFixed(1);
-          byteEls.forEach(b => {
-            if (b) b.innerText = `${dlMb} MB / ${totalMb} MB`;
-          });
-          barTextEls.forEach(t => {
-            if (t) t.innerText = `${dlMb} MB / ${totalMb} MB (${data.percentage}%)`;
-          });
-        } else {
-          barTextEls.forEach(t => {
-            if (t) t.innerText = `${data.percentage}%`;
-          });
-        }
-      } else if (data.status === "installing") {
-        progressFills.forEach(f => {
-          if (f) {
-            f.classList.add("installing");
-            f.style.width = "100%";
-          }
-        });
-        statusEls.forEach(s => {
-          if (s) s.innerText = "Installing update & restarting application...";
-        });
-        byteEls.forEach(b => {
-          if (b) b.innerText = "Finalizing...";
-        });
-        barTextEls.forEach(t => {
-          if (t) t.innerText = "Installing... (100%)";
-        });
-      }
-    });
+    try {
+      window.__TAURI__.event.listen("update-download-progress", (event) => {
+        updateProgressUI(event.payload);
+      });
+    } catch (_) {}
 
     window.__TAURI__.event.listen("volume-updated", (event) => {
       const vol = event.payload;
