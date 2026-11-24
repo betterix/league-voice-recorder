@@ -1,5 +1,4 @@
 use std::fs::File;
-use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player};
@@ -29,8 +28,7 @@ impl RodioPlayer {
 
     pub fn load_file(&mut self, path: &Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let file = File::open(path)?;
-        let reader = BufReader::new(file);
-        let source = Decoder::new(reader)?;
+        let source = Decoder::try_from(file)?;
 
         self.player.stop();
         self.current_path = Some(path.to_path_buf());
@@ -54,6 +52,10 @@ impl RodioPlayer {
         self.player.is_paused()
     }
 
+    pub fn get_speed(&self) -> f32 {
+        self.speed
+    }
+
     pub fn set_speed(&mut self, speed: f32) {
         self.speed = speed.max(0.1);
         self.player.set_speed(self.speed);
@@ -65,23 +67,25 @@ impl RodioPlayer {
     }
 
     pub fn get_pos(&self) -> Duration {
-        self.player.get_pos()
+        self.player.get_pos().mul_f32(self.speed.max(0.1))
     }
 
     pub fn seek(&mut self, position: Duration) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        if self.player.try_seek(position).is_err() {
-            // If seek failed or stream ended, reload fresh source and seek
+        let speed = self.speed.max(0.1);
+        let rodio_pos = position.div_f32(speed);
+        let needs_reload = self.player.empty() || self.player.try_seek(rodio_pos).is_err();
+        if needs_reload {
+            // If seek failed or stream reached EOF and ended, reload fresh source and seek
             if let Some(ref path) = self.current_path {
                 if let Ok(file) = File::open(path) {
-                    let reader = BufReader::new(file);
-                    if let Ok(source) = Decoder::new(reader) {
+                    if let Ok(source) = Decoder::try_from(file) {
                         let was_paused = self.player.is_paused();
                         self.player.stop();
                         self.player = Player::connect_new(&self.sink_handle.mixer());
                         self.player.set_volume(self.volume);
                         self.player.set_speed(self.speed);
                         self.player.append(source);
-                        let _ = self.player.try_seek(position);
+                        let _ = self.player.try_seek(rodio_pos);
                         if was_paused {
                             self.player.pause();
                         } else {
@@ -144,12 +148,18 @@ mod tests {
             player.pause();
             assert!(player.is_paused());
 
-            let raw_seek = player.player.try_seek(Duration::from_millis(100));
-            println!("RAW TRY_SEEK RESULT: {:?}", raw_seek);
-            println!("POS BEFORE SEEK: {:?}", player.get_pos());
             let seek_res = player.seek(Duration::from_millis(100));
             assert!(seek_res.is_ok(), "Seek failed: {:?}", seek_res.err());
-            println!("POS AFTER SEEK: {:?}", player.get_pos());
+            let pos = player.get_pos();
+            assert!(pos >= Duration::from_millis(90) && pos <= Duration::from_millis(150), "Pos after 100ms seek: {:?}", pos);
+
+            // Test speed scaling
+            player.set_speed(2.0);
+            assert_eq!(player.get_speed(), 2.0);
+            let seek_res_2x = player.seek(Duration::from_millis(200));
+            assert!(seek_res_2x.is_ok(), "2x seek failed: {:?}", seek_res_2x.err());
+            let pos_2x = player.get_pos();
+            assert!(pos_2x >= Duration::from_millis(180) && pos_2x <= Duration::from_millis(250), "Pos after 200ms seek at 2x: {:?}", pos_2x);
 
             player.stop();
         }

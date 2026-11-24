@@ -275,11 +275,16 @@ impl ReplaySynchronizer {
                         update_status("WATCHING", &format!("Replay #{} (Loading...)", active_game_id));
                     }
 
-                    let target_time = (state.time + self.config.replay_sync_offset).max(0.0);
+                    let target_time = (state.time + 1.0).max(0.0);
 
                     if let Ok(mut lk) = p_sink.lock() {
                         if let Some(ref mut p) = *lk {
-                            p.set_speed(speed);
+                            let speed_changed = (p.get_speed() - speed).abs() > 0.02;
+                            if speed_changed {
+                                p.set_speed(speed);
+                                let _ = p.seek(Duration::from_secs_f64(target_time));
+                                last_seek_inst = std::time::Instant::now();
+                            }
 
                             if state.paused {
                                 if !p.is_paused() {
@@ -306,8 +311,9 @@ impl ReplaySynchronizer {
                                     last_paused_state = false;
                                     last_seek_inst = std::time::Instant::now();
                                 } else {
-                                    // Actively playing: ONLY seek on genuine scrubs or large drift (> 1.2s) with cooldown
-                                    if drift > 1.2 && last_seek_inst.elapsed() >= Duration::from_millis(800) {
+                                    // Actively playing: ONLY seek on genuine scrubs or large drift with cooldown
+                                    let max_allowed_drift = (1.2 * speed as f64).max(1.2);
+                                    if drift > max_allowed_drift && last_seek_inst.elapsed() >= Duration::from_millis(800) {
                                         let _ = p.seek(Duration::from_secs_f64(target_time));
                                         last_seek_inst = std::time::Instant::now();
                                     }
