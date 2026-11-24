@@ -32,8 +32,8 @@ const i18n = {
 
     health_discord: "Discord IPC:",
     health_league: "League Client:",
-    health_vlc: "Rodio Audio:",
-    health_ffmpeg: "Rust Core:",
+    health_rodio: "Rodio Audio:",
+    health_rust: "Rust Core:",
     health_ready: "🟢 Ready",
     health_connected: "🟢 Connected",
     health_running: "🟢 Running",
@@ -182,8 +182,8 @@ const i18n = {
 
     health_discord: "Discord IPC:",
     health_league: "League Kliens:",
-    health_vlc: "Rodio Audio:",
-    health_ffmpeg: "Rust Motor:",
+    health_rodio: "Rodio Audio:",
+    health_rust: "Rust Motor:",
     health_ready: "🟢 Kész",
     health_connected: "🟢 Csatlakozva",
     health_running: "🟢 Fut",
@@ -791,11 +791,11 @@ function initSimulator() {
         appendSimLog("▶ [UI] Starting Replay Auto-Sync...", "info");
         appendSimLog("🎬 Detected replay file: EUN1_3194821034.rofl in League Client", "info");
         appendSimLog("🎵 Matched audio recording: EUN1_3194821034.mp3", "success");
-        appendSimLog("🔊 Loaded in 64-bit VLC engine. Lock established with :2999/replay/playback", "success");
+        appendSimLog("🔊 Loaded in Rodio audio engine. Lock established with :2999/replay/playback", "success");
         appendSimLog("🪟 [HUD] Replay HUD overlay activated with live waveform scrubbing & volume sync.", "info");
       } else {
         hideHud();
-        appendSimLog("⏹ Replay closed in League. Stopping synchronized VLC playback...", "info");
+        appendSimLog("⏹ Replay closed in League. Stopping synchronized Rodio audio playback...", "info");
       }
       updateSimUI();
     });
@@ -1009,8 +1009,8 @@ function initHealthRibbon() {
       refreshBtn.classList.remove("spinning");
       document.getElementById("health-discord-val").textContent = i18n[currentLang].health_connected;
       document.getElementById("health-league-val").textContent = i18n[currentLang].health_running;
-      document.getElementById("health-vlc-val").textContent = i18n[currentLang].health_ready;
-      document.getElementById("health-ffmpeg-val").textContent = i18n[currentLang].health_ready;
+      document.getElementById("health-rodio-val").textContent = i18n[currentLang].health_ready;
+      document.getElementById("health-rust-val").textContent = i18n[currentLang].health_ready;
     }, 600);
   });
 }
