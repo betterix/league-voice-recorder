@@ -1504,6 +1504,12 @@ async function applyUpdate(downloadUrl) {
   ];
   byteEls.forEach(b => { if (b) b.innerText = "Connecting..."; });
 
+  const barTextEls = [
+    document.getElementById("update-progress-bar-text"),
+    document.getElementById("banner-update-progress-bar-text")
+  ];
+  barTextEls.forEach(t => { if (t) t.innerText = "Connecting..."; });
+
   try {
     await invokeTauri("apply_update", { downloadUrl: targetUrl });
   } catch (err) {
@@ -1858,6 +1864,10 @@ window.addEventListener("DOMContentLoaded", () => {
         document.getElementById("update-progress-bytes"),
         document.getElementById("banner-update-progress-bytes")
       ];
+      const barTextEls = [
+        document.getElementById("update-progress-bar-text"),
+        document.getElementById("banner-update-progress-bar-text")
+      ];
 
       if (data.status === "downloading") {
         progressFills.forEach(f => {
@@ -1875,6 +1885,13 @@ window.addEventListener("DOMContentLoaded", () => {
           byteEls.forEach(b => {
             if (b) b.innerText = `${dlMb} MB / ${totalMb} MB`;
           });
+          barTextEls.forEach(t => {
+            if (t) t.innerText = `${dlMb} MB / ${totalMb} MB (${data.percentage}%)`;
+          });
+        } else {
+          barTextEls.forEach(t => {
+            if (t) t.innerText = `${data.percentage}%`;
+          });
         }
       } else if (data.status === "installing") {
         progressFills.forEach(f => {
@@ -1888,6 +1905,9 @@ window.addEventListener("DOMContentLoaded", () => {
         });
         byteEls.forEach(b => {
           if (b) b.innerText = "Finalizing...";
+        });
+        barTextEls.forEach(t => {
+          if (t) t.innerText = "Installing... (100%)";
         });
       }
     });
