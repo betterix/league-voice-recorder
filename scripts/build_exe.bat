@@ -40,11 +40,11 @@ if exist "C:\Program Files\NSIS\makensis.exe" set "MAKENSIS=C:\Program Files\NSI
 
 if defined MAKENSIS (
     "%MAKENSIS%" installer.nsi
-    if exist "LeagueVoiceRecorder_0.6.1_x64-setup.exe" (
-        move /y "LeagueVoiceRecorder_0.6.1_x64-setup.exe" "%TARGET_DIR%\LeagueVoiceRecorder_0.6.1_x64-setup.exe"
+    if exist "LeagueVoiceRecorder_0.6.2_x64-setup.exe" (
+        move /y "LeagueVoiceRecorder_0.6.2_x64-setup.exe" "%TARGET_DIR%\LeagueVoiceRecorder_0.6.2_x64-setup.exe"
     )
     if exist "LeagueVoiceRecorder.exe" del /f /q "LeagueVoiceRecorder.exe"
-    echo [OK] NSIS Installer: %TARGET_DIR%\LeagueVoiceRecorder_0.6.1_x64-setup.exe
+    echo [OK] NSIS Installer: %TARGET_DIR%\LeagueVoiceRecorder_0.6.2_x64-setup.exe
 ) else (
     echo [SKIP] makensis.exe not found. Standalone binary is ready.
 )
@@ -52,6 +52,6 @@ if defined MAKENSIS (
 echo.
 echo [4/4] Build complete!
 echo Binary output:    %TARGET_DIR%\LeagueVoiceRecorder.exe
-if defined MAKENSIS echo Installer output: %TARGET_DIR%\LeagueVoiceRecorder_0.6.1_x64-setup.exe
+if defined MAKENSIS echo Installer output: %TARGET_DIR%\LeagueVoiceRecorder_0.6.2_x64-setup.exe
 echo.
 pause

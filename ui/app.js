@@ -28,7 +28,7 @@ let smoothApp = 0.0;
 let smoothMic = 0.0;
 let autoscroll = true;
 let saveDebounceTimer = null;
-let currentAppVersion = LVR_CACHE.get("app_version", "0.6.1");
+let currentAppVersion = LVR_CACHE.get("app_version", "0.6.2");
 
 // Immediate Frame-0 Theme Application
 try {

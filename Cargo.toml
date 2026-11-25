@@ -1,6 +1,6 @@
 [package]
 name = "league-voice-recorder"
-version = "0.6.1"
+version = "0.6.2"
 edition = "2024"
 authors = ["betterix"]
 description = "Record League of Legends scrim voice audio and synchronize it with replay playback in native Rust."

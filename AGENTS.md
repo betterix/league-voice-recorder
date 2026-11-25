@@ -118,7 +118,7 @@ league-voice-recorder/
 │
 └── dist/                    # Compiled distribution binaries (staged releases)
     ├── LeagueVoiceRecorder.exe
-    └── LeagueVoiceRecorder_0.6.1_x64-setup.exe
+    └── LeagueVoiceRecorder_0.6.2_x64-setup.exe
 ```
 
 ---
