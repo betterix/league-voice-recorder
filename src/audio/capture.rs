@@ -506,7 +506,7 @@ impl AudioCaptureManager {
                     let desired_format = wasapi::WaveFormat::new(
                         32,
                         32,
-                        &wasapi::SampleType::Float,
+                        wasapi::SampleType::Float,
                         48000,
                         2,
                         None,
@@ -525,7 +525,7 @@ impl AudioCaptureManager {
                         buffer_duration_hns: 0,
                     };
 
-                    if let Err(e) = audio_client.initialize_client(&desired_format, &wasapi::Direction::Capture, &stream_mode) {
+                    if let Err(e) = audio_client.initialize_client(&desired_format, wasapi::Direction::Capture, stream_mode, None) {
                         warn!("Failed to initialize Discord application loopback client: {:?}", e);
                         return;
                     }
@@ -782,7 +782,7 @@ impl AudioCaptureManager {
                     let desired_format = wasapi::WaveFormat::new(
                         32,
                         32,
-                        &wasapi::SampleType::Float,
+                        wasapi::SampleType::Float,
                         48000,
                         2,
                         None,
@@ -795,7 +795,7 @@ impl AudioCaptureManager {
                         autoconvert: true,
                         buffer_duration_hns: 0,
                     };
-                    if audio_client.initialize_client(&desired_format, &wasapi::Direction::Capture, &stream_mode).is_err() {
+                    if audio_client.initialize_client(&desired_format, wasapi::Direction::Capture, stream_mode, None).is_err() {
                         return;
                     }
                     let h_event = match audio_client.set_get_eventhandle() {
