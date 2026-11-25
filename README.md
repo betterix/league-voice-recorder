@@ -91,7 +91,7 @@ League Voice Recorder is **100% compliant and safe** with Riot Vanguard:
 
 ## 🤝 Companion Projects
 
-- **[league-voice-recorder-backend](https://github.com/betterix/league-voice-recorder-backend)** — High-performance FastAPI backend for team scrim aggregation, automated Discord notifications, and role-based scrim distribution.
+- **[league-voice-recorder-backend](https://github.com/betterix/league-voice-recorder-backend)** — High-performance FastAPI backend for team scrim aggregation, and role-based scrim distribution.
 
 ---
 
