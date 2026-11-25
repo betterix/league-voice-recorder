@@ -151,10 +151,9 @@ Section "MainProgram" SecMain
     Delete "$INSTDIR\unins000.dat"
     Delete "$INSTDIR\unins000.msg"
 
-    ; Install application binary, WebView2 runtime loader, and documentation
+    ; Install application binary and documentation
     DetailPrint "Installing League Voice Recorder v${APP_VERSION}..."
     File "LeagueVoiceRecorder.exe"
-    File "assets\WebView2Loader.dll"
     File "LICENSE"
     File "README.md"
 
@@ -198,7 +197,6 @@ Section "Uninstall"
 
     ; Delete Installed Files & Documentation
     Delete "$INSTDIR\${APP_EXE}"
-    Delete "$INSTDIR\WebView2Loader.dll"
     Delete "$INSTDIR\LICENSE"
     Delete "$INSTDIR\README.md"
     Delete "$INSTDIR\locales\en.json"

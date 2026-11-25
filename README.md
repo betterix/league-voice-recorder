@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/betterix/league-voice-recorder/actions/workflows/codeql.yml"><img src="https://github.com/betterix/league-voice-recorder/actions/workflows/codeql.yml/badge.svg?branch=main" alt="CodeQL Status" /></a>
   <img src="https://img.shields.io/badge/rust-2024%20edition-orange?logo=rust&logoColor=white" alt="Rust 2024" />
-  <img src="https://img.shields.io/badge/framework-Tauri%20v2-24C8D8?logo=tauri&logoColor=white" alt="Tauri v2" />
+  <img src="https://img.shields.io/badge/framework-iced%200.14-24C8D8?logo=rust&logoColor=white" alt="iced 0.14" />
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%2064--bit-0078D6?logo=windows&logoColor=white" alt="Platform" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License" />
   <img src="https://img.shields.io/badge/i18n-English%20%7C%20Magyar-success" alt="i18n" />
@@ -21,7 +21,7 @@
 
 ## ⚡ Overview
 
-**League Voice Recorder** is a native Windows desktop application built with **Rust** and **Tauri v2**. It automates team voice recording and replay audio synchronization for competitive League of Legends scrimmages and reviews:
+**League Voice Recorder** is a native Windows desktop application built with **Rust** and **iced 0.14**. It automates team voice recording and replay audio synchronization for competitive League of Legends scrimmages and reviews:
 
 1. **🔴 Hands-Free Scrim Recording**: Connects to the local League Client and Discord IPC. When a match starts, it automatically captures team Discord voice chat and the player's microphone via native Windows WASAPI loopback, accounts for in-game pauses, extracts the official Riot Game ID, and streams directly to disk with sample-accurate alignment.
 2. **▶ Frame-Accurate Replay Synchronization**: When opening any `.rofl` replay file in the League client, it detects the process, loads `<GameID>.mp3`, and locks playback to the League replay clock. Scrubbing, pausing, rewinding, or changing speed (0.5x – 4x) keeps voice comms perfectly synchronized in real time.
@@ -41,7 +41,7 @@ Detailed architectural and operational documentation is available in the [`docs/
 - [**Remote Scrim Cloud Sync**](docs/cloud_sync.md) — FastAPI backend integration, DPAPI key encryption, and RBAC permissions.
 - [**System Tray & Background Notifications**](docs/system_tray.md) — Minimization behavior, dynamic tooltip, and native alert sounds.
 - [**Configuration & Storage**](docs/configuration.md) — `config.json` schema, directory hierarchy, and audio device discovery.
-- [**IPC & Command Reference**](docs/api_reference.md) — Type-safe Tauri IPC commands and DTO payloads.
+- [**IPC & Command Reference**](docs/api_reference.md) — Internal message passing and DTO payloads.
 
 ---
 
@@ -57,7 +57,6 @@ Detailed architectural and operational documentation is available in the [`docs/
 **Requirements:**
 - Windows 10 or 11 (64-bit)
 - [Rust](https://rustup.rs/) (1.78+)
-- [Node.js](https://nodejs.org/) (v18+)
 - [NSIS](https://nsis.sourceforge.io/) (optional, for building the Windows installer)
 
 ```bash
@@ -66,7 +65,7 @@ git clone https://github.com/betterix/league-voice-recorder.git
 cd league-voice-recorder
 
 # Run in development mode
-cargo tauri dev
+cargo run
 
 # Compile standalone release executable
 cargo build --release

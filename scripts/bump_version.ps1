@@ -20,7 +20,6 @@ $ErrorActionPreference = "Stop"
 $rootDir = Split-Path -Parent $PSScriptRoot
 
 $cargoFile = Join-Path $rootDir "Cargo.toml"
-$tauriFile = Join-Path $rootDir "tauri.conf.json"
 $nsiFile   = Join-Path $rootDir "installer.nsi"
 
 # 1. Read current version from Cargo.toml
@@ -58,13 +57,7 @@ $updatedCargo = [regex]::Replace($cargoContent, '(?m)^(version\s*=\s*)"[^"]+"', 
 [System.IO.File]::WriteAllText($cargoFile, $updatedCargo, [System.Text.Encoding]::UTF8)
 Write-Host "  ✓ Cargo.toml -> $newVer"
 
-# 4. Update tauri.conf.json
-$tauriContent = Get-Content $tauriFile -Raw -Encoding utf8
-$updatedTauri = [regex]::Replace($tauriContent, '("version"\s*:\s*)"[^"]+"', "`${1}`"$newVer`"")
-[System.IO.File]::WriteAllText($tauriFile, $updatedTauri, [System.Text.Encoding]::UTF8)
-Write-Host "  ✓ tauri.conf.json -> $newVer"
-
-# 5. Update installer.nsi (with UTF-8 BOM)
+# 4. Update installer.nsi (with UTF-8 BOM)
 $nsiContent = Get-Content $nsiFile -Raw -Encoding utf8
 $updatedNsi = [regex]::Replace($nsiContent, '(!define\s+APP_VERSION\s+)"[^"]+"', "`${1}`"$newVer`"")
 $utf8Bom = New-Object System.Text.UTF8Encoding $true

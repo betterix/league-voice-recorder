@@ -80,11 +80,7 @@ jobs:
             exit 1
           }
 
-          # Copy support assets, license, readme, WebView2Loader
-          if (Test-Path "assets\WebView2Loader.dll") {
-            Copy-Item -Path "assets\WebView2Loader.dll" -Destination "dist\LeagueVoiceRecorder\WebView2Loader.dll" -Force
-            Copy-Item -Path "assets\WebView2Loader.dll" -Destination "dist\WebView2Loader.dll" -Force
-          }
+          # Copy support assets, license, readme
           if (Test-Path "LICENSE") {
             Copy-Item -Path "LICENSE" -Destination "dist\LeagueVoiceRecorder\LICENSE" -Force
           }
@@ -131,7 +127,7 @@ jobs:
           @"
           # 🎮 League Voice Recorder — Native Rust Release Dashboard
 
-          > **Status**: ✅ **Successfully Compiled & Verified** | **Architecture**: Windows x64 Native | **Engine**: Rust 2024 / Tauri v2
+          > **Status**: ✅ **Successfully Compiled & Verified** | **Architecture**: Windows x64 Native | **Engine**: Rust 2024 / iced 0.14
 
           ---
 

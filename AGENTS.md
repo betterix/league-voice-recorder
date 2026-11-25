@@ -1,6 +1,6 @@
 # AGENTS.md — League Voice Recorder Architecture & Operations Manual
 
-Welcome to the **League Voice Recorder** developer and AI agent manual. This document explains the architecture, data flows, APIs, operational nuances, and engineering invariants of the native Rust + Tauri v2 implementation.
+Welcome to the **League Voice Recorder** developer and AI agent manual. This document explains the architecture, data flows, APIs, operational nuances, and engineering invariants of the native Rust + iced 0.14 implementation.
 
 ---
 
@@ -13,8 +13,8 @@ This project solves two primary problems:
 2. **Automated Replay Audio Synchronization (`src/replay/`)**: When the user opens any `.rofl` replay in the League client, it detects the running replay, parses the Game ID from the file name, locates the matching `<GameID>.mp3`, and plays the audio via the embedded Rodio audio engine while continuously synchronizing playback time and playback speed (0.5x, 1x, 2x, 4x, etc.) with the League replay playback API.
 
 The project provides:
-- A modern desktop GUI built with **Tauri v2** and vanilla HTML/CSS/JS with zero heavy frontend framework bloat.
-- An in-game floating HUD overlay (`ui/overlay.html`) supporting click-through transparency (`WS_EX_TRANSPARENT`), native window dragging, and dual visualization modes.
+- A modern pure-Rust desktop GUI built with **iced 0.14** (`wgpu`/`tiny-skia`) with zero WebView2 or frontend framework bloat.
+- An in-game floating HUD overlay (`src/ui/overlay_view.rs`) supporting click-through transparency (`WS_EX_TRANSPARENT`), native window dragging, and dual visualization modes.
 - System tray minimization with native Windows alerts (`MessageBeep`, balloon notifications).
 
 ---
@@ -24,13 +24,19 @@ The project provides:
 ```text
 league-voice-recorder/
 │
-├── Cargo.toml               # Rust dependencies (Rust 2024 Edition), workspace profile, and Tauri features
-├── tauri.conf.json          # Tauri v2 application configuration, multi-window definitions
+├── Cargo.toml               # Rust dependencies (Rust 2024 Edition), workspace profile, and iced 0.14 features
 ├── installer.nsi            # NSIS Modern Setup Wizard script (Unicode, x64, autostart, uninstall)
 │
 ├── src/                     # Core Native Rust Application Engine
-│   ├── main.rs              # Application entrypoint, Tauri commands, system tray setup
+│   ├── main.rs              # Application entrypoint, iced daemon/window setup, system tray
 │   ├── lib.rs               # Library root exporting modules for unit and integration tests
+│   ├── app_state.rs         # Shared application state, message types, and backend bridge
+│   │
+│   ├── ui/                  # Native iced 0.14 GUI & Overlay Views
+│   │   ├── mod.rs           # UI module exports
+│   │   ├── main_view.rs     # Desktop application interface
+│   │   ├── overlay_view.rs  # Borderless floating HUD with GradeX waveform canvas
+│   │   └── theme.rs         # Hextech Dark esports design system
 │   │
 │   ├── audio/               # Hardware Audio Capture & Streaming Engine
 │   │   ├── mod.rs           # Module exports & shared audio types
@@ -81,12 +87,6 @@ league-voice-recorder/
 │   └── i18n/                # Embedded Localization
 │       └── mod.rs           # Zero-overhead embedded JSON translations (English & Hungarian)
 │
-├── ui/                      # Tauri Frontend Webview Layer
-│   ├── index.html           # Desktop application interface
-│   ├── style.css            # Hextech Dark esports design system
-│   ├── app.js               # Reactive state bindings, event listeners, Tauri IPC calls
-│   └── overlay.html         # Borderless floating HUD with GradeX waveform canvas
-│
 ├── docs/                    # Exhaustive Architectural Documentation
 │   ├── architecture.md      # System architecture, memory model, and tech stack
 │   ├── recording.md         # Zero-latency match start, pause lag slicing, sample alignment
@@ -95,7 +95,7 @@ league-voice-recorder/
 │   ├── cloud_sync.md        # FastAPI backend integration, DPAPI encryption, RBAC
 │   ├── system_tray.md       # Tray minimization, tooltip states, alert sound
 │   ├── configuration.md     # config.json schema, storage directory hierarchy
-│   └── api_reference.md     # Tauri IPC commands and DTO payloads
+│   └── api_reference.md     # Internal commands and DTO payloads
 │
 ├── locales/                 # Community i18n JSON translation files
 │   ├── en.json              # English (default fallback)
@@ -145,7 +145,7 @@ league-voice-recorder/
   - **Scrubbing & Drift Compensation**: Re-syncs on scrubs or drift (>0.8s) with cooldown guards to avoid seek storms.
   - **Replay Volume & Mute**: Allows live volume adjustment and toggling mute with smooth needle tracking.
 
-### 3.3 In-Game Floating Overlay (`src/overlay/`, `ui/overlay.html`)
+### 3.3 In-Game Floating Overlay (`src/overlay/`, `src/ui/overlay_view.rs`)
 - **Hardware-Accelerated Dual Mode**:
   - **Recorder HUD Mode**: Pulsing REC pill, match timer, dual-channel audio visualizers using 24-step GradeX harmonic modulation.
   - **Replay HUD Mode**: Needle waveform canvas tracking playback progress, interactive volume slider, and playback status pill.

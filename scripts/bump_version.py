@@ -16,7 +16,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 CARGO_TOML = ROOT / "Cargo.toml"
-TAURI_CONF = ROOT / "tauri.conf.json"
 INSTALLER_NSI = ROOT / "installer.nsi"
 
 
@@ -57,13 +56,6 @@ def update_cargo_toml(new_ver: str):
     print(f"  ✓ Cargo.toml -> {new_ver}")
 
 
-def update_tauri_conf(new_ver: str):
-    content = TAURI_CONF.read_text(encoding="utf-8")
-    updated = re.sub(r'("version"\s*:\s*)"[^"]+"', rf'\g<1>"{new_ver}"', content)
-    TAURI_CONF.write_text(updated, encoding="utf-8")
-    print(f"  ✓ tauri.conf.json -> {new_ver}")
-
-
 def update_installer_nsi(new_ver: str):
     content = INSTALLER_NSI.read_text(encoding="utf-8")
     updated = re.sub(r'(!define\s+APP_VERSION\s+)"[^"]+"', rf'\g<1>"{new_ver}"', content)
@@ -84,7 +76,6 @@ def main():
 
     print(f"🚀 Bumping League Voice Recorder version: {current_ver} -> {new_ver}\n")
     update_cargo_toml(new_ver)
-    update_tauri_conf(new_ver)
     update_installer_nsi(new_ver)
 
     print(f"\n✅ All unified version definitions updated to v{new_ver}!")
