@@ -38,7 +38,7 @@ Detailed architectural and operational documentation is available in the [`docs/
 - [**Scrim Recording Engine**](docs/recording.md) — Zero-latency match start, sample-accurate alignment, and pause lag truncation.
 - [**Replay Synchronization Engine**](docs/replay_sync.md) — Replay process detection, Game ID extraction, and Rodio audio playback sync.
 - [**In-Game Floating HUD Overlay**](docs/overlay.md) — Dual HUD modes, GradeX harmonics, native dragging, and click-through mechanics.
-- [**Remote Scrim Cloud Sync**](docs/cloud_sync.md) — FastAPI backend integration, DPAPI key encryption, and RBAC permissions.
+- [**Remote Scrim Cloud Sync**](docs/cloud_sync.md) — Rust/Axum backend integration, DPAPI key encryption, and RBAC permissions.
 - [**System Tray & Background Notifications**](docs/system_tray.md) — Minimization behavior, dynamic tooltip, and native alert sounds.
 - [**Configuration & Storage**](docs/configuration.md) — `config.json` schema, directory hierarchy, and audio device discovery.
 - [**IPC & Command Reference**](docs/api_reference.md) — Type-safe Tauri IPC commands and DTO payloads.
@@ -91,7 +91,7 @@ League Voice Recorder is **100% compliant and safe** with Riot Vanguard:
 
 ## 🤝 Companion Projects
 
-- **[league-voice-recorder-backend](https://github.com/betterix/league-voice-recorder-backend)** — High-performance FastAPI backend for team scrim aggregation, and role-based scrim distribution.
+- **[league-voice-recorder-backend](https://github.com/betterix/league-voice-recorder-backend)** — High-performance Rust/Axum backend for team scrim aggregation, and role-based scrim distribution.
 
 ---
 

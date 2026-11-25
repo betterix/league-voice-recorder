@@ -1,6 +1,6 @@
 # Remote Scrim Cloud Sync
 
-League Voice Recorder seamlessly integrates with the [league-voice-recorder-backend](https://github.com/betterix/league-voice-recorder-backend), a high-performance self-hosted FastAPI service designed for competitive esports teams, scrim aggregators, and coaching staff.
+League Voice Recorder seamlessly integrates with the [league-voice-recorder-backend](https://github.com/betterix/league-voice-recorder-backend), a high-performance self-hosted Rust/Axum service designed for competitive esports teams, scrim aggregators, and coaching staff.
 
 ---
 
@@ -12,7 +12,7 @@ sequenceDiagram
     actor Player as Scrim Player / Analyst
     participant App as League Voice Recorder (Rust)
     participant DPAPI as Windows DPAPI Store
-    participant Server as Team Backend (FastAPI)
+    participant Server as Team Backend (Rust/Axum)
     participant Coach as Team Coach / Reviewer
 
     Player->>App: Complete Scrim Match

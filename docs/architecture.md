@@ -41,7 +41,7 @@ flowchart TD
     end
 
     subgraph Cloud_Layer ["Remote Scrim Sync (src/cloud_sync/)"]
-        CloudClient["CloudSyncClient (FastAPI Direct-Port Backend)"]
+        CloudClient["CloudSyncClient (Rust/Axum Direct-Port Backend)"]
     end
 
     subgraph Storage ["Persistent Storage"]

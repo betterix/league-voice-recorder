@@ -92,7 +92,7 @@ league-voice-recorder/
 │   ├── recording.md         # Zero-latency match start, pause lag slicing, sample alignment
 │   ├── replay_sync.md       # Replay process detection, Game ID extraction, Rodio player
 │   ├── overlay.md           # In-game floating HUD overlay, dual modes, click-through
-│   ├── cloud_sync.md        # FastAPI backend integration, DPAPI encryption, RBAC
+│   ├── cloud_sync.md        # Rust/Axum backend integration, DPAPI encryption, RBAC
 │   ├── system_tray.md       # Tray minimization, tooltip states, alert sound
 │   ├── configuration.md     # config.json schema, storage directory hierarchy
 │   └── api_reference.md     # Tauri IPC commands and DTO payloads
