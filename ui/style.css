@@ -1825,3 +1825,40 @@ body {
   50% { opacity: 1; filter: brightness(1.3); }
   100% { opacity: 0.8; filter: brightness(1); }
 }
+
+/* Smooth staggered streaming startup entrance */
+@keyframes lvrStreamIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.992);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+body:not(.ui-ready) .app-header,
+body:not(.ui-ready) .action-frame,
+body:not(.ui-ready) .tab-nav,
+body:not(.ui-ready) .tab-content.active,
+body:not(.ui-ready) .app-footer {
+  opacity: 0;
+  transform: translateY(10px) scale(0.992);
+}
+
+body.ui-ready .app-header {
+  animation: lvrStreamIn 0.34s cubic-bezier(0.16, 1, 0.3, 1) 0ms both;
+}
+body.ui-ready .action-frame {
+  animation: lvrStreamIn 0.38s cubic-bezier(0.16, 1, 0.3, 1) 50ms both;
+}
+body.ui-ready .tab-nav {
+  animation: lvrStreamIn 0.38s cubic-bezier(0.16, 1, 0.3, 1) 95ms both;
+}
+body.ui-ready .tab-content.active {
+  animation: lvrStreamIn 0.40s cubic-bezier(0.16, 1, 0.3, 1) 135ms both;
+}
+body.ui-ready .app-footer {
+  animation: lvrStreamIn 0.40s cubic-bezier(0.16, 1, 0.3, 1) 170ms both;
+}

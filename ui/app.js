@@ -1432,11 +1432,13 @@ async function checkForUpdates(silent = false) {
         }
       }
 
-      // 2. Show Header Badge
+      // 2. Show Header Badge (clickable to directly download & install update)
       const badge = document.getElementById("btn-header-update-badge");
       if (badge) {
         badge.innerText = `🚀 Update: ${verText}`;
         badge.style.display = "inline-flex";
+        badge.title = info.download_url ? `Click to download & install ${verText}` : "Open Settings to view update";
+        badge.onclick = info.download_url ? () => applyUpdate(info.download_url) : () => switchTab("settings");
       }
 
       // 3. Settings Card Message
@@ -1527,8 +1529,13 @@ async function applyUpdate(downloadUrl) {
   const targetUrl = downloadUrl || latestDownloadUrl;
   if (!targetUrl) return;
 
+  const annBar = document.getElementById("update-announcement-bar");
+  if (annBar) annBar.style.display = "block";
+
   const btn = document.getElementById("btn-apply-update");
   const bannerBtn = document.getElementById("btn-banner-update");
+  const headerBadge = document.getElementById("btn-header-update-badge");
+  const headerBadgePrevText = headerBadge ? headerBadge.innerText : "🚀 Update Available";
   [btn, bannerBtn].forEach(b => {
     if (b) {
       b.disabled = true;
@@ -1536,6 +1543,11 @@ async function applyUpdate(downloadUrl) {
       b.style.opacity = "0.7";
     }
   });
+  if (headerBadge) {
+    headerBadge.disabled = true;
+    headerBadge.innerText = "⏳ Updating...";
+    headerBadge.style.opacity = "0.7";
+  }
 
   const progressContainers = [
     document.getElementById("update-progress-container"),
@@ -1596,6 +1608,11 @@ async function applyUpdate(downloadUrl) {
         b.style.opacity = "1";
       }
     });
+    if (headerBadge) {
+      headerBadge.disabled = false;
+      headerBadge.innerText = headerBadgePrevText;
+      headerBadge.style.opacity = "1";
+    }
   }
 }
 
@@ -1860,7 +1877,10 @@ window.addEventListener("DOMContentLoaded", () => {
 
   // 2. Post-paint window reveal and deferred services
   requestAnimationFrame(() => {
-    invokeTauri("show_main_window");
+    document.body.classList.add("ui-ready");
+    requestAnimationFrame(() => {
+      invokeTauri("show_main_window");
+    });
     setTimeout(() => {
       refreshHealth();
       loadAudioDevices();
