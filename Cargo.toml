@@ -24,11 +24,13 @@ rodio = "0.23"
 cpal = "0.18"
 wasapi = "0.27"
 rusty_mp3 = "1.2"
-tauri = { version = "2.12", features = ["tray-icon", "image-png", "image-ico"] }
-tauri-plugin-single-instance = "2.5"
+iced = { version = "0.14", features = ["canvas", "tokio", "image"] }
+image = "0.25"
+tray-icon = "0.26"
+rfd = "0.18"
 
 [build-dependencies]
-tauri-build = "2.7"
+winres = "0.1"
 
 [profile.dev]
 opt-level = 0

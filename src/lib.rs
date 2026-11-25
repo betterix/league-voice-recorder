@@ -1,3 +1,4 @@
+pub mod app_state;
 pub mod audio;
 pub mod cloud_sync;
 pub mod config;
@@ -9,4 +10,5 @@ pub mod record;
 pub mod replay;
 pub mod scrim_meta;
 pub mod tray;
+pub mod ui;
 pub mod updater;
