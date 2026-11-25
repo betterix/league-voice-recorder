@@ -1090,11 +1090,19 @@ unsafe extern "system" fn main_window_subclass_proc(
             if is_from_min_button {
                 let cfg = AppConfig::load().unwrap_or_default();
                 if cfg.minimize_to_tray {
-                    unsafe { ShowWindow(hwnd, 0) }; // SW_HIDE
+                    use tauri::Manager;
+                    let mut hid_via_tauri = false;
                     if let Ok(guard) = MAIN_APP_HANDLE.lock() {
                         if let Some(ref handle) = *guard {
+                            if let Some(win) = handle.get_webview_window("main") {
+                                let _ = win.hide();
+                                hid_via_tauri = true;
+                            }
                             show_toast_announcement(handle);
                         }
+                    }
+                    if !hid_via_tauri {
+                        unsafe { ShowWindow(hwnd, 0) }; // SW_HIDE fallback
                     }
                     return 0; // Handled: avoid standard minimize animation to taskbar
                 }
@@ -1150,15 +1158,17 @@ unsafe extern "system" fn overlay_window_subclass_proc(
 
 #[cfg(windows)]
 fn restore_main_window_robust(win: &tauri::WebviewWindow) {
+    let _ = win.show();
+    let _ = win.unminimize();
     if let Ok(hwnd) = win.hwnd() {
         unsafe {
             ShowWindow(hwnd.0 as isize, 9); // SW_RESTORE
             SetForegroundWindow(hwnd.0 as isize);
         }
     }
-    let _ = win.show();
-    let _ = win.unminimize();
     let _ = win.set_focus();
+    // Nudge WebView2 compositor to repaint in case DWM/GPU surface was reclaimed while hidden
+    let _ = win.eval("requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));");
 }
 
 #[cfg(not(windows))]
@@ -1507,6 +1517,9 @@ fn get_hud_data(state: tauri::State<'_, Arc<AppState>>) -> HudDataDto {
     };
 
     let is_paused = rec_stat == "PAUSED" || rep_stat == "PAUSED";
+    let is_saving = rec_stat == "SAVING" || rec_stat == "SAVED";
+    let is_live = (rec_active && !is_saving && (rec_stat == "RECORDING" || rec_stat == "PAUSED"))
+        || (rep_active && (rep_stat == "SYNCING" || rep_stat == "PAUSED" || (rep_stat == "WATCHING" && LcuCredentials::is_game_process_running())));
     let (rep_cur_time, rep_total_dur, rep_speed) = state.replay_time.lock().map(|t| *t).unwrap_or((0.0, 1800.0, 1.0));
 
     HudDataDto {
@@ -1524,7 +1537,7 @@ fn get_hud_data(state: tauri::State<'_, Arc<AppState>>) -> HudDataDto {
         locked: cfg.hud_locked,
         opacity: cfg.hud_opacity,
         is_preview: false,
-        visible: rec_active || rep_active,
+        visible: is_live,
     }
 }
 
@@ -1874,7 +1887,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "--disable-features=RendererCodeIntegrity,EdgeSmartScreen,TranslateUI,OptimizationHints,MediaRouter \
                  --disable-background-networking \
                  --disable-component-update \
-                 --renderer-process-limit=1 \
                  --disable-extensions \
                  --disable-default-apps \
                  --disable-sync \
@@ -1974,8 +1986,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let rec_stat = hud_sync_state.rec_status.lock().map(|s| s.0.clone()).unwrap_or_default();
                     let rep_stat = hud_sync_state.rep_status.lock().map(|s| s.0.clone()).unwrap_or_default();
 
-                    let is_match_live = is_rec && (rec_stat == "RECORDING" || rec_stat == "PAUSED");
-                    let is_replay_live = is_rep && (rep_stat == "SYNCING" || rep_stat == "PAUSED" || (rep_stat == "WATCHING" && LcuCredentials::is_game_process_running()));
+                    let is_saving = rec_stat == "SAVING" || rec_stat == "SAVED";
+                    let is_match_live = is_rec && !is_saving && (rec_stat == "RECORDING" || rec_stat == "PAUSED");
+                    let is_replay_live = is_rep && !is_saving && (rep_stat == "SYNCING" || rep_stat == "PAUSED" || (rep_stat == "WATCHING" && LcuCredentials::is_game_process_running()));
 
                     let should_be_active = is_match_live || is_replay_live;
 
@@ -2097,8 +2110,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = window.set_background_color(Some(tauri::webview::Color(11, 17, 32, 255)));
                 let fallback_win = window.clone();
                 std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(60));
-                    let _ = fallback_win.show();
+                    std::thread::sleep(std::time::Duration::from_millis(1200));
+                    if !fallback_win.is_visible().unwrap_or(false) {
+                        let _ = fallback_win.show();
+                    }
                 });
 
                 #[cfg(windows)]
