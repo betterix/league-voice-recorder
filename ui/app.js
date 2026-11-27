@@ -28,7 +28,7 @@ let smoothApp = 0.0;
 let smoothMic = 0.0;
 let autoscroll = true;
 let saveDebounceTimer = null;
-let currentAppVersion = LVR_CACHE.get("app_version", "0.6.2");
+let currentAppVersion = LVR_CACHE.get("app_version", "0.6.3");
 
 // Immediate Frame-0 Theme Application
 try {
@@ -217,7 +217,10 @@ function toggleAutoscroll(enabled) {
   }
 }
 
+let isDevMode = false;
+
 function toggleDebugPanel(show) {
+  if (!isDevMode) return;
   const panel = document.getElementById("debug-panel");
   if (panel) {
     panel.style.display = show ? "flex" : "none";
@@ -226,6 +229,7 @@ function toggleDebugPanel(show) {
 }
 
 async function updateTelemetryPanel() {
+  if (!isDevMode) return;
   try {
     const telem = await invokeTauri("get_telemetry");
     if (!telem) return;
@@ -290,6 +294,11 @@ function switchTab(tabId) {
 
   if (tabId === "recordings") {
     loadRecordings();
+  } else if (tabId === "log") {
+    const debugPanel = document.getElementById("debug-panel");
+    if (debugPanel && debugPanel.style.display !== "none") {
+      updateTelemetryPanel();
+    }
   }
   updateAudioPolling();
 }
@@ -491,9 +500,9 @@ async function pollStatus() {
       if (clockEl) clockEl.innerText = "Match Time: --:--";
     }
 
-    // 5. Update Telemetry & Debug Panel if visible
+    // 5. Update Telemetry & Debug Panel only when Log tab is active & Debug Panel is visible
     const debugPanel = document.getElementById("debug-panel");
-    if (debugPanel && debugPanel.style.display !== "none") {
+    if (currentActiveTab === "log" && debugPanel && debugPanel.style.display !== "none") {
       updateTelemetryPanel();
     }
   } catch (err) {
@@ -692,7 +701,7 @@ async function syncRemoteRecordings() {
     if (role && role !== "unknown") {
       cloudRole = role;
     }
-    const items = await invokeTauri("cloud_list_recordings");
+    const items = await invokeTauri("cloud_sync_recordings");
     remoteRecordings = Array.isArray(items) ? items : [];
     await loadRecordings();
     appendLog(`☁️ Remote scrims synced: ${remoteRecordings.length} recording(s) available on server.`);
@@ -1086,34 +1095,42 @@ function openRecordingsFolder() {
 // -------------------------------------------------------------
 // AUDIO DEVICES & INPUT MANAGEMENT
 // -------------------------------------------------------------
+function populateAudioDeviceSelects(mics) {
+  const cfgMic = document.getElementById("cfg-mic");
+  const quickMic = document.getElementById("quick-mic");
+  const targetVal = currentConfig?.mic_device_name || "default";
+
+  const populate = (sel) => {
+    if (!sel) return;
+    sel.innerHTML = `<option value="default" data-i18n="record.mic_default">${t("record.mic_default")}</option>`;
+    if (Array.isArray(mics)) {
+      mics.forEach(m => {
+        const opt = document.createElement("option");
+        opt.value = m;
+        opt.innerText = `🎙️ ${m}`;
+        if (m === targetVal) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
+    sel.value = targetVal;
+    if (sel.selectedIndex === -1) {
+      sel.selectedIndex = 0;
+    }
+  };
+
+  populate(cfgMic);
+  populate(quickMic);
+  return cfgMic;
+}
+
 async function loadAudioDevices() {
   appendLog("🔄 Refreshing audio input devices...");
   try {
     const mics = await invokeTauri("get_audio_devices");
-    const cfgMic = document.getElementById("cfg-mic");
-    const quickMic = document.getElementById("quick-mic");
-    const targetVal = currentConfig?.mic_device_name || "default";
-
-    const populate = (sel) => {
-      if (!sel) return;
-      sel.innerHTML = `<option value="default" data-i18n="record.mic_default">${t("record.mic_default")}</option>`;
-      if (Array.isArray(mics)) {
-        mics.forEach(m => {
-          const opt = document.createElement("option");
-          opt.value = m;
-          opt.innerText = `🎙️ ${m}`;
-          if (m === targetVal) opt.selected = true;
-          sel.appendChild(opt);
-        });
-      }
-      sel.value = targetVal;
-      if (sel.selectedIndex === -1) {
-        sel.selectedIndex = 0;
-      }
-    };
-
-    populate(cfgMic);
-    populate(quickMic);
+    if (Array.isArray(mics)) {
+      LVR_CACHE.set("audio_devices", mics);
+    }
+    const cfgMic = populateAudioDeviceSelects(mics);
     const selectedName = (cfgMic && cfgMic.selectedIndex >= 0) ? cfgMic.options[cfgMic.selectedIndex].text : "Default System Microphone";
     appendLog(`🎙️ Discovered ${Array.isArray(mics) ? mics.length : 0} audio input device(s). Selected: ${selectedName}`);
   } catch (err) {
@@ -1871,6 +1888,14 @@ window.addEventListener("DOMContentLoaded", () => {
   if (currentConfig) {
     populateConfigToDom(currentConfig);
   }
+  const cachedMics = LVR_CACHE.get("audio_devices", null);
+  if (Array.isArray(cachedMics)) {
+    populateAudioDeviceSelects(cachedMics);
+  }
+  const cachedRole = LVR_CACHE.get("cloud_role", null);
+  if (cachedRole && cachedRole !== "unknown") {
+    cloudRole = cachedRole;
+  }
   applyTranslations();
 
   appendLog("🎮 League Voice Recorder initialized. Zero-latency WASAPI loopback active.");
@@ -1878,9 +1903,8 @@ window.addEventListener("DOMContentLoaded", () => {
   // 2. Post-paint window reveal and deferred services
   requestAnimationFrame(() => {
     document.body.classList.add("ui-ready");
-    requestAnimationFrame(() => {
-      invokeTauri("show_main_window");
-    });
+    invokeTauri("show_main_window");
+
     setTimeout(() => {
       refreshHealth();
       loadAudioDevices();
@@ -1889,12 +1913,15 @@ window.addEventListener("DOMContentLoaded", () => {
       (async () => {
         try {
           const role = await invokeTauri("cloud_get_role");
-          if (role && role !== "unknown") cloudRole = role;
+          if (role && role !== "unknown") {
+            cloudRole = role;
+            LVR_CACHE.set("cloud_role", role);
+          }
         } catch (e) {}
       })();
     }, 300);
 
-    setTimeout(() => checkForUpdates(true), 3000);
+    setTimeout(() => checkForUpdates(true), 10000);
 
     setInterval(pollLogs, 500);
     updateAudioPolling();
@@ -1919,9 +1946,21 @@ window.addEventListener("DOMContentLoaded", () => {
         populateConfigToDom(currentConfig);
       }
 
-      // Fetch dynamic app version from backend
+      // Fetch dynamic app version and dev mode flag from backend
       try {
-        const ver = await invokeTauri("get_app_version");
+        const [ver, devFlag] = await Promise.all([
+          invokeTauri("get_app_version"),
+          invokeTauri("is_dev_mode"),
+        ]);
+        isDevMode = Boolean(devFlag);
+        const debugToggleLbl = document.getElementById("lbl-debug-panel-toggle");
+        if (debugToggleLbl) {
+          debugToggleLbl.style.display = isDevMode ? "" : "none";
+        }
+        if (!isDevMode) {
+          const debugPanel = document.getElementById("debug-panel");
+          if (debugPanel) debugPanel.style.display = "none";
+        }
         if (ver) {
           currentAppVersion = ver;
           LVR_CACHE.set("app_version", ver);

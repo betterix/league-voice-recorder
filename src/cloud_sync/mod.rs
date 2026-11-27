@@ -16,6 +16,8 @@ pub struct CloudRecordingDto {
     #[serde(default)]
     pub recorded_at: Option<String>,
     #[serde(default)]
+    pub match_date: Option<String>,
+    #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]
     pub upload_timestamp: Option<String>,
@@ -128,19 +130,82 @@ impl CloudSyncClient {
         }
     }
 
-    pub async fn check_recording_exists(&self, game_id: &str) -> bool {
+    pub async fn get_recording(&self, game_id: &str) -> Result<Option<CloudRecordingDto>, String> {
         if !self.is_configured() {
-            return false;
+            return Err("Cloud sync is not configured".to_string());
         }
 
         let clean_id = game_id.trim();
         let url = format!("{}/api/v1/recordings/{}", self.server_url, clean_id);
         let client = self.build_client();
 
-        if let Ok(resp) = client.get(&url).send().await {
-            resp.status().is_success()
+        let resp = client.get(&url).send().await
+            .map_err(|e| format!("Failed to fetch recording metadata: {}", e))?;
+
+        let status = resp.status();
+        if status.is_success() {
+            let dto = resp.json::<CloudRecordingDto>().await
+                .map_err(|e| format!("Invalid recording metadata JSON: {}", e))?;
+            Ok(Some(dto))
+        } else if status.as_u16() == 404 {
+            Ok(None)
         } else {
-            false
+            Err(format!("Server returned HTTP {} for recording {}", status, clean_id))
+        }
+    }
+
+    pub async fn check_recording_exists(&self, game_id: &str) -> bool {
+        self.get_recording(game_id).await.ok().flatten().is_some()
+    }
+
+    /// Updates metadata (`team_tag`, `notes`, `match_date`) for an existing recording on the backend
+    /// via `PATCH /api/v1/recordings/{game_id}` without re-uploading the MP3 file.
+    pub async fn update_recording_metadata(
+        &self,
+        game_id: &str,
+        team_tag: Option<&str>,
+        notes: Option<&str>,
+        match_date: Option<&str>,
+    ) -> Result<Value, String> {
+        if !self.is_configured() {
+            return Err("Cloud sync is not configured with server URL and API key".to_string());
+        }
+
+        let clean_id = game_id.trim();
+        let url = format!("{}/api/v1/recordings/{}", self.server_url, clean_id);
+        let client = self.build_client();
+
+        let to_json_opt = |v: Option<&str>| -> Value {
+            match v.map(str::trim) {
+                Some(s) if !s.is_empty() => Value::String(s.to_string()),
+                _ => Value::Null,
+            }
+        };
+
+        let body = serde_json::json!({
+            "team_tag": to_json_opt(team_tag),
+            "notes": to_json_opt(notes),
+            "match_date": to_json_opt(match_date),
+        });
+
+        let resp = client.patch(&url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("Metadata update connection error: {}", e))?;
+
+        let status = resp.status();
+        if status.is_success() {
+            let json = resp.json::<Value>().await.unwrap_or(serde_json::json!({"success": true}));
+            Ok(json)
+        } else if status.as_u16() == 401 {
+            Err("Unauthorized: Invalid API key".to_string())
+        } else if status.as_u16() == 403 {
+            Err("Forbidden: Key does not have upload/edit permissions (requires UPLOAD_KEY or ADMIN_KEY)".to_string())
+        } else if status.as_u16() == 404 {
+            Err(format!("Recording {} not found on server (404)", clean_id))
+        } else {
+            Err(format!("Metadata update failed with HTTP {}", status))
         }
     }
 

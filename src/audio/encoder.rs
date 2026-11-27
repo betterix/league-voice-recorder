@@ -1,7 +1,100 @@
+use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::Write;
+use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::Path;
+use std::sync::{mpsc, Arc, Mutex};
 use rusty_mp3::{Mp3Encoder, Mp3EncoderConfig};
+
+const MPEG1_SAMPLES_PER_FRAME: usize = 1152;
+const SEGMENT_MP3_FRAMES: usize = 500; // 500 * 1152 = 576,000 samples (12.0s @ 48kHz)
+const WARMUP_MP3_FRAMES: usize = 2; // 2 frames (48ms @ 48kHz) overlap for seamless MDCT boundary
+
+/// Returns the byte length of an MPEG-1 Layer III frame from its 4-byte header.
+fn mpeg1_layer3_frame_len(hdr: [u8; 4]) -> Option<usize> {
+    // Sync word: 11 bits of 1s (0xFF, top 3 bits 0xE0)
+    if hdr[0] != 0xFF || (hdr[1] & 0xE0) != 0xE0 {
+        return None;
+    }
+    let version_bits = (hdr[1] >> 3) & 0x03; // 3 = MPEG-1
+    let layer_bits = (hdr[1] >> 1) & 0x03;   // 1 = Layer III
+    if version_bits != 3 || layer_bits != 1 {
+        return None;
+    }
+    let bitrate_idx = ((hdr[2] >> 4) & 0x0F) as usize;
+    let sr_idx = ((hdr[2] >> 2) & 0x03) as usize;
+    let padding = ((hdr[2] >> 1) & 0x01) as usize;
+
+    const BITRATES: [usize; 16] = [
+        0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0,
+    ];
+    const SAMPLE_RATES: [usize; 4] = [44100, 48000, 32000, 0];
+
+    let bitrate = BITRATES.get(bitrate_idx).copied().unwrap_or(0) * 1000;
+    let sr = SAMPLE_RATES.get(sr_idx).copied().unwrap_or(0);
+    if bitrate == 0 || sr == 0 {
+        return None;
+    }
+    Some((144 * bitrate) / sr + padding)
+}
+
+/// Encodes a PCM s16le segment and slices `[skip_frames .. skip_frames + keep_frames]` MP3 frames.
+fn encode_pcm_segment(
+    pcm_s16le: &[u8],
+    channels: u16,
+    sample_rate: u32,
+    skip_frames: usize,
+    keep_frames: Option<usize>,
+) -> Vec<u8> {
+    let mut config = Mp3EncoderConfig::default();
+    config.bitrate_kbps = 160;
+    let mut encoder = Mp3Encoder::new(config);
+
+    let mut raw_mp3 = Vec::with_capacity(pcm_s16le.len() / 8 + 4096);
+    let _ = encoder.push_pcm_s16le(pcm_s16le, channels, sample_rate);
+    while let Ok(packet) = encoder.next_packet() {
+        if packet.is_empty() {
+            break;
+        }
+        raw_mp3.extend_from_slice(&packet);
+    }
+    encoder.finish();
+    while let Ok(packet) = encoder.next_packet() {
+        if packet.is_empty() {
+            break;
+        }
+        raw_mp3.extend_from_slice(&packet);
+    }
+
+    if skip_frames == 0 && keep_frames.is_none() {
+        return raw_mp3;
+    }
+
+    // Slice exact MP3 frame range to eliminate warmup/encoder-delay drift
+    let mut out = Vec::with_capacity(raw_mp3.len());
+    let mut pos = 0usize;
+    let mut frame_idx = 0usize;
+    while pos + 4 <= raw_mp3.len() {
+        let hdr = [raw_mp3[pos], raw_mp3[pos + 1], raw_mp3[pos + 2], raw_mp3[pos + 3]];
+        let Some(flen) = mpeg1_layer3_frame_len(hdr) else {
+            pos += 1;
+            continue;
+        };
+        if pos + flen > raw_mp3.len() {
+            break;
+        }
+        if frame_idx >= skip_frames {
+            if let Some(max_keep) = keep_frames {
+                if frame_idx - skip_frames >= max_keep {
+                    break;
+                }
+            }
+            out.extend_from_slice(&raw_mp3[pos..pos + flen]);
+        }
+        frame_idx += 1;
+        pos += flen;
+    }
+    out
+}
 
 pub struct AudioFinalizer;
 
@@ -97,9 +190,9 @@ impl AudioFinalizer {
         Ok(())
     }
 
-    /// Streams and mixes two raw PCM audio files from disk in small 16KB buffers,
+    /// Streams and mixes two raw PCM audio files from disk in bounded segments,
     /// applies sample-accurate match clock offset (prepend silence or trim),
-    /// and writes the final MP3 without loading the audio into RAM.
+    /// and encodes across all available CPU cores without loading the full match into RAM.
     pub fn finalize_from_files(
         discord_path: &Path,
         mic_path: &Path,
@@ -108,49 +201,48 @@ impl AudioFinalizer {
         first_game_time: f64,
         output_path: &Path,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        use std::io::{BufReader, Read, Seek, SeekFrom};
-
         let result = (|| -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-            let mut disc_reader = BufReader::new(File::open(discord_path)?);
-            let mut mic_reader = BufReader::new(File::open(mic_path)?);
+            let mut disc_reader = BufReader::with_capacity(512 * 1024, File::open(discord_path)?);
+            let mut mic_reader = BufReader::with_capacity(512 * 1024, File::open(mic_path)?);
+            let mut out_file = BufWriter::with_capacity(256 * 1024, File::create(output_path)?);
 
-            let mut config = Mp3EncoderConfig::default();
-            config.bitrate_kbps = 160;
-            let mut encoder = Mp3Encoder::new(config);
+            let bytes_per_frame = (channels as usize) * 2;
+            let segment_bytes = SEGMENT_MP3_FRAMES * MPEG1_SAMPLES_PER_FRAME * bytes_per_frame;
+            let warmup_bytes = WARMUP_MP3_FRAMES * MPEG1_SAMPLES_PER_FRAME * bytes_per_frame;
 
-            let mut out_file = File::create(output_path)?;
-
-            // 1. Account for match clock offset
-            if first_game_time > 0.0 {
-                // Match started after 00:00: stream exact silence frames
+            let mut silence_remaining_bytes: usize = if first_game_time > 0.0 {
                 let silence_frames = (first_game_time * sample_rate as f64).round() as usize;
-                let silence_samples = silence_frames * channels as usize;
-                let mut silence_remaining = silence_samples;
-                let silence_chunk = vec![0u8; 8192 * 4];
-                while silence_remaining > 0 {
-                    let to_write = silence_remaining.min(8192 * channels as usize);
-                    let chunk = &silence_chunk[..to_write * 2];
-                    let _ = encoder.push_pcm_s16le(chunk, channels, sample_rate);
-                    while let Ok(packet) = encoder.next_packet() {
-                        if packet.is_empty() {
-                            break;
-                        }
-                        out_file.write_all(&packet)?;
-                    }
-                    silence_remaining -= to_write;
-                }
-            } else if first_game_time < 0.0 {
-                // Match recorded before 00:00 (countdown): trim pre-game audio on disk
+                silence_frames * bytes_per_frame
+            } else {
+                0
+            };
+
+            if first_game_time < 0.0 {
                 let trim_frames = (first_game_time.abs() * sample_rate as f64).round() as u64;
-                let trim_bytes = trim_frames * channels as u64 * 2;
+                let trim_bytes = trim_frames * bytes_per_frame as u64;
                 let disc_len = disc_reader.get_ref().metadata().map(|m| m.len()).unwrap_or(0);
                 let mic_len = mic_reader.get_ref().metadata().map(|m| m.len()).unwrap_or(0);
                 let _ = disc_reader.seek(SeekFrom::Start(trim_bytes.min(disc_len)));
                 let _ = mic_reader.seek(SeekFrom::Start(trim_bytes.min(mic_len)));
             }
 
-            // Helper to fill buffer up to chunk size or EOF on 16-bit PCM sample boundary
-            let read_chunk = |reader: &mut BufReader<File>, buf: &mut [u8]| -> std::io::Result<usize> {
+            struct SegmentJob {
+                idx: usize,
+                pcm: Vec<u8>,
+                skip_frames: usize,
+                keep_frames: Option<usize>,
+            }
+
+            let num_workers = std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4)
+                .clamp(2, 16);
+
+            let (job_tx, job_rx) = mpsc::sync_channel::<SegmentJob>(num_workers);
+            let job_rx = Arc::new(Mutex::new(job_rx));
+            let (out_tx, out_rx) = mpsc::channel::<(usize, Vec<u8>)>();
+
+            let read_exact_or_eof = |reader: &mut BufReader<File>, buf: &mut [u8]| -> std::io::Result<usize> {
                 let mut total = 0;
                 while total < buf.len() {
                     match reader.read(&mut buf[total..]) {
@@ -164,54 +256,157 @@ impl AudioFinalizer {
                 Ok(total)
             };
 
-            // 2. Stream mix both files in small 16KB blocks
-            let mut disc_buf = [0u8; 16384];
-            let mut mic_buf = [0u8; 16384];
-            let mut mixed_buf = [0u8; 16384];
+            let mut producer_err: Option<std::io::Error> = None;
 
-            loop {
-                let n_disc = read_chunk(&mut disc_reader, &mut disc_buf)?;
-                let n_mic = read_chunk(&mut mic_reader, &mut mic_buf)?;
-                if n_disc == 0 && n_mic == 0 {
-                    break;
+            std::thread::scope(|scope| {
+                // Spawn worker threads utilizing all CPU cores for parallel MP3 encoding
+                for _ in 0..num_workers {
+                    let rx = Arc::clone(&job_rx);
+                    let tx = out_tx.clone();
+                    scope.spawn(move || loop {
+                        let job = {
+                            let Ok(guard) = rx.lock() else { break };
+                            guard.recv()
+                        };
+                        let Ok(job) = job else { break };
+                        let encoded = encode_pcm_segment(
+                            &job.pcm,
+                            channels,
+                            sample_rate,
+                            job.skip_frames,
+                            job.keep_frames,
+                        );
+                        if tx.send((job.idx, encoded)).is_err() {
+                            break;
+                        }
+                    });
                 }
+                drop(out_tx);
 
-                let max_bytes = n_disc.max(n_mic);
-                let samples = max_bytes / 2;
+                // Producer thread: stream & mix raw PCM from disk in bounded segments
+                let err_slot = &mut producer_err;
+                scope.spawn(move || {
+                    let mut disc_buf = vec![0u8; segment_bytes];
+                    let mut mic_buf = vec![0u8; segment_bytes];
+                    let mut prev_tail: Vec<u8> = Vec::new();
+                    let mut seg_idx: usize = 0;
 
-                for i in 0..samples {
-                    let d = if i * 2 + 1 < n_disc {
-                        i16::from_le_bytes([disc_buf[i * 2], disc_buf[i * 2 + 1]]) as i32
-                    } else {
-                        0
-                    };
-                    let m = if i * 2 + 1 < n_mic {
-                        i16::from_le_bytes([mic_buf[i * 2], mic_buf[i * 2 + 1]]) as i32
-                    } else {
-                        0
-                    };
-                    let mixed = (d + m).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
-                    let b = mixed.to_le_bytes();
-                    mixed_buf[i * 2] = b[0];
-                    mixed_buf[i * 2 + 1] = b[1];
-                }
+                    loop {
+                        let mut seg_pcm = Vec::with_capacity(prev_tail.len() + segment_bytes);
+                        if !prev_tail.is_empty() {
+                            seg_pcm.extend_from_slice(&prev_tail);
+                        }
 
-                let _ = encoder.push_pcm_s16le(&mixed_buf[..max_bytes], channels, sample_rate);
-                while let Ok(packet) = encoder.next_packet() {
-                    if packet.is_empty() {
-                        break;
+                        let mut filled = 0usize;
+                        if silence_remaining_bytes > 0 {
+                            let s_bytes = silence_remaining_bytes.min(segment_bytes);
+                            seg_pcm.resize(seg_pcm.len() + s_bytes, 0);
+                            silence_remaining_bytes -= s_bytes;
+                            filled += s_bytes;
+                        }
+
+                        let mut reached_eof = false;
+                        while filled < segment_bytes {
+                            let rem = segment_bytes - filled;
+                            let n_disc = match read_exact_or_eof(&mut disc_reader, &mut disc_buf[..rem]) {
+                                Ok(n) => n,
+                                Err(e) => {
+                                    *err_slot = Some(e);
+                                    return;
+                                }
+                            };
+                            let n_mic = match read_exact_or_eof(&mut mic_reader, &mut mic_buf[..rem]) {
+                                Ok(n) => n,
+                                Err(e) => {
+                                    *err_slot = Some(e);
+                                    return;
+                                }
+                            };
+                            if n_disc == 0 && n_mic == 0 {
+                                reached_eof = true;
+                                break;
+                            }
+
+                            let max_bytes = n_disc.max(n_mic);
+                            let samples = max_bytes / 2;
+                            let base_offset = seg_pcm.len();
+                            seg_pcm.resize(base_offset + max_bytes, 0);
+
+                            for i in 0..samples {
+                                let d = if i * 2 + 1 < n_disc {
+                                    i16::from_le_bytes([disc_buf[i * 2], disc_buf[i * 2 + 1]]) as i32
+                                } else {
+                                    0
+                                };
+                                let m = if i * 2 + 1 < n_mic {
+                                    i16::from_le_bytes([mic_buf[i * 2], mic_buf[i * 2 + 1]]) as i32
+                                } else {
+                                    0
+                                };
+                                let mixed = (d + m).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+                                let b = mixed.to_le_bytes();
+                                seg_pcm[base_offset + i * 2] = b[0];
+                                seg_pcm[base_offset + i * 2 + 1] = b[1];
+                            }
+
+                            filled += max_bytes;
+                            if max_bytes < rem {
+                                reached_eof = true;
+                                break;
+                            }
+                        }
+
+                        if filled == 0 {
+                            break;
+                        }
+
+                        let next_tail = if !reached_eof && seg_pcm.len() >= warmup_bytes {
+                            seg_pcm[seg_pcm.len() - warmup_bytes..].to_vec()
+                        } else {
+                            Vec::new()
+                        };
+
+                        let skip_frames = if seg_idx == 0 { 0 } else { WARMUP_MP3_FRAMES };
+                        let keep_frames = if reached_eof { None } else { Some(SEGMENT_MP3_FRAMES) };
+
+                        if job_tx
+                            .send(SegmentJob {
+                                idx: seg_idx,
+                                pcm: seg_pcm,
+                                skip_frames,
+                                keep_frames,
+                            })
+                            .is_err()
+                        {
+                            break;
+                        }
+
+                        prev_tail = next_tail;
+                        seg_idx += 1;
+                        if reached_eof {
+                            break;
+                        }
                     }
-                    out_file.write_all(&packet)?;
-                }
-            }
+                    drop(job_tx);
+                });
 
-            // 3. Flush encoder
-            encoder.finish();
-            while let Ok(packet) = encoder.next_packet() {
-                if packet.is_empty() {
-                    break;
+                // Writer (current thread): re-order encoded segments and flush to disk
+                let mut pending: BTreeMap<usize, Vec<u8>> = BTreeMap::new();
+                let mut next_idx: usize = 0;
+                for (idx, data) in out_rx {
+                    pending.insert(idx, data);
+                    while let Some(buf) = pending.remove(&next_idx) {
+                        if let Err(e) = out_file.write_all(&buf) {
+                            let _ = e;
+                            break;
+                        }
+                        next_idx += 1;
+                    }
                 }
-                out_file.write_all(&packet)?;
+            });
+
+            if let Some(e) = producer_err {
+                return Err(Box::new(e));
             }
             out_file.flush()?;
 

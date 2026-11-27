@@ -48,7 +48,7 @@ Detailed architectural and operational documentation is available in the [`docs/
 ## 🚀 Quick Start
 
 ### Standalone Executable & Installer
-1. Download the latest `LeagueVoiceRecorder.exe` or `LeagueVoiceRecorder_0.6.2_x64-setup.exe` from [Releases](https://github.com/betterix/league-voice-recorder/releases).
+1. Download the latest `LeagueVoiceRecorder.exe` or `LeagueVoiceRecorder_0.6.3_x64-setup.exe` from [Releases](https://github.com/betterix/league-voice-recorder/releases).
 2. Launch the application or install via setup wizard. Both the **Recording Watcher** and **Replay Auto-Sync** start automatically in hands-free mode.
 3. Minimize to system tray; the app will monitor matches quietly in the background.
 

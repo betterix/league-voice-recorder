@@ -1,6 +1,6 @@
 ﻿; ==============================================================================
 ; League Voice Recorder & Replay Synchronizer — NSIS Modern Installer Script
-; Clean Native Rust Desktop Architecture (v0.6.2)
+; Clean Native Rust Desktop Architecture (v0.6.3)
 ; ==============================================================================
 
 Unicode true
@@ -12,7 +12,7 @@ ManifestSupportedOS all
 ManifestDPIAware true
 
 !define APP_NAME "League Voice Recorder"
-!define APP_VERSION "0.6.2"
+!define APP_VERSION "0.6.3"
 !define APP_PUBLISHER "betterix"
 !define APP_URL "https://github.com/betterix/league-voice-recorder"
 !define APP_EXE "LeagueVoiceRecorder.exe"

@@ -471,6 +471,12 @@ fn get_logs(state: tauri::State<'_, Arc<AppState>>) -> Vec<String> {
     logs
 }
 
+static RECORDINGS_META_CACHE: std::sync::OnceLock<Mutex<std::collections::HashMap<String, (u64, u64, ScrimMetadata)>>> = std::sync::OnceLock::new();
+
+fn recordings_meta_cache() -> &'static Mutex<std::collections::HashMap<String, (u64, u64, ScrimMetadata)>> {
+    RECORDINGS_META_CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+
 #[tauri::command]
 async fn get_recordings() -> Vec<RecordingItem> {
     blocking(get_recordings_sync).await.unwrap_or_default()
@@ -486,6 +492,12 @@ fn get_recordings_sync() -> Vec<RecordingItem> {
                     let filename = path.file_name().unwrap_or_default().to_string_lossy().to_string();
                     let metadata = entry.metadata().ok();
                     let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+                    let mtime_secs = metadata
+                        .as_ref()
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
                     let size_str = format!("{:.1} MB", size as f64 / 1_048_576.0);
 
                     let mtime_str = metadata
@@ -503,22 +515,46 @@ fn get_recordings_sync() -> Vec<RecordingItem> {
                         })
                         .unwrap_or_else(|| "Saved".to_string());
 
-                    let mut meta = ScrimMetadata::read_from_mp3(&path).unwrap_or_else(|_| {
-                        let stem = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
-                        ScrimMetadata {
-                            game_id: stem,
-                            team_tag: String::new(),
-                            notes: String::new(),
-                            game_patch: String::new(),
-                            recorded_at: String::new(),
+                    let cached_meta = recordings_meta_cache()
+                        .lock()
+                        .ok()
+                        .and_then(|cache| {
+                            cache.get(&filename).and_then(|(c_size, c_mtime, c_meta)| {
+                                if *c_size == size && *c_mtime == mtime_secs {
+                                    Some(c_meta.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                        });
+
+                    let mut meta = if let Some(m) = cached_meta {
+                        m
+                    } else {
+                        let parsed = ScrimMetadata::read_from_mp3(&path).unwrap_or_else(|_| {
+                            let stem = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+                            ScrimMetadata {
+                                game_id: stem,
+                                team_tag: String::new(),
+                                notes: String::new(),
+                                game_patch: String::new(),
+                                recorded_at: String::new(),
+                            }
+                        });
+                        if let Ok(mut cache) = recordings_meta_cache().lock() {
+                            cache.insert(filename.clone(), (size, mtime_secs, parsed.clone()));
                         }
-                    });
+                        parsed
+                    };
 
                     // Auto-clean legacy "match length" comment tags if present
                     let lower_notes = meta.notes.to_lowercase();
                     if lower_notes.contains("match length") || lower_notes.starts_with("match ended at") {
                         meta.notes.clear();
                         let _ = meta.write_to_mp3(&path);
+                        if let Ok(mut cache) = recordings_meta_cache().lock() {
+                            cache.insert(filename.clone(), (size, mtime_secs, meta.clone()));
+                        }
                     }
 
                     let date_display = if !meta.recorded_at.is_empty() {
@@ -547,16 +583,42 @@ fn get_recordings_sync() -> Vec<RecordingItem> {
 }
 
 #[tauri::command]
-fn save_recording_metadata(filename: String, metadata: ScrimMetadata, state: tauri::State<'_, Arc<AppState>>) -> Result<(), String> {
-    if let Ok(cfg) = AppConfig::load() {
-        let path = cfg.record_folder.join(&filename);
-        if path.exists() {
-            metadata.write_to_mp3(&path).map_err(|e| format!("Failed to write ID3 metadata: {}", e))?;
-            state.log(&format!("📝 Updated scrim details for {}", filename));
-            return Ok(());
+async fn save_recording_metadata(filename: String, metadata: ScrimMetadata, state: tauri::State<'_, Arc<AppState>>) -> Result<(), String> {
+    let cfg = AppConfig::load().map_err(|e| e.to_string())?;
+    let path = cfg.record_folder.join(&filename);
+    if !path.exists() {
+        return Err("Recording file not found on disk".to_string());
+    }
+
+    metadata.write_to_mp3(&path).map_err(|e| format!("Failed to write ID3 metadata: {}", e))?;
+    if let Ok(mut cache) = recordings_meta_cache().lock() {
+        cache.remove(&filename);
+    }
+    state.log(&format!("📝 Updated scrim details for {}", filename));
+
+    // If cloud sync is configured with write permissions and the recording exists on the backend,
+    // push metadata changes via PATCH /api/v1/recordings/{game_id} without re-uploading the MP3.
+    let client = league_voice_recorder::cloud_sync::CloudSyncClient::new(&cfg.remote_server_url, &cfg.remote_api_key);
+    if client.is_configured() {
+        let game_id = if !metadata.game_id.trim().is_empty() {
+            metadata.game_id.trim().to_string()
+        } else {
+            path.file_stem().unwrap_or_default().to_string_lossy().to_string()
+        };
+
+        if let Ok(Some(_)) = client.get_recording(&game_id).await {
+            let team_tag = if metadata.team_tag.trim().is_empty() { None } else { Some(metadata.team_tag.trim()) };
+            let notes = if metadata.notes.trim().is_empty() { None } else { Some(metadata.notes.trim()) };
+            let match_date = if metadata.recorded_at.trim().is_empty() { None } else { Some(metadata.recorded_at.trim()) };
+
+            match client.update_recording_metadata(&game_id, team_tag, notes, match_date).await {
+                Ok(_) => state.log(&format!("☁️ Synced updated metadata for {} to backend (PATCH).", game_id)),
+                Err(e) => state.log(&format!("⚠️ Local metadata saved, but cloud PATCH failed for {}: {}", game_id, e)),
+            }
         }
     }
-    Err("Recording file not found on disk".to_string())
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -616,6 +678,9 @@ fn delete_recording(filename: String, state: tauri::State<'_, Arc<AppState>>) ->
         let path = cfg.record_folder.join(&filename);
         if path.exists() {
             std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+            if let Ok(mut cache) = recordings_meta_cache().lock() {
+                cache.remove(&filename);
+            }
             state.log(&format!("🗑 Deleted recording: {}", filename));
         }
     }
@@ -900,29 +965,141 @@ fn get_telemetry(state: tauri::State<'_, Arc<AppState>>) -> TelemetryDto {
 
     if let Ok(pid) = sysinfo::get_current_pid() {
         if let Ok(mut lk) = SYSTEM_MONITOR.lock() {
+            let refresh_kind = sysinfo::ProcessRefreshKind::nothing()
+                .with_memory()
+                .with_cpu()
+                .with_cmd(sysinfo::UpdateKind::OnlyIfNotSet);
             if lk.is_none() {
                 if let Ok(mut sys) = sysinfo::System::new() {
                     sys.refresh_processes_specifics(
-                        sysinfo::ProcessesToUpdate::Some(&[pid]),
+                        sysinfo::ProcessesToUpdate::All,
                         true,
-                        sysinfo::ProcessRefreshKind::nothing().with_memory().with_cpu(),
+                        refresh_kind,
                     );
                     *lk = Some((sys, std::time::Instant::now()));
                 }
             } else if let Some((ref mut sys, ref mut last_time)) = *lk {
                 if last_time.elapsed() >= std::time::Duration::from_millis(250) {
                     sys.refresh_processes_specifics(
-                        sysinfo::ProcessesToUpdate::Some(&[pid]),
+                        sysinfo::ProcessesToUpdate::All,
                         true,
-                        sysinfo::ProcessRefreshKind::nothing().with_memory().with_cpu(),
+                        refresh_kind,
                     );
                     *last_time = std::time::Instant::now();
                 }
-                if let Some(proc) = sys.process(pid) {
-                    let ram_mb = proc.memory() as f64 / (1024.0 * 1024.0);
+            }
+
+            if let Some((ref sys, _)) = *lk {
+                let mut tree_pids = std::collections::HashSet::new();
+                tree_pids.insert(pid);
+
+                // Also include WebView2 (msedgewebview2.exe) processes belonging to this app's user-data-dir
+                for (proc_pid, proc_info) in sys.processes() {
+                    let name = proc_info.name().to_string_lossy().to_ascii_lowercase();
+                    if name.contains("msedgewebview2") {
+                        let cmd_matches = proc_info.cmd().iter().any(|arg| {
+                            let s = arg.to_string_lossy().to_ascii_lowercase();
+                            s.contains("com.betterix.leaguevoicerecorder")
+                                || s.contains("leaguevoicerecorder")
+                                || s.contains("league-voice-recorder")
+                        });
+                        if cmd_matches {
+                            tree_pids.insert(*proc_pid);
+                        }
+                    }
+                }
+
+                loop {
+                    let mut added = false;
+                    for (proc_pid, proc_info) in sys.processes() {
+                        if !tree_pids.contains(proc_pid) {
+                            if let Some(parent_pid) = proc_info.parent() {
+                                if tree_pids.contains(&parent_pid) {
+                                    tree_pids.insert(*proc_pid);
+                                    added = true;
+                                }
+                            }
+                        }
+                    }
+                    if !added {
+                        break;
+                    }
+                }
+
+#[cfg(windows)]
+fn get_process_private_working_set(pid: u32) -> Option<u64> {
+    #[repr(C)]
+    struct WorkingSetInfo {
+        number_of_entries: usize,
+        working_set_info: [usize; 1],
+    }
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: i32, dwProcessId: u32) -> isize;
+        fn CloseHandle(hObject: isize) -> i32;
+        fn K32QueryWorkingSet(hProcess: isize, pv: *mut std::ffi::c_void, cb: u32) -> i32;
+    }
+
+    const PROCESS_QUERY_INFORMATION: u32 = 0x0400;
+    const PROCESS_VM_READ: u32 = 0x0010;
+    const ERROR_BAD_LENGTH: i32 = 24;
+
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid);
+        if handle == 0 {
+            return None;
+        }
+
+        // Start with 65536 entries (~512 KB buffer on 64-bit, enough for ~256 MB working set)
+        let mut capacity: usize = 65536;
+        let result = loop {
+            let mut buf: Vec<usize> = vec![0; capacity + 1];
+            let cb = (buf.len() * std::mem::size_of::<usize>()) as u32;
+            let ok = K32QueryWorkingSet(handle, buf.as_mut_ptr() as *mut std::ffi::c_void, cb);
+            if ok != 0 {
+                let info = &*(buf.as_ptr() as *const WorkingSetInfo);
+                let count = info.number_of_entries.min(buf.len() - 1);
+                let entries = std::slice::from_raw_parts(info.working_set_info.as_ptr(), count);
+                // Bit 8 (0x100) in PSAPI_WORKING_SET_BLOCK is the `Shared` flag (0 = private page)
+                let private_pages = entries.iter().filter(|&&flags| (flags & 0x100) == 0).count() as u64;
+                break Some(private_pages * 4096);
+            }
+            let err = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+            if err == ERROR_BAD_LENGTH && capacity < 4_194_304 {
+                let needed = buf[0];
+                capacity = (needed + 4096).max(capacity * 2);
+                continue;
+            }
+            break None;
+        };
+
+        CloseHandle(handle);
+        result
+    }
+}
+
+#[cfg(not(windows))]
+fn get_process_private_working_set(_pid: u32) -> Option<u64> {
+    None
+}
+
+                let mut total_mem_bytes: u64 = 0;
+                let mut total_cpu: f32 = 0.0;
+                for tree_pid in &tree_pids {
+                    if let Some(proc) = sys.process(*tree_pid) {
+                        let mem = get_process_private_working_set(tree_pid.as_u32())
+                            .unwrap_or_else(|| proc.memory());
+                        total_mem_bytes += mem;
+                        total_cpu += proc.cpu_usage();
+                    }
+                }
+
+                if total_mem_bytes > 0 {
+                    let ram_mb = total_mem_bytes as f64 / (1024.0 * 1024.0);
                     ram_usage = format!("{:.1} MB", ram_mb);
                     let num_cpus = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) as f32;
-                    let normalized_cpu = (proc.cpu_usage() / num_cpus).min(100.0);
+                    let normalized_cpu = (total_cpu / num_cpus).min(100.0);
                     cpu_usage = format!("{:.1}%", normalized_cpu);
                 }
             }
@@ -1722,12 +1899,119 @@ async fn cloud_list_recordings(state: tauri::State<'_, Arc<AppState>>) -> Result
 }
 
 #[tauri::command]
+async fn cloud_sync_recordings(state: tauri::State<'_, Arc<AppState>>) -> Result<Vec<league_voice_recorder::cloud_sync::CloudRecordingDto>, String> {
+    let cfg = AppConfig::load().map_err(|e| e.to_string())?;
+    if cfg.remote_server_url.is_empty() || cfg.remote_api_key.is_empty() {
+        return Err("Server URL or API Key not configured in Settings.".to_string());
+    }
+    let client = league_voice_recorder::cloud_sync::CloudSyncClient::new(&cfg.remote_server_url, &cfg.remote_api_key);
+    state.log("☁️ Syncing scrim recordings with remote server...");
+    let mut items = client.list_recordings().await?;
+
+    let can_patch = client.check_health().await
+        .map(|h| h.role == "admin" || h.role == "upload")
+        .unwrap_or(false);
+
+    for item in &mut items {
+        let gid = item.game_id.trim().to_string();
+        let local_path = cfg.record_folder.join(format!("{}.mp3", gid));
+        if !local_path.exists() {
+            continue;
+        }
+
+        // Recording exists locally: inspect GET /api/v1/recordings/{game_id} and push local metadata if different
+        if let Ok(Some(cloud)) = client.get_recording(&gid).await {
+            let local_meta = league_voice_recorder::scrim_meta::ScrimMetadata::read_from_mp3(&local_path).unwrap_or_default();
+            let local_team = local_meta.team_tag.trim();
+            let local_notes = local_meta.notes.trim();
+            let local_date = local_meta.recorded_at.trim();
+
+            let cloud_team = cloud.team_tag.as_deref().unwrap_or("").trim();
+            let cloud_notes = cloud.notes.as_deref().unwrap_or("").trim();
+            let cloud_date = cloud.match_date.as_deref()
+                .or(cloud.recorded_at.as_deref())
+                .unwrap_or("")
+                .trim();
+
+            let meta_differs = local_team != cloud_team || local_notes != cloud_notes || local_date != cloud_date;
+            if meta_differs && can_patch {
+                let sha_matches = match cloud.sha256.as_deref() {
+                    Some(cloud_sha) if !cloud_sha.is_empty() => {
+                        league_voice_recorder::cloud_sync::CloudSyncClient::compute_sha256(&local_path)
+                            .map(|local_sha| local_sha.eq_ignore_ascii_case(cloud_sha.trim()))
+                            .unwrap_or(false)
+                    }
+                    _ => false,
+                };
+
+                if sha_matches {
+                    let t_opt = if local_team.is_empty() { None } else { Some(local_team) };
+                    let n_opt = if local_notes.is_empty() { None } else { Some(local_notes) };
+                    let d_opt = if local_date.is_empty() { None } else { Some(local_date) };
+
+                    match client.update_recording_metadata(&gid, t_opt, n_opt, d_opt).await {
+                        Ok(_) => {
+                            item.team_tag = t_opt.map(str::to_string);
+                            item.notes = n_opt.map(str::to_string);
+                            item.match_date = d_opt.map(str::to_string);
+                            item.recorded_at = d_opt.map(str::to_string);
+                            state.log(&format!("☁️ Pushed updated local metadata for {} to cloud (PATCH).", gid));
+                        }
+                        Err(e) => {
+                            state.log(&format!("⚠️ Failed to PATCH metadata for {} during sync: {}", gid, e));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    state.log(&format!("✓ Retrieved {} remote recording(s) from server.", items.len()));
+    Ok(items)
+}
+
+fn apply_cloud_metadata_to_downloaded_file(
+    dest_path: &std::path::Path,
+    cloud: &league_voice_recorder::cloud_sync::CloudRecordingDto,
+    filename: &str,
+) {
+    let mut meta = league_voice_recorder::scrim_meta::ScrimMetadata::read_from_mp3(dest_path)
+        .unwrap_or_default();
+    meta.game_id = cloud.game_id.trim().to_string();
+    meta.team_tag = cloud.team_tag.as_deref().unwrap_or("").trim().to_string();
+    meta.notes = cloud.notes.as_deref().unwrap_or("").trim().to_string();
+    if let Some(d) = cloud.match_date.as_deref().or(cloud.recorded_at.as_deref()) {
+        meta.recorded_at = d.trim().to_string();
+    } else {
+        meta.recorded_at.clear();
+    }
+    if let Some(p) = cloud.patch.as_deref().or(cloud.game_patch.as_deref()) {
+        if !p.trim().is_empty() {
+            meta.game_patch = p.trim().to_string();
+        }
+    }
+    let _ = meta.write_to_mp3(dest_path);
+    if let Ok(mut cache) = recordings_meta_cache().lock() {
+        cache.remove(filename);
+    }
+}
+
+#[tauri::command]
 async fn cloud_download_recording(game_id: String, state: tauri::State<'_, Arc<AppState>>) -> Result<String, String> {
     let cfg = AppConfig::load().map_err(|e| e.to_string())?;
     let client = league_voice_recorder::cloud_sync::CloudSyncClient::new(&cfg.remote_server_url, &cfg.remote_api_key);
-    let dest_path = cfg.record_folder.join(format!("{}.mp3", game_id));
+    let filename = format!("{}.mp3", game_id);
+    let dest_path = cfg.record_folder.join(&filename);
+    if dest_path.exists() {
+        return Ok(dest_path.to_string_lossy().to_string());
+    }
     state.log(&format!("⬇ Downloading {}.mp3 from remote server...", game_id));
     client.download_recording(&game_id, &dest_path).await?;
+    if let Ok(Some(cloud)) = client.get_recording(&game_id).await {
+        apply_cloud_metadata_to_downloaded_file(&dest_path, &cloud, &filename);
+    } else if let Ok(mut cache) = recordings_meta_cache().lock() {
+        cache.remove(&filename);
+    }
     state.log(&format!("✓ Successfully downloaded {}.mp3", game_id));
     Ok(dest_path.to_string_lossy().to_string())
 }
@@ -1740,10 +2024,16 @@ async fn cloud_download_all(state: tauri::State<'_, Arc<AppState>>) -> Result<us
 
     let mut count = 0;
     for it in items {
-        let dest = cfg.record_folder.join(format!("{}.mp3", it.game_id));
+        let filename = format!("{}.mp3", it.game_id);
+        let dest = cfg.record_folder.join(&filename);
         if !dest.exists() {
             state.log(&format!("⬇ Batch downloading missing scrim: {}.mp3...", it.game_id));
             if client.download_recording(&it.game_id, &dest).await.is_ok() {
+                if let Ok(Some(cloud)) = client.get_recording(&it.game_id).await {
+                    apply_cloud_metadata_to_downloaded_file(&dest, &cloud, &filename);
+                } else {
+                    apply_cloud_metadata_to_downloaded_file(&dest, &it, &filename);
+                }
                 count += 1;
                 state.log(&format!("✓ Downloaded {}.mp3", it.game_id));
             }
@@ -1763,9 +2053,18 @@ async fn cloud_upload_recording(game_id: String, state: tauri::State<'_, Arc<App
     }
 
     let meta = league_voice_recorder::scrim_meta::ScrimMetadata::read_from_mp3(&file_path).unwrap_or_default();
-    let team_tag = if meta.team_tag.is_empty() { None } else { Some(meta.team_tag.as_str()) };
-    let notes = if meta.notes.is_empty() { None } else { Some(meta.notes.as_str()) };
-    let patch = if meta.game_patch.is_empty() { None } else { Some(meta.game_patch.as_str()) };
+    let team_tag = if meta.team_tag.trim().is_empty() { None } else { Some(meta.team_tag.trim()) };
+    let notes = if meta.notes.trim().is_empty() { None } else { Some(meta.notes.trim()) };
+    let match_date = if meta.recorded_at.trim().is_empty() { None } else { Some(meta.recorded_at.trim()) };
+    let patch = if meta.game_patch.trim().is_empty() { None } else { Some(meta.game_patch.trim()) };
+
+    // If recording already exists on backend, PATCH metadata instead of re-uploading the MP3
+    if let Ok(Some(_)) = client.get_recording(&game_id).await {
+        state.log(&format!("☁️ {}.mp3 already exists on server; updating metadata via PATCH...", game_id));
+        client.update_recording_metadata(&game_id, team_tag, notes, match_date).await?;
+        state.log(&format!("✓ Metadata updated on server for {}.mp3", game_id));
+        return Ok("Metadata updated on server".to_string());
+    }
 
     state.log(&format!("⬆ Uploading {}.mp3 to remote server...", game_id));
     let res = client.upload_recording(
@@ -1794,6 +2093,11 @@ async fn cloud_delete_recording(game_id: String, state: tauri::State<'_, Arc<App
 #[tauri::command]
 fn get_app_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
+}
+
+#[tauri::command]
+fn is_dev_mode() -> bool {
+    cfg!(debug_assertions)
 }
 
 #[tauri::command]
@@ -2108,13 +2412,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_background_color(Some(tauri::webview::Color(11, 17, 32, 255)));
-                let fallback_win = window.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(1200));
-                    if !fallback_win.is_visible().unwrap_or(false) {
-                        let _ = fallback_win.show();
-                    }
-                });
 
                 #[cfg(windows)]
                 if let Ok(hwnd) = window.hwnd() {
@@ -2199,13 +2496,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             *app.state::<Arc<AppState>>().app_handle.lock().unwrap() = Some(app.handle().clone());
 
             let aux_handle = app.handle().clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_millis(1500));
-                let h2 = aux_handle.clone();
-                let _ = aux_handle.run_on_main_thread(move || {
-                    create_aux_windows(&h2);
-                    setup_overlay(&h2);
-                });
+            let _ = app.handle().run_on_main_thread(move || {
+                create_aux_windows(&aux_handle);
+                setup_overlay(&aux_handle);
             });
 
             Ok(())
@@ -2246,6 +2539,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             test_cloud_connection,
             cloud_get_role,
             cloud_list_recordings,
+            cloud_sync_recordings,
             cloud_download_recording,
             cloud_download_all,
             cloud_upload_recording,
@@ -2256,6 +2550,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             get_available_languages,
             get_translations,
             get_app_version,
+            is_dev_mode,
             get_current_patch,
         ])
         .run(tauri::generate_context!())
